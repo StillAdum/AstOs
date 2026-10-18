@@ -25,6 +25,9 @@ export USER_NAME="ast_os"
 export USER_EMAIL="ast_os@users.noreply.github.com"
 export BUILD_USERNAME="AstOs-CI"
 export BUILD_HOSTNAME="github-actions"
+# The TB3710F tree doesn't define CM_SRC_API_DIR, so the CM SDK api-drift
+# check resolves to a bogus /7.txt dependency. Skip the check (dev-only).
+export WITHOUT_CHECK_API=true
 
 cd "$ROMDIR"
 
