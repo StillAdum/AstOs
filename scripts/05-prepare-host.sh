@@ -53,4 +53,28 @@ if ! command -v schedtool >/dev/null 2>&1; then
 fi
 command -v schedtool && schedtool -v || true
 
+# ---- python 2 (AOSP 7.1 build scripts require python = python2; ------------
+# with python3 the jarjar host tool ends up broken/empty:
+# "Could not find or load main class com.tonicsystems.jarjar.Main")
+if ! python -c 'import sys; sys.exit(0 if sys.version_info[0] == 2 else 1)' >/dev/null 2>&1; then
+    if ! command -v python2 >/dev/null 2>&1; then
+        echo "Building Python 2.7.18 from source…"
+        rm -rf /tmp/Python-2.7.18* /tmp/py27.tar.xz
+        curl -sL -o /tmp/py27.tar.xz "https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz"
+        tar xf /tmp/py27.tar.xz -C /tmp
+        cd /tmp/Python-2.7.18
+        ./configure --prefix=/usr/local/py27 >/dev/null 2>&1
+        make -j"$(nproc)" >/dev/null 2>&1 || true
+        sudo make install >/dev/null 2>&1 || sudo make altinstall >/dev/null 2>&1 || true
+        cd -
+        sudo ln -sf /usr/local/py27/bin/python2.7 /usr/local/bin/python2
+    else
+        sudo ln -sf "$(command -v python2)" /usr/local/bin/python2
+    fi
+    sudo ln -sf "$(readlink -f /usr/local/bin/python2 || echo /usr/local/py27/bin/python2.7)" /usr/local/bin/python
+    # make sure `python` resolves to py2 regardless of PATH order
+    sudo ln -sf "$(readlink -f /usr/local/bin/python)" /usr/bin/python
+fi
+echo -n "python: "; python --version 2>&1 || true
+
 echo "Host dependencies ready"
