@@ -1,0 +1,18 @@
+// AstShell — the AstOs home assistant shell
+// Plain framework APIs (no androidx) for a tiny, fast build that fits 1 GB RAM devices.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.4.2'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

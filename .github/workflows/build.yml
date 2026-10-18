@@ -1,0 +1,64 @@
+name: Build AstOs ROM
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  # nightly rebuild is opt-in via workflow_dispatch only —
+  # full ROM builds are heavy.
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: rom-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: AstOs ROM (TB3-710F)
+    runs-on: ubuntu-latest
+    timeout-minutes: 340   # stay under the 6 h per-job cap
+
+    env:
+      ROMDIR: /mnt/rom
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show runner
+        run: |
+          echo "CPUs: $(nproc)"
+          free -h
+          df -h / /mnt || true
+
+      - name: Free disk space
+        run: bash scripts/10-free-disk.sh
+
+      - name: Sync LineageOS 14.1 source
+        run: bash scripts/20-sync-source.sh
+        env:
+          REPO_ROOT: ${{ github.workspace }}
+
+      - name: Build AstShell app
+        run: bash scripts/30-build-astshell.sh
+        env:
+          REPO_ROOT: ${{ github.workspace }}
+
+      - name: Embed AstOs into ROM tree
+        run: bash scripts/40-embed-astos.sh
+        env:
+          REPO_ROOT: ${{ github.workspace }}
+
+      - name: Build ROM
+        run: bash scripts/50-build-rom.sh
+        env:
+          REPO_ROOT: ${{ github.workspace }}
+
+      - name: Publish release
+        run: bash scripts/60-release.sh
+        env:
+          REPO_ROOT: ${{ github.workspace }}
+          GH_TOKEN: ${{ github.token }}

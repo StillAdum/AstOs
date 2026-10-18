@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AstOs</string>
+    <string name="media_section">MEDIA</string>
+    <string name="home_section">HOME</string>
+    <string name="apps_section">APPS</string>
+</resources>

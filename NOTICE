@@ -1,0 +1,29 @@
+AstOs NOTICE
+============
+
+This product includes software developed by many open-source projects:
+
+- LineageOS / CyanogenMod (Android distribution) — base OS, licensed under
+  the CyanogenMod / LineageOS licenses (Apache-2.0 / GPLv2 as applicable).
+  https://lineageos.org
+
+- The Android Open Source Project (AOSP) — Apache-2.0.
+
+- TB3-710F device tree, kernel (MT8127) and vendor blobs:
+  andrew264 (github.com/andrew264) — continuing the work of szazs89,
+  EoflaOE and the Cyanogenmod-for-Lenovo-Tab2A7-10F team.
+
+- Vosk speech recognition (alphacep/vosk-api) — Apache-2.0.
+  Small en-US model by Alpha Cephei Inc.
+
+- Open-Meteo — weather data under CC-BY 4.0 (attribution).
+
+- Home Assistant — connected via its documented REST API; not bundled.
+
+- Spotify is a trademark of Spotify AB; AstOs merely uses the standard
+  Android media-session interfaces. No Spotify code is included.
+
+AstOs-specific code (astshell/, vendor/astos/, scripts/, docs/) is
+Apache-2.0. Proprietary vendor blobs for the device are the property of
+their respective owners and are handled per the LineageOS extraction
+convention.

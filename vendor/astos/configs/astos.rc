@@ -1,0 +1,11 @@
+# AstOs init script — zram swap for the 1 GB RAM device.
+# The kernel ships with CONFIG_ZRAM=y and CONFIG_SWAP=y.
+
+on post-fs
+    write /sys/block/zram0/disksize 801112064
+    exec -- /system/bin/toybox mkswap /dev/block/zram0
+    exec -- /system/bin/toybox swapon /dev/block/zram0
+
+# Disable with: adb shell setprop persist.sys.astos.zram 0 (needs reboot)
+on property:persist.sys.astos.zram=0 && property:sys.boot_completed=0
+    write /sys/block/zram0/disksize 0

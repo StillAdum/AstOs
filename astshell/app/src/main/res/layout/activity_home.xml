@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:paddingTop="24dp"
+            android:paddingBottom="110dp">
+
+            <!-- clock + weather -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/clockText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="58sp"
+                        android:fontFamily="sans-serif-light"
+                        android:textColor="@color/ink"
+                        android:text="00:00"/>
+
+                    <TextView
+                        android:id="@+id/dateText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="15sp"
+                        android:textColor="@color/ink_soft"
+                        android:text=""/>
+
+                    <TextView
+                        android:id="@+id/timerText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/terra"
+                        android:visibility="gone"
+                        android:text=""/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="end">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <ImageView
+                            android:id="@+id/weatherIcon"
+                            android:layout_width="34dp"
+                            android:layout_height="34dp"
+                            android:src="@drawable/ic_weather_partly"/>
+
+                        <TextView
+                            android:id="@+id/tempText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="34sp"
+                            android:fontFamily="sans-serif-light"
+                            android:textColor="@color/ink"
+                            android:layout_marginLeft="6dp"
+                            android:text="--°"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/condText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textColor="@color/ink_soft"
+                        android:text=""/>
+
+                    <TextView
+                        android:id="@+id/cityText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="@color/ink_faint"
+                        android:text=""/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- media card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card"
+                android:padding="16dp"
+                android:layout_marginTop="18dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="MEDIA"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.18"
+                    android:textColor="@color/sage"
+                    android:textStyle="bold"/>
+
+                <TextView
+                    android:id="@+id/trackText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="19sp"
+                    android:textColor="@color/ink"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:layout_marginTop="8dp"
+                    android:text="Nothing playing"/>
+
+                <TextView
+                    android:id="@+id/artistText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="@color/ink_soft"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:text="Spotify and local music are controlled here"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="12dp">
+
+                    <ImageButton
+                        android:id="@+id/prevBtn"
+                        style="@style/MediaBtn"
+                        android:src="@drawable/ic_prev"/>
+
+                    <ImageButton
+                        android:id="@+id/playPauseBtn"
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:background="@drawable/bg_btn_primary"
+                        android:src="@drawable/ic_play"
+                        android:layout_marginLeft="10dp"
+                        android:layout_marginRight="10dp"/>
+
+                    <ImageButton
+                        android:id="@+id/nextBtn"
+                        style="@style/MediaBtn"
+                        android:src="@drawable/ic_next"/>
+
+                    <Space
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1"/>
+
+                    <ImageButton
+                        android:id="@+id/volDownBtn"
+                        style="@style/MediaBtn"
+                        android:src="@drawable/ic_vol_down"/>
+
+                    <ImageButton
+                        android:id="@+id/volUpBtn"
+                        style="@style/MediaBtn"
+                        android:src="@drawable/ic_vol_up"
+                        android:layout_marginLeft="10dp"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- home assistant card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card"
+                android:padding="16dp"
+                android:layout_marginTop="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="HOME"
+                        android:textSize="11sp"
+                        android:letterSpacing="0.18"
+                        android:textColor="@color/sage"
+                        android:textStyle="bold"/>
+
+                    <ImageButton
+                        android:id="@+id/settingsBtn"
+                        android:layout_width="34dp"
+                        android:layout_height="34dp"
+                        android:background="@drawable/bg_btn_circle"
+                        android:src="@drawable/ic_settings"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/haGrid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="10dp"/>
+
+                <TextView
+                    android:id="@+id/haHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textColor="@color/ink_soft"
+                    android:layout_marginTop="4dp"
+                    android:text="Connect Home Assistant in settings to control your home."/>
+            </LinearLayout>
+
+            <!-- shortcuts -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card"
+                android:padding="16dp"
+                android:layout_marginTop="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="APPS"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.18"
+                    android:textColor="@color/sage"
+                    android:textStyle="bold"/>
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:scrollbars="none"
+                    android:layout_marginTop="10dp">
+
+                    <LinearLayout
+                        android:id="@+id/shortcutRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"/>
+                </HorizontalScrollView>
+
+                <Button
+                    android:id="@+id/allAppsBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_chip"
+                    android:textColor="@color/ink"
+                    android:textSize="13sp"
+                    android:paddingLeft="18dp"
+                    android:paddingRight="18dp"
+                    android:layout_marginTop="8dp"
+                    android:text="All apps"/>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- voice overlay -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal|bottom"
+        android:layout_gravity="bottom">
+
+        <TextView
+            android:id="@+id/voiceStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="520dp"
+            android:background="@drawable/bg_pill"
+            android:textColor="@color/cream"
+            android:textSize="14sp"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:layout_marginBottom="10dp"
+            android:visibility="gone"
+            android:text=""/>
+
+        <ImageButton
+            android:id="@+id/micBtn"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_marginBottom="18dp"
+            android:background="@drawable/bg_mic"
+            android:src="@drawable/ic_mic"/>
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AstOs warm palette — no blue by design -->
+    <color name="bg">#F6F1E9</color>
+    <color name="bg_deep">#EFE7DB</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="cream">#F5EFE6</color>
+    <color name="cream_soft">#FAF6F0</color>
+    <color name="ink">#2E2A26</color>
+    <color name="ink_soft">#6B635B</color>
+    <color name="ink_faint">#9C928A</color>
+    <color name="terra">#C96F4A</color>
+    <color name="terra_dark">#A85636</color>
+    <color name="terra_light">#E5B29A</color>
+    <color name="sage">#8A9B7A</color>
+    <color name="sage_light">#B0BEA2</color>
+    <color name="amber">#D9A441</color>
+    <color name="pill_bg">#3A2F29</color>
+</resources>

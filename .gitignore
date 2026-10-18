@@ -1,0 +1,10 @@
+# AstOs build artifacts
+astshell/app/src/main/assets/model/
+astshell/.gradle/
+astshell/app/build/
+astshell/build/
+astshell/local.properties
+*.iml
+.idea/
+AstOs-*.zip
+local_manifests/*.local.xml

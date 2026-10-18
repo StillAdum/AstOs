@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AstOs local manifest: Lenovo Tab 3 Essential (TB3-710F) device
+     sources, courtesy of the community maintainers. -->
+<manifest>
+  <project path="device/lenovo/TB3710F"
+           name="andrew264/android_device_lenovo_TB3710F"
+           remote="github"
+           revision="cm-14.1" />
+
+  <project path="kernel/lenovo/TB3710F"
+           name="andrew264/android_kernel_lenovo_mt8127"
+           remote="github"
+           revision="cm-14.1" />
+
+  <project path="vendor/lenovo/TB3710F"
+           name="andrew264/android_vendor_lenovo_TB3710F"
+           remote="github"
+           revision="cm-14.1" />
+</manifest>

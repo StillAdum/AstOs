@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.astos.shell'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.astos.shell"
+        minSdk 24          // device runs Android 7.1 (API 25)
+        targetSdk 25       // aligned with the ROM platform
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            // Signed with the ROM's platform key at ROM-build time
+            // (LOCAL_CERTIFICATE := PLATFORM in vendor/astos/AstShell/Android.mk)
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    // Vosk model files are copied to assets/model/ by the build script
+    androidResources {
+        noCompress 'al', 'bin', 'mat', 'txt'
+    }
+}
+
+dependencies {
+    // Offline speech recognition — the whole point of AstOs voice control
+    implementation 'com.alphacephei:vosk-android:0.3.47'
+}
