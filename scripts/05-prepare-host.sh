@@ -40,12 +40,13 @@ done
 # ---- schedtool (mka requires it; not in Ubuntu 24.04) ----------------------
 if ! command -v schedtool >/dev/null 2>&1; then
     echo "Building schedtool from source…"
-    cd /tmp
-    curl -sL -o st.tar.gz "https://deb.debian.org/debian/pool/main/s/schedtool/schedtool_1.3.0.orig.tar.gz"
-    tar xf st.tar.gz
-    cd schedtool-1.3.0
+    rm -rf /tmp/st.tar.gz /tmp/schedtool*
+    curl -sL -o /tmp/st.tar.gz "https://deb.debian.org/debian/pool/main/s/schedtool/schedtool_1.3.0.orig.tar.gz"
+    tar xf /tmp/st.tar.gz -C /tmp
+    cd /tmp/schedtool*/
     make -j"$(nproc)" >/dev/null
     sudo install -m 0755 schedtool /usr/local/bin/schedtool
+    cd -
 fi
 command -v schedtool && schedtool -v || true
 
