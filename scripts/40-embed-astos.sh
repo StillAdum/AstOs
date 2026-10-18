@@ -22,7 +22,7 @@ ls -lh "$ROMDIR/vendor/astos/AstShell/AstShell.apk"
 
 # sanity: boot animation + wallpaper present
 test -f "$ROMDIR/vendor/astos/bootanimation/bootanimation.zip"
-test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/drawable-nodpi/default_wallpaper.jpg"
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/drawable-nodpi/default_wallpaper.png"
 
 # ---- free the space the app build used --------------------------------------
 sudo rm -rf /usr/local/lib/android/sdk "$HOME/.gradle" /tmp/gradle.zip /tmp/vosk-model-small-en-us-0.15.zip 2>/dev/null || true
