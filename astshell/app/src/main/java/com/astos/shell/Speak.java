@@ -29,7 +29,8 @@ public final class Speak {
             public void onInit(int status) {
                 if (status == TextToSpeech.SUCCESS) {
                     int r = sTts.setLanguage(Locale.getDefault());
-                    if (r == Engine.LANG_MISSING_DATA || r == Engine.LANG_NOT_SUPPORTED) {
+                    if (r == TextToSpeech.LANG_MISSING_DATA
+                            || r == TextToSpeech.LANG_NOT_SUPPORTED) {
                         sTts.setLanguage(Locale.US);
                     }
                     sReady = true;

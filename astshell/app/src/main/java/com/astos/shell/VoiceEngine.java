@@ -6,6 +6,7 @@ import android.os.Looper;
 
 import org.json.JSONObject;
 import org.vosk.Model;
+import org.vosk.Recognizer;
 import org.vosk.android.RecognitionListener;
 import org.vosk.android.SpeechService;
 
@@ -96,7 +97,8 @@ public class VoiceEngine implements RecognitionListener {
 
     public synchronized void startListening() throws IOException {
         if (mModel == null || mListening) return;
-        mSpeech = new SpeechService(mModel, 16000.0f);
+        Recognizer rec = new Recognizer(mModel, 16000.0f);
+        mSpeech = new SpeechService(rec, 16000.0f);
         mSpeech.startListening(this);
         mListening = true;
     }
@@ -112,7 +114,7 @@ public class VoiceEngine implements RecognitionListener {
 
     // ---- RecognitionListener (vosk callbacks arrive on a worker thread) ----
 
-    @Override public void onPartialResults(String s) {
+    @Override public void onPartialResult(String s) {
         final String text = safeJson(s, "partial");
         if (mCallback != null && !text.isEmpty()) {
             mMain.post(new Runnable() { @Override public void run() {

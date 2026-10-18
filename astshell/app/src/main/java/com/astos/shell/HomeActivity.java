@@ -20,6 +20,7 @@ import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -462,7 +463,7 @@ public class HomeActivity extends Activity
         return v;
     }
 
-    private void allApps() {
+    @Override public void allApps() {
         // small in-house app drawer with filter box
         final AlertDialog.Builder b = new AlertDialog.Builder(this, R.style.DialogTheme);
         b.setTitle("Apps");
@@ -687,12 +688,15 @@ public class HomeActivity extends Activity
     }
 
     private void adjustBrightness(int delta) {
-        int cur = getWindow().getAttributes().screenBrightness;
-        if (cur < 0) {
-            try { cur = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS); }
-            catch (Exception e) { cur = 128; }
+        float curF = getWindow().getAttributes().screenBrightness;
+        if (curF < 0) {
+            try {
+                curF = Settings.System.getInt(getContentResolver(),
+                        Settings.System.SCREEN_BRIGHTNESS) / 255f;
+            } catch (Exception e) { curF = 0.5f; }
         }
-        setBrightness(Math.round((cur / 255f) * 100f) + (int) Math.round(delta / 255f * 100f));
+        int curPct = Math.round(curF * 100f);
+        setBrightness(curPct + Math.round(delta * 100f / 255f));
     }
 
     private void setBrightness(int percent) {

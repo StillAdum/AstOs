@@ -132,16 +132,17 @@ public class MediaControlService extends NotificationListenerService {
         if (sActive == null) return "";
         android.media.MediaMetadata md = sActive.getMetadata();
         if (md == null) return "";
-        return md.getString(android.media.MediaMetadata.METADATA_KEY_TITLE, "");
+        String t = md.getString(android.media.MediaMetadata.METADATA_KEY_TITLE);
+        return t == null ? "" : t;
     }
 
     public static String artist() {
         if (sActive == null) return "";
         android.media.MediaMetadata md = sActive.getMetadata();
         if (md == null) return "";
-        String a = md.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST, "");
+        String a = md.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST);
         if (a == null || a.isEmpty()) {
-            a = md.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM, "");
+            a = md.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM);
         }
         return a == null ? "" : a;
     }
