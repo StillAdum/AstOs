@@ -33,6 +33,12 @@ source build/envsetup.sh
 lunch astos_TB3710F-userdebug
 echo "::endgroup::"
 
+# Some 14.1 trees define mka (which needs schedtool, installed by
+# 05-prepare-host.sh); older/newer envsetups dropped it — provide a fallback.
+if ! type mka >/dev/null 2>&1; then
+    mka() { mk_timer $(get_make_command) "$@"; }
+fi
+
 echo "::group::mka bacon"
 mka bacon -j6
 echo "::endgroup::"

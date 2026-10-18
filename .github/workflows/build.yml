@@ -37,6 +37,9 @@ jobs:
       - name: Free disk space
         run: bash scripts/10-free-disk.sh
 
+      - name: Prepare host build deps
+        run: bash scripts/05-prepare-host.sh
+
       - name: Sync LineageOS 14.1 source
         run: bash scripts/20-sync-source.sh
         env:
