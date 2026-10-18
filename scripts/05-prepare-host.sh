@@ -28,14 +28,17 @@ sudo apt-get install -y --no-install-recommends \
 sudo apt-get install -y --no-install-recommends \
     lib32z1 lib32tinfo6 lib32stdc++6 lib32gcc-s1 2>/dev/null || true
 
-# ncurses5 / tinfo5 compat symlinks for old host binaries
-for d in /usr/lib32 /lib32 /usr/lib/i386-linux-gnu; do
+# ncurses5 / tinfo5 compat symlinks for old host binaries (old clang and
+# friends link against libncurses.so.5 / libtinfo.so.5, both 64-bit and
+# 32-bit variants)
+for d in /usr/lib/x86_64-linux-gnu /usr/lib32 /lib32 /usr/lib/i386-linux-gnu; do
     if [ -d "$d" ]; then
         [ -e "$d/libtinfo.so.5" ] || sudo ln -sf libtinfo.so.6 "$d/libtinfo.so.5" 2>/dev/null || true
         [ -e "$d/libncurses.so.5" ] || sudo ln -sf libncurses.so.6 "$d/libncurses.so.5" 2>/dev/null || true
-        [ -e "$d/libz.so.1" ] || true
+        [ -e "$d/libncursesw.so.5" ] || sudo ln -sf libncursesw.so.6 "$d/libncursesw.so.5" 2>/dev/null || true
     fi
 done
+ldconfig 2>/dev/null || sudo ldconfig 2>/dev/null || true
 
 # ---- schedtool (mka requires it; not in Ubuntu 24.04) ----------------------
 if ! command -v schedtool >/dev/null 2>&1; then
