@@ -17,6 +17,16 @@ export JAVA_HOME="$HOME/jdk8"
 export PATH="$JAVA_HOME/bin:$PATH"
 java -version 2>&1
 
+# ---- Jack server TLS fix ------------------------------------------------------
+# Newer JDK 8 builds disable TLSv1/TLSv1.1 (needed by the 2017 jack server):
+# "SSL error when connecting to the Jack server". Re-enable them.
+JS="$JAVA_HOME/jre/lib/security/java.security"
+[ -f "$JS" ] || JS="$JAVA_HOME/lib/security/java.security"
+if [ -f "$JS" ]; then
+    sed -i 's/SSLv3, TLSv1, TLSv1.1, //g; s/TLSv1, TLSv1.1, //g; s/, TLSv1.1//g; s/, TLSv1//g' "$JS"
+    echo "java.security patched for Jack TLS compatibility"
+fi
+
 # ---- build environment --------------------------------------------------------
 export LC_ALL=C
 export JACK_SERVER_VM_ARGUMENTS="-Dfile.encoding=UTF-8 -XX:+TieredCompilation -Xmx6g"
