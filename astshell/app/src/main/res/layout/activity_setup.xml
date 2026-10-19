@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="30dp">
+
+        <ImageView
+            android:layout_width="92dp"
+            android:layout_height="92dp"
+            android:layout_marginTop="18dp"
+            android:src="@mipmap/ic_launcher"
+            android:contentDescription="AstOs"/>
+
+        <TextView
+            android:id="@+id/setupTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="Welcome to AstOs"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:textColor="@color/ink"/>
+
+        <TextView
+            android:id="@+id/setupSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="The warm home OS for your tablet"
+            android:textSize="14sp"
+            android:textColor="@color/ink_soft"/>
+
+        <ViewFlipper
+            android:id="@+id/setupFlipper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:inAnimation="@null"
+            android:outAnimation="@null">
+
+            <!-- step 0 : welcome -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:layout_marginTop="10dp"
+                    android:text="A voice-first family tablet: music, weather,\ntimers, your smart home and an AI assistant.\nReady in under two minutes."
+                    android:textSize="14sp"
+                    android:textColor="@color/ink_soft"/>
+
+                <Button
+                    android:id="@+id/btnStart"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="34dp"
+                    android:background="@drawable/bg_btn_primary"
+                    android:text="Get started"
+                    android:textColor="@color/cream"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+
+            <!-- step 1 : wifi -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/wifiState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Turning Wi-Fi on…"
+                    android:textSize="13sp"
+                    android:textColor="@color/ink_faint"/>
+
+                <LinearLayout
+                    android:id="@+id/wifiList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="10dp"/>
+
+                <Button
+                    android:id="@+id/btnWifiRescan"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_chip"
+                    android:text="Scan again"
+                    android:textColor="@color/ink"/>
+
+                <Button
+                    android:id="@+id/btnWifiManual"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_chip"
+                    android:text="Join another network"
+                    android:textColor="@color/ink"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="16dp">
+
+                    <Button
+                        android:id="@+id/btnWifiSkip"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:layout_marginRight="6dp"
+                        android:background="@drawable/bg_chip"
+                        android:text="Skip for now"
+                        android:textColor="@color/ink_soft"/>
+
+                    <Button
+                        android:id="@+id/btnWifiNext"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="6dp"
+                        android:background="@drawable/bg_btn_primary"
+                        android:text="Next"
+                        android:textColor="@color/cream"
+                        android:textSize="16sp"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- step 2 : groq ai -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Ast answers questions with Groq AI — fast, free tier.\nCreate a free API key at console.groq.com/keys and paste it here."
+                    android:textSize="13sp"
+                    android:textColor="@color/ink_soft"/>
+
+                <EditText
+                    android:id="@+id/groqKeyInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:hint="gsk_…  (Groq API key)"
+                    android:inputType="textPassword"
+                    android:textSize="15sp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="6dp">
+
+                    <Button
+                        android:id="@+id/btnGroqTest"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:background="@drawable/bg_btn_primary"
+                        android:textColor="@color/cream"
+                        android:paddingLeft="20dp"
+                        android:paddingRight="20dp"
+                        android:text="Test key"/>
+
+                    <TextView
+                        android:id="@+id/groqStatus"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="12dp"
+                        android:textSize="12sp"
+                        android:textColor="@color/ink_soft"
+                        android:text=""/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="18dp">
+
+                    <Button
+                        android:id="@+id/btnGroqSkip"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:layout_marginRight="6dp"
+                        android:background="@drawable/bg_chip"
+                        android:text="Skip"
+                        android:textColor="@color/ink_soft"/>
+
+                    <Button
+                        android:id="@+id/btnGroqNext"
+                        android:layout_width="0dp"
+                        android:layout_height="52dp"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="6dp"
+                        android:background="@drawable/bg_btn_primary"
+                        android:text="Next"
+                        android:textColor="@color/cream"
+                        android:textSize="16sp"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- step 3 : spotify -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Spotify is AstOs's music player — the free tier\nworks: say “play” plus any song name and it plays.\nSign in inside Spotify with a free account."
+                    android:textSize="13sp"
+                    android:textColor="@color/ink_soft"/>
+
+                <TextView
+                    android:id="@+id/spotifyStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="Checking Spotify…"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/ink"/>
+
+                <Button
+                    android:id="@+id/btnSpotifyInstall"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_btn_primary"
+                    android:text="Install Spotify (free)"
+                    android:textColor="@color/cream"
+                    android:textSize="15sp"/>
+
+                <Button
+                    android:id="@+id/btnSpotifyOpen"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_chip"
+                    android:text="Open Spotify to sign in"
+                    android:textColor="@color/ink"/>
+
+                <Button
+                    android:id="@+id/btnSpotifyNext"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="18dp"
+                    android:background="@drawable/bg_btn_primary"
+                    android:text="Next"
+                    android:textColor="@color/cream"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+
+            <!-- step 4 : done -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:text="Everything's set. Ast is ready to help —\ntap the mic and just talk."
+                    android:textSize="14sp"
+                    android:textColor="@color/ink_soft"/>
+
+                <Button
+                    android:id="@+id/btnFinish"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="30dp"
+                    android:background="@drawable/bg_btn_primary"
+                    android:text="Start using AstOs"
+                    android:textColor="@color/cream"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+        </ViewFlipper>
+    </LinearLayout>
+</ScrollView>

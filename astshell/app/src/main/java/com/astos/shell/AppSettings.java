@@ -34,6 +34,24 @@ public final class AppSettings {
     public static String resolvedCity(Context c)              { return p(c).getString("city_resolved", ""); }
     public static void setResolvedCity(Context c, String v)   { p(c).edit().putString("city_resolved", v).apply(); }
 
+    // AstOs setup wizard
+    public static boolean setupDone(Context c)              { return p(c).getBoolean("setup_done", false); }
+    public static void setSetupDone(Context c, boolean v)   { p(c).edit().putBoolean("setup_done", v).apply(); }
+
+    // Groq AI (free-tier key from console.groq.com/keys)
+    public static String groqKey(Context c)              { return p(c).getString("groq_key", ""); }
+    public static void setGroqKey(Context c, String v)   { p(c).edit().putString("groq_key", v).apply(); }
+
+    public static String groqModel(Context c)               { return p(c).getString("groq_model", "llama-3.1-8b-instant"); }
+    public static void setGroqModel(Context c, String v)     { p(c).edit().putString("groq_model", v).apply(); }
+
+    // Spotify Web API keys (free developer app, client-credentials search)
+    public static String spotifyId(Context c)             { return p(c).getString("spotify_id", ""); }
+    public static void setSpotifyId(Context c, String v)  { p(c).edit().putString("spotify_id", v).apply(); }
+
+    public static String spotifySecret(Context c)              { return p(c).getString("spotify_secret", ""); }
+    public static void setSpotifySecret(Context c, String v)   { p(c).edit().putString("spotify_secret", v).apply(); }
+
     // Behaviour
     public static boolean kiosk(Context c)             { return p(c).getBoolean("kiosk", true); }
     public static void setKiosk(Context c, boolean v)  { p(c).edit().putBoolean("kiosk", v).apply(); }

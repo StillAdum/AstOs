@@ -104,6 +104,23 @@ for f in drawable-nodpi drawable-sw600dp-nodpi drawable-sw720dp-nodpi; do
     fi
 done
 
+# ---- debrand: the AstOs first boot, not the Lineage/Android one ---------------
+# vendor/cm/config/common.mk ships LineageSetupWizard (the stock first-boot
+# wizard that makes the tablet look like "just another Android") and Trebuchet
+# (a second home app, which triggers the "complete action using" chooser).
+# AstOs replaces both: AstShell is the only HOME and its own SetupActivity
+# (inside AstShell) runs the first-boot setup instead. Both entries are single
+# words inside backslash-continued PRODUCT_PACKAGES lists, so blanking just
+# the word keeps the make syntax valid and drops the module from the image.
+CM_COMMON_MK="$ROMDIR/vendor/cm/config/common.mk"
+test -f "$CM_COMMON_MK" || { echo "FATAL: $CM_COMMON_MK missing — is vendor/cm synced?"; exit 1; }
+sed -i 's/\bLineageSetupWizard\b//g; s/\bTrebuchet\b//g' "$CM_COMMON_MK"
+if grep -qE "\bLineageSetupWizard\b|\bTrebuchet\b" "$CM_COMMON_MK"; then
+    echo "FATAL: debrand strip failed — first-boot would show the Lineage wizard" >&2
+    exit 1
+fi
+echo "Debranded first boot: LineageSetupWizard + Trebuchet stripped from CM common.mk"
+
 # ---- free the space the app build used --------------------------------------
 sudo rm -rf /usr/local/lib/android/sdk "$HOME/.gradle" /tmp/gradle.zip /tmp/vosk-model-small-en-us-0.15.zip 2>/dev/null || true
 

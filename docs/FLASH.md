@@ -39,11 +39,20 @@ back on your old ROM in five minutes.
 
 ## First boot
 
-1. LineageOS setup: pick Wi-Fi, skip or sign in per your choice.
-2. When you press Home the first time, Android asks which home app to use:
-   pick **AstOs** and tap **Always**.
-3. Follow [SETUP.md](SETUP.md) to configure voice, weather, Home Assistant
-   and Spotify.
+There is no Android/Lineage setup on this tablet anymore. After the warm
+boot animation you land directly in the **AstOs Setup** wizard:
+
+1. **Wi-Fi** — pick your network, type the password (or skip).
+2. **Ast's brain** — paste a free Groq API key (from
+   [console.groq.com/keys](https://console.groq.com/keys)) so Ast can
+   answer anything you ask. Optional.
+3. **Music** — one tap installs Spotify (free tier), then sign in inside
+   Spotify once.
+4. **Done** — the AstOs dashboard opens. It's the only home app on the
+   device; there is no chooser and no Android setup screen anywhere.
+
+Follow [SETUP.md](SETUP.md) for voice commands, weather, Home Assistant
+and the rest.
 
 ## Going back
 

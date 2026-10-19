@@ -16,6 +16,9 @@ public final class CommandRouter {
         void openApp(String query);
         void mediaAction(String action, int value); // play|pause|toggle|next|prev|volup|voldown|volset
         void playLocalMusic();
+        void spotifyPlay(String query);            // "hey spotify play X"
+        void askGroq(String question);             // unmatched -> Groq AI
+        boolean groqEnabled();
         void weather();
         void time();
         void date();
@@ -43,16 +46,31 @@ public final class CommandRouter {
         // ---- help / identity ------------------------------------------------
         if (s.equals("help") || s.contains("what can you say") || s.equals("commands")
                 || s.contains("what can i say")) {
-            return "You can ask for the time, the weather, music control, "
-                    + "timers, brightness, or to turn Home Assistant devices on and off. "
-                    + "Say open plus an app name to launch it.";
+            return "Say: play plus a song name to start Spotify, ask for the time, "
+                    + "the weather, music control, timers, brightness, or Home Assistant devices. "
+                    + "Anything else, I answer with Groq AI.";
         }
         if (s.equals("hello") || s.equals("hi") || s.equals("hey astos") || s.equals("hi astos")) {
             return "Hi.";
         }
         if (s.contains("thank")) return "You're welcome.";
         if (s.contains("who are you") || s.contains("what are you")) {
-            return "I'm AstOs, your home assistant.";
+            return "I'm Ast, the voice of AstOs.";
+        }
+        if (s.contains("what os is this") || s.contains("which os") || s.contains("what system")) {
+            return "You're running AstOs one point zero.";
+        }
+
+        // ---- wake-word strip: "hey astos, ..." / "astos, ..." ----------------
+        s = s.replaceFirst("^hey\\s+ast\\w*\\s*", "").replaceFirst("^ast\\w*\\s+", "").trim();
+        if (s.isEmpty()) return "Hi. Say help for what I can do.";
+
+        // ---- Spotify voice playback ----------------------------------------------
+        String spotQ = spotifyPlayQuery(s);
+        if (spotQ != null) {
+            if (spotQ.isEmpty()) return "What should Spotify play?";
+            a.spotifyPlay(spotQ);
+            return null;
         }
 
         // ---- timer ---------------------------------------------------------
@@ -79,6 +97,15 @@ public final class CommandRouter {
                 || s.equals("play my music") || s.equals("start music") || s.equals("play songs")) {
             a.playLocalMusic();
             return "Playing your music.";
+        }
+        // "play <song>" / "put on <song>" -> Spotify (named songs mean search)
+        if (s.startsWith("play ") || s.startsWith("put on ")) {
+            String q = s.startsWith("play ") ? s.substring(5) : s.substring(8);
+            q = q.replaceFirst("^(a|an|the|some) ", "").trim();
+            if (!q.isEmpty() && !q.equals("music") && !q.equals("song") && !q.equals("songs")) {
+                a.spotifyPlay(q);
+                return null;
+            }
         }
         if (s.equals("play") || s.equals("resume")) { a.mediaAction("play", 0); return null; }
         if (s.equals("pause") || s.equals("stop") || s.equals("hold on")) { a.mediaAction("pause", 0); return "Paused."; }
@@ -167,7 +194,30 @@ public final class CommandRouter {
             if (!app.isEmpty()) { a.openApp(app); return null; }
         }
 
+        // ---- Groq AI fallback: anything else becomes a question ----------------
+        if (a.groqEnabled()) { a.askGroq(s); return null; }
         return "I didn't catch that. Say help for a list of commands.";
+    }
+
+    /** Extracts the song from a Spotify play command; null = not one. */
+    static String spotifyPlayQuery(String s) {
+        String q = null;
+        if (s.startsWith("hey spotify") || s.startsWith("okay spotify") || s.startsWith("ok spotify")) {
+            String rest = s.replaceFirst("^(hey|okay|ok)\\s+spotify\\s*", "").trim();
+            rest = rest.replaceFirst("^(can you |please )?play(ing)? ", "").trim();
+            q = rest;
+        } else if (s.startsWith("spotify play") || s.startsWith("spotify, play")
+                || s.startsWith("spotify can you") || s.startsWith("spotify please")) {
+            q = s.replaceFirst("^spotify[, ]+(can you |please )?play ", "").trim();
+        } else if (s.startsWith("play ") && (s.endsWith(" on spotify") || s.endsWith(" on the spotify"))) {
+            q = s.substring(5, s.lastIndexOf(" on "));
+        } else if ((s.startsWith("ask spotify to play ") || s.startsWith("tell spotify to play "))) {
+            q = s.replaceFirst("^(ask|tell) spotify to play ", "").trim();
+        }
+        if (q == null) return null;
+        // "song X"/"track X" are just filler the model sometimes inserts
+        q = q.replaceFirst("^(the )?(song|track|some|music) ", "").trim();
+        return q;
     }
 
     // ---------------------------------------------------------------- utils

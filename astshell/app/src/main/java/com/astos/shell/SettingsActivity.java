@@ -12,11 +12,11 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** AstOs settings: Home Assistant, weather city, behaviour toggles. */
+/** AstOs settings: AI, music, Home Assistant, weather city, behaviour toggles. */
 public class SettingsActivity extends Activity {
 
-    private EditText mHaUrl, mHaToken, mCity;
-    private TextView mHaStatus;
+    private EditText mHaUrl, mHaToken, mCity, mGroqKey, mGroqModel, mSpotifyId, mSpotifySecret;
+    private TextView mHaStatus, mGroqStatus, mSpotifyStatus;
     private Button mHaTest;
 
     @Override
@@ -29,10 +29,35 @@ public class SettingsActivity extends Activity {
         mCity = (EditText) findViewById(R.id.cityInput);
         mHaStatus = (TextView) findViewById(R.id.haStatus);
         mHaTest = (Button) findViewById(R.id.haTestBtn);
+        mGroqKey = (EditText) findViewById(R.id.groqKeyInput);
+        mGroqModel = (EditText) findViewById(R.id.groqModelInput);
+        mGroqStatus = (TextView) findViewById(R.id.groqStatus);
+        mSpotifyId = (EditText) findViewById(R.id.spotifyIdInput);
+        mSpotifySecret = (EditText) findViewById(R.id.spotifySecretInput);
+        mSpotifyStatus = (TextView) findViewById(R.id.spotifyStatus);
 
         mHaUrl.setText(AppSettings.haUrl(this));
         mHaToken.setText(AppSettings.haToken(this));
         mCity.setText(AppSettings.city(this));
+        mGroqKey.setText(AppSettings.groqKey(this));
+        mGroqModel.setText(AppSettings.groqModel(this));
+        mSpotifyId.setText(AppSettings.spotifyId(this));
+        mSpotifySecret.setText(AppSettings.spotifySecret(this));
+        refreshSpotifyStatus();
+
+        findViewById(R.id.groqSaveBtn).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { testGroq(); }
+        });
+        findViewById(R.id.spotifySaveBtn).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { saveSpotifyKeys(); }
+        });
+        findViewById(R.id.spotifyInstallBtn).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                try { Settings.Secure.putInt(getContentResolver(), "install_non_market_apps", 1); } catch (Exception ignored) {}
+                try { Settings.Global.putInt(getContentResolver(), "install_non_market_apps", 1); } catch (Exception ignored) {}
+                SpotifyClient.openInstallPage(SettingsActivity.this);
+            }
+        });
 
         bindSwitch(R.id.kioskSwitch, AppSettings.kiosk(this), new Set() {
             @Override public void set(boolean v) { AppSettings.setKiosk(SettingsActivity.this, v); }
@@ -76,8 +101,45 @@ public class SettingsActivity extends Activity {
         });
 
         TextView about = (TextView) findViewById(R.id.aboutText);
-        String ver = "AstOs 1.0 · AstShell 1.0 · LineageOS 14.1 base";
+        String ver = "AstOs 1.0 · AstShell 1.0 · Ast voice";
         about.setText(ver);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshSpotifyStatus();
+    }
+
+    private void refreshSpotifyStatus() {
+        boolean installed = SpotifyClient.installed(this);
+        boolean keys = !AppSettings.spotifyId(this).trim().isEmpty()
+                && !AppSettings.spotifySecret(this).trim().isEmpty();
+        mSpotifyStatus.setText(installed
+                ? ("Spotify installed ✓" + (keys ? " · instant voice play" : " · voice opens search"))
+                : "Spotify not installed — tap Install Spotify below");
+    }
+
+    private void testGroq() {
+        String key = mGroqKey.getText().toString().trim();
+        String model = mGroqModel.getText().toString().trim();
+        AppSettings.setGroqKey(this, key);
+        if (!model.isEmpty()) AppSettings.setGroqModel(this, model);
+        if (key.isEmpty()) { mGroqStatus.setText("No key set — get one at console.groq.com/keys"); return; }
+        mGroqStatus.setText("Testing…");
+        GroqClient.test(this, new GroqClient.Callback() {
+            @Override public void onResult(String answer, String error) {
+                if (answer != null) mGroqStatus.setText("Ast says: \"" + answer + "\"");
+                else mGroqStatus.setText("Failed: " + error);
+            }
+        });
+    }
+
+    private void saveSpotifyKeys() {
+        AppSettings.setSpotifyId(this, mSpotifyId.getText().toString().trim());
+        AppSettings.setSpotifySecret(this, mSpotifySecret.getText().toString().trim());
+        refreshSpotifyStatus();
+        toast("Spotify keys saved");
     }
 
     private interface Set { void set(boolean v); }

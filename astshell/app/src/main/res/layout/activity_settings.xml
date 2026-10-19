@@ -19,6 +19,119 @@
 
         <TextView
             style="@style/SettingsLabel"
+            android:text="AI (GROQ)"/>
+
+        <EditText
+            android:id="@+id/groqKeyInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Groq API key (console.groq.com/keys)"
+            android:inputType="textPassword"
+            android:textSize="15sp"/>
+
+        <EditText
+            android:id="@+id/groqModelInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Model (default llama-3.1-8b-instant)"
+            android:inputType="text"
+            android:textSize="15sp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="6dp">
+
+            <Button
+                android:id="@+id/groqSaveBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_btn_primary"
+                android:textColor="@color/cream"
+                android:paddingLeft="20dp"
+                android:paddingRight="20dp"
+                android:text="Test &amp; save"/>
+
+            <TextView
+                android:id="@+id/groqStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="12sp"
+                android:textColor="@color/ink_soft"
+                android:layout_marginLeft="12dp"
+                android:text=""/>
+        </LinearLayout>
+
+        <TextView
+            style="@style/SettingsLabel"
+            android:text="MUSIC (SPOTIFY FREE)"/>
+
+        <TextView
+            android:id="@+id/spotifyStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:textColor="@color/ink"
+            android:text="Checking Spotify…"/>
+
+        <EditText
+            android:id="@+id/spotifyIdInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Spotify client ID (developer dashboard)"
+            android:inputType="text"
+            android:textSize="15sp"/>
+
+        <EditText
+            android:id="@+id/spotifySecretInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Spotify client secret"
+            android:inputType="textPassword"
+            android:textSize="15sp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="6dp">
+
+            <Button
+                android:id="@+id/spotifySaveBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_btn_primary"
+                android:textColor="@color/cream"
+                android:paddingLeft="20dp"
+                android:paddingRight="20dp"
+                android:text="Save keys"/>
+
+            <Button
+                android:id="@+id/spotifyInstallBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginLeft="10dp"
+                android:background="@drawable/bg_chip"
+                android:textColor="@color/ink"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:text="Install Spotify"/>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:textColor="@color/ink_faint"
+            android:layout_marginTop="6dp"
+            android:text="Keys optional: with them, voice instantly plays the exact song; without them, voice opens Spotify search with the song on top."/>
+
+        <TextView
+            style="@style/SettingsLabel"
             android:text="HOME ASSISTANT"/>
 
         <EditText
@@ -153,7 +266,7 @@
         <Button
             android:id="@+id/androidSettingsBtn"
             style="@style/SystemBtn"
-            android:text="Android settings"/>
+            android:text="Advanced system settings"/>
 
         <TextView
             android:id="@+id/aboutText"

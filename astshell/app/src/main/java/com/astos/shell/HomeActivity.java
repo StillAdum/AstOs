@@ -84,6 +84,14 @@ public class HomeActivity extends Activity
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         sAppContext = getApplicationContext();
+
+        // AstOs first-run setup wizard replaces the Android setup entirely
+        if (!AppSettings.setupDone(this)) {
+            startActivity(new Intent(HomeActivity.this, SetupActivity.class));
+            finish();
+            return;
+        }
+
         setContentView(R.layout.activity_home);
 
         mClock = (TextView) findViewById(R.id.clockText);
@@ -585,6 +593,36 @@ public class HomeActivity extends Activity
             return;
         }
         MusicService.start(this);
+    }
+
+    @Override public boolean groqEnabled() {
+        return !AppSettings.groqKey(this).trim().isEmpty();
+    }
+
+    @Override public void askGroq(final String question) {
+        showVoiceStatus("Ast is thinking…");
+        GroqClient.chat(HomeActivity.this, question, new GroqClient.Callback() {
+            @Override public void onResult(final String answer, String error) {
+                String out = answer != null ? answer
+                        : ("Ast couldn't answer: " + (error == null ? "unknown error" : error));
+                showVoiceStatus(out);
+                Speak.say(HomeActivity.this, out);
+                mHandler.removeCallbacks(mHideStatus);
+                mHandler.postDelayed(mHideStatus, Math.max(4000, 60 * out.length()));
+            }
+        });
+    }
+
+    @Override public void spotifyPlay(final String query) {
+        showVoiceStatus("Spotify…");
+        SpotifyClient.play(HomeActivity.this, query, new SpotifyClient.Callback() {
+            @Override public void onResult(boolean played, final String message) {
+                showVoiceStatus(message);
+                if (played) Speak.say(HomeActivity.this, message);
+                mHandler.removeCallbacks(mHideStatus);
+                mHandler.postDelayed(mHideStatus, 4000);
+            }
+        });
     }
 
     @Override public void weather() { refreshWeather(); }
