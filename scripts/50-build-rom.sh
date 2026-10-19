@@ -69,5 +69,14 @@ for z in "$OUT"/lineage-14.1*.zip "$OUT"/astos*.zip; do
     break
 done
 
+# ---- E3004 fix: rewrite the zip's device assert to accept the REAL device ----
+# The community tree asserts "TB3-710F" but TWRP reports "TB3710F" — flashing
+# aborted with E3004. 40-embed-astos.sh fixes the source; this hard-guarantees
+# the shipped zip accepts BOTH names no matter what the OTA generator emitted.
+python3 "$REPO_ROOT/scripts/fix_ota_assert.py" "$REPO_ROOT/AstOs-1.0-$STAMP-TB3-710F.zip" || {
+    echo "FATAL: OTA device-assert fix failed — zip must NOT ship" >&2
+    exit 1
+}
+
 ls -lh "$REPO_ROOT"/AstOs-*.zip
 echo "ROM built OK"

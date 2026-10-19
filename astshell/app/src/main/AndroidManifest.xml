@@ -3,13 +3,11 @@
 
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!-- Platform-signed priv-app inside the ROM gets these; gracefully
          degrades when side-loaded on other ROMs -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
@@ -24,8 +22,8 @@
         android:hardwareAccelerated="true"
         android:logo="@mipmap/ic_launcher">
 
-        <!-- The AstOs home. Registered as a HOME launcher so it can become
-             the default home of the ROM. -->
+        <!-- The AstOs ASCII home. Registered as a HOME launcher so it is the
+             face of the OS: figlet clock, Now Playing, assistant, setup. -->
         <activity
             android:name=".HomeActivity"
             android:label="@string/app_name"
@@ -41,18 +39,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".SetupActivity"
-            android:label="AstOs Setup"
-            android:launchMode="singleTask"
-            android:excludeFromRecents="true"
-            android:exported="false"/>
-
-        <activity
-            android:name=".SettingsActivity"
-            android:label="AstOs Settings"
-            android:exported="false"/>
-
         <!-- Media transport control (Spotify free works: play/pause/next via
              notification media sessions) -->
         <service
@@ -64,9 +50,9 @@
             </intent-filter>
         </service>
 
-        <!-- Built-in offline music player for SD-card files -->
+        <!-- The streaming music engine: on-demand songs like a Discord bot -->
         <service
-            android:name=".MusicService"
+            android:name=".MusicEngine"
             android:exported="false"/>
 
         <!-- Kiosk: relaunch AstShell after boot -->

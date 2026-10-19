@@ -8,3 +8,12 @@ astshell/local.properties
 .idea/
 AstOs-*.zip
 local_manifests/*.local.xml
+astsetup/.gradle/
+astsetup/build/
+astsetup/app/build/
+astshell/.gradle/
+astshell/build/
+astshell/app/build/
+astshell/app/src/main/assets/model/
+astshell/app/libs/
+local.properties

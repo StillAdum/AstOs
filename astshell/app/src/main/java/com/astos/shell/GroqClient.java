@@ -12,112 +12,116 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 /**
- * Groq AI chat client (api.groq.com, OpenAI-compatible endpoint).
- * Key comes free at console.groq.com/keys — set in AstOs setup or settings.
+ * The AstOs assistant brain — Groq's ultra-fast cloud LLMs
+ * (https://console.groq.com — free tier API key, paste it in AstOs Setup).
+ * 1 GB of RAM can't run local models, so the thinking happens in the cloud
+ * while the voice and the OS stay fully local.
  */
 public final class GroqClient {
 
-    public interface Callback {
-        void onResult(String answer, String error);
-    }
+    public static final String MODEL = "llama-3.1-8b-instant";
+
+    public interface Callback { void onReply(String text, String error); }
 
     private GroqClient() {}
 
-    private static final String ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+    private static void async(Runnable r) { new Thread(r, "groq").start(); }
+    private static Handler main() { return new Handler(Looper.getMainLooper()); }
 
-    private static final String SYSTEM_PROMPT =
-            "You are Ast, the warm, calm voice assistant of AstOs, a family tablet OS. "
-            + "Answer briefly and helpfully — usually one to three short sentences. "
-            + "No emojis, no markdown, plain spoken style. If asked who you are, say "
-            + "you are Ast running on AstOs.";
-
-    /** One-shot question -> answer. Runs on a worker thread, callback on main. */
-    public static void chat(final Context c, final String question, final Callback cb) {
-        final String key = AppSettings.groqKey(c).trim();
-        if (key.isEmpty()) { main().post(new Runnable() { @Override public void run() {
-            cb.onResult(null, "No Groq API key set");
-        }}); return; }
-
-        new Thread(new Runnable() { @Override public void run() {
-            HttpURLConnection conn = null;
+    /** Ask Groq. Context (weather/now playing/date) is injected automatically. */
+    public static void ask(final Context ctx, final String question, final Callback cb) {
+        final String key = AppSettings.groqKey(ctx);
+        if (key.isEmpty()) {
+            main().post(new Runnable() { @Override public void run() {
+                cb.onReply(null, "no-key");
+            }});
+            return;
+        }
+        async(new Runnable() { @Override public void run() {
             try {
-                JSONObject body = new JSONObject();
-                body.put("model", AppSettings.groqModel(c).trim());
-                body.put("temperature", 0.4);
-                body.put("max_tokens", 220);
+                String sys = "You are AstOs, the built-in assistant of AstOs, a custom "
+                        + "voice-first home-assistant operating system on a small tablet. "
+                        + "Answer briefly (max 60 words), plainly and helpfully. "
+                        + "Today is " + new SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.US)
+                                .format(new Date()) + "."
+                        + contextLine(ctx);
                 JSONArray messages = new JSONArray();
-                JSONObject sys = new JSONObject();
-                sys.put("role", "system");
-                sys.put("content", SYSTEM_PROMPT);
-                messages.put(sys);
-                JSONObject user = new JSONObject();
-                user.put("role", "user");
-                user.put("content", question);
-                messages.put(user);
-                body.put("messages", messages);
+                messages.put(new JSONObject().put("role", "system").put("content", sys));
+                messages.put(new JSONObject().put("role", "user").put("content", question));
 
-                conn = (HttpURLConnection) new URL(ENDPOINT).openConnection();
-                conn.setConnectTimeout(12000);
-                conn.setReadTimeout(20000);
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Authorization", "Bearer " + key);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setDoOutput(true);
-                OutputStream os = conn.getOutputStream();
+                JSONObject body = new JSONObject();
+                body.put("model", MODEL);
+                body.put("messages", messages);
+                body.put("max_tokens", 200);
+                body.put("temperature", 0.5);
+
+                HttpURLConnection c = (HttpURLConnection)
+                        new URL("https://api.groq.com/openai/v1/chat/completions").openConnection();
+                c.setRequestMethod("POST");
+                c.setRequestProperty("Authorization", "Bearer " + key);
+                c.setRequestProperty("Content-Type", "application/json");
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(30000);
+                c.setDoOutput(true);
+                OutputStream os = c.getOutputStream();
                 os.write(body.toString().getBytes("UTF-8"));
                 os.close();
 
-                int code = conn.getResponseCode();
+                int code = c.getResponseCode();
                 BufferedReader rd = new BufferedReader(new InputStreamReader(
-                        code >= 400 ? conn.getErrorStream() : conn.getInputStream()));
+                        code >= 400 ? c.getErrorStream() : c.getInputStream()));
                 StringBuilder sb = new StringBuilder();
                 String line;
                 while ((line = rd.readLine()) != null) sb.append(line);
                 rd.close();
+                c.disconnect();
 
-                if (code != 200) {
-                    String detail = sb.length() > 240 ? sb.substring(0, 240) : sb.toString();
-                    throw new RuntimeException("Groq HTTP " + code + ": " + brief(detail));
+                if (code == 401) {
+                    post(cb, null, "Groq rejected the API key - check it in Setup");
+                    return;
                 }
-
+                if (code == 429) {
+                    post(cb, null, "Groq rate limit - try again in a moment");
+                    return;
+                }
+                if (code != 200) {
+                    post(cb, null, "Groq error " + code);
+                    return;
+                }
                 JSONObject resp = new JSONObject(sb.toString());
-                JSONArray choices = resp.optJSONArray("choices");
-                if (choices == null || choices.length() == 0)
-                    throw new RuntimeException("Groq returned no answer");
-                String answer = choices.getJSONObject(0)
-                        .getJSONObject("message").optString("content", "").trim();
-                if (answer.isEmpty()) throw new RuntimeException("Empty answer from Groq");
-
-                final String out = answer;
-                main().post(new Runnable() { @Override public void run() {
-                    cb.onResult(out, null);
-                }});
-            } catch (final Exception e) {
-                final String err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-                main().post(new Runnable() { @Override public void run() {
-                    cb.onResult(null, err);
-                }});
-            } finally {
-                if (conn != null) conn.disconnect();
+                JSONArray choices = resp.getJSONArray("choices");
+                String text = choices.getJSONObject(0)
+                        .getJSONObject("message").getString("content").trim();
+                post(cb, text, null);
+            } catch (final Throwable e) {
+                post(cb, null, "Groq failed: " + e.getMessage());
             }
-        }}, "groq-chat").start();
+        }});
     }
 
-    /** Quick connectivity/key test used by setup + settings. */
-    public static void test(final Context c, final Callback cb) {
-        chat(c, "Say hello in exactly five words.", cb);
-    }
-
-    private static String brief(String s) {
+    private static String contextLine(Context ctx) {
         try {
-            JSONObject o = new JSONObject(s);
-            JSONObject err = o.optJSONObject("error");
-            if (err != null) return err.optString("message", s);
-        } catch (Exception ignored) {}
-        return s;
+            List<String> bits = new ArrayList<String>();
+            String city = AppSettings.resolvedCity(ctx);
+            if (city != null && !city.isEmpty()) bits.add("The user lives near " + city + ".");
+            SongSearch.Track t = MusicEngine.current();
+            if (t != null && t.title != null && !t.title.isEmpty())
+                bits.add("Currently playing: " + t.title + " by "
+                        + (t.artist == null ? "" : t.artist) + ".");
+            StringBuilder sb = new StringBuilder(" ");
+            for (String b : bits) sb.append(b).append(" ");
+            return sb.toString();
+        } catch (Throwable t) { return " "; }
     }
 
-    private static Handler main() { return new Handler(Looper.getMainLooper()); }
+    private static void post(final Callback cb, final String text, final String err) {
+        main().post(new Runnable() { @Override public void run() { cb.onReply(text, err); }});
+    }
 }

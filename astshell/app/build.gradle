@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'com.astos.shell'
-    compileSdk 33
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.astos.shell"
         minSdk 24          // device runs Android 7.1 (API 25)
         targetSdk 25       // aligned with the ROM platform
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "2.0"
     }
 
     buildTypes {
@@ -19,13 +19,15 @@ android {
             minifyEnabled false
             shrinkResources false
             // Signed with the ROM's platform key at ROM-build time
-            // (LOCAL_CERTIFICATE := PLATFORM in vendor/astos/AstShell/Android.mk)
+            // (LOCAL_CERTIFICATE := platform in vendor/astos/AstShell/Android.mk)
         }
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        // NewPipeExtractor ships Java 21 bytecode — AGP 8.5's D8 reads it.
+        coreLibraryDesugaringEnabled true
     }
 
     lint {
@@ -42,4 +44,12 @@ android {
 dependencies {
     // Offline speech recognition — the whole point of AstOs voice control
     implementation 'com.alphacephei:vosk-android:0.3.47'
+
+    // On-device YouTube extraction (the "yt-dlp" of Android — the exact
+    // engine Piped instances run). Home ISP IPs are not bot-flagged, so the
+    // tablet can resolve streams itself, Discord-bot style.
+    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.26.5'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }

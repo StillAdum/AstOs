@@ -1,4 +1,4 @@
-# Flashing AstOs
+# Flashing AstOs 2.0
 
 ## Before you start
 
@@ -6,7 +6,7 @@
 
 - Lenovo Tab 3 Essential (TB3-710F) with TWRP flashed — you have this ✅
 - Battery charged to at least 50 %
-- The `AstOs-1.0-<date>-TB3-710F.zip` from the [Releases](../../releases) page,
+- The `AstOs-2.0-<date>-TB3-710F.zip` from the [Releases](../../releases) page,
   copied to your 32 GB SD card or the tablet's storage
 - (Optional) `open_gapps-arm-7.1-nano-<date>.zip` from
   [opengapps.org](https://opengapps.org) (ARM, Android 7.1, **nano**) if you

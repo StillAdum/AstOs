@@ -12,19 +12,29 @@ if [ -z "$ZIP" ]; then
 fi
 echo "Releasing: $ZIP ($(du -h "$ZIP" | cut -f1))"
 
-TAG="v1.0-$(date +%Y%m%d-%H%M)"
+TAG="v2.0-$(date +%Y%m%d-%H%M)"
 
 NOTES="$(cat <<EOF
-AstOs 1.0 — home assistant ROM for the Lenovo Tab 3 Essential (TB3-710F)
+AstOs 2.0 — the ASCII custom OS for the Lenovo Tab 3 Essential (TB3-710F)
 
-Base: LineageOS 14.1 (Android 7.1.2)
-* AstShell home dashboard (warm, minimal, no blue)
-* Offline voice control (Vosk) — no Google account needed
-* Home Assistant REST control (lights / switches / scenes)
-* Media transport control — Spotify free works
-* Built-in local music player for your SD card music
-* zram swap enabled for the 1 GB RAM device
-* Fully offline: no Google apps bundled
+Base: LineageOS 14.1 core (Android 7.1.2)
+NEW in 2.0:
+* Full ASCII-art interface with animations: figlet clock, matrix rain,
+  starfield, plasma, waves, scanlines, typewriter replies, glitch
+  page transitions
+* Customizable background: 7 animated FX modes + 8 theme palettes + font
+  sizes + your own photo
+* Discord-bot-style music: say "play <song>" or "hey spotify play <song>"
+  and it searches YouTube Music on-device and streams it — free, no
+  account, no Spotify Premium. Now Playing shows title, artist, album
+  cover (bitmap or ASCII-art mode), progress bar, queue, controls
+* Groq AI assistant: ask anything (get a free key at console.groq.com,
+  paste it in setup)
+* Alexa-style cards: weather, latest news headlines, date/time
+* Clean custom setup wizard (AstSetup) replaces the CyanogenMod one:
+  animated ASCII welcome, wifi, city, Groq key, look — no Android look
+* FIXED: E3004 flash error — the zip now accepts TB3710F (what TWRP
+  reports) as well as TB3-710F
 
 Read FLASH.md and SETUP.md before installing.
 Always take a TWRP backup first.
@@ -35,7 +45,7 @@ gh release create "$TAG" \
     "$ZIP" \
     "docs/FLASH.md" \
     "docs/SETUP.md" \
-    --title "AstOs 1.0 — $TAG" \
+    --title "AstOs 2.0 — $TAG" \
     --notes "$NOTES" \
     --target "${GITHUB_SHA:-HEAD}"
 

@@ -53,6 +53,26 @@ EOF
 fi
 grep -n "BOARD_SEPOLICY_DIRS" "$BC" | tail -5
 
+# ---- OTA device assert fix (run #18: E3004 flash failure) ---------------------
+# The device tree ships TARGET_OTA_ASSERT_DEVICE := TB3-710F (hyphenated
+# marketing name) but the device and every TWRP build report "TB3710F".
+# The stock OTA assert then aborts flashing with
+#   E3004: This package is for device: TB3-710F; this Device is TB3710F
+# Point the native assert at the real device name; the finished zip is
+# additionally post-processed by scripts/fix_ota_assert.py to accept BOTH
+# names (belt and suspenders).
+if [ -f "$BC" ]; then
+    if grep -q 'TARGET_OTA_ASSERT_DEVICE := TB3-710F' "$BC"; then
+        sed -i 's/TARGET_OTA_ASSERT_DEVICE := TB3-710F/TARGET_OTA_ASSERT_DEVICE := TB3710F/' "$BC"
+        echo "BoardConfig.mk patched: OTA assert device -> TB3710F"
+    fi
+    grep -q 'TARGET_OTA_ASSERT_DEVICE := TB3710F' "$BC" || {
+        echo "TARGET_OTA_ASSERT_DEVICE := TB3710F" >> "$BC"
+        echo "BoardConfig.mk: appended TARGET_OTA_ASSERT_DEVICE := TB3710F"
+    }
+    grep -n "TARGET_OTA_ASSERT_DEVICE" "$BC"
+fi
+
 # ---- cmsdk ordering patch ------------------------------------------------------
 # Run #13 died at 43%: "Building with Jack: org.cyanogenmod.platform.internal"
 # failed with "Property 'jack.source': ... org.cyanogenmod.platform-res ...
@@ -128,3 +148,34 @@ echo "::group::Disk after embed"
 df -h / /mnt || true
 echo "::endgroup::"
 echo "AstOs embedded into ROM tree OK"
+
+# ---- E3004 fix: OTA assert device name ----------------------------------------
+# (moved above — see the BoardConfig patch block; this comment marks that the
+# finished zip is additionally normalized by scripts/fix_ota_assert.py)
+
+# ---- AstSetup: embed the first-boot wizard ------------------------------------
+APK2="$REPO_ROOT/astsetup/app/build/outputs/apk/release/app-release-unsigned.apk"
+if [ ! -f "$APK2" ]; then
+    echo "FATAL: AstSetup APK missing — run 30-build-astshell.sh first" >&2
+    exit 1
+fi
+mkdir -p "$ROMDIR/vendor/astos/AstSetup"
+cp "$APK2" "$ROMDIR/vendor/astos/AstSetup/AstSetup.apk"
+ls -lh "$ROMDIR/vendor/astos/AstSetup/AstSetup.apk"
+
+# ---- replace the CM setup wizard with AstOs's own ------------------------------
+# The user-facing first boot must be the clean ASCII AstOs wizard, not the
+# CyanogenMod one. AstSetup (platform-signed, privileged) marks the device
+# provisioned itself on completion (device_provisioned + user_setup_complete
+# + astos_setup_done), so removing CMSetupWizard from the build is safe.
+for MK in "$ROMDIR"/vendor/cm/config/*.mk "$ROMDIR"/device/lenovo/TB3710F/*.mk; do
+    [ -f "$MK" ] || continue
+    if grep -q "CMSetupWizard" "$MK"; then
+        sed -i '/CMSetupWizard/d' "$MK"
+        echo "CMSetupWizard removed: $MK"
+    fi
+done
+LEFT=$(grep -rln "CMSetupWizard" "$ROMDIR/vendor/cm/config/" "$ROMDIR/device/lenovo/TB3710F/" 2>/dev/null | head -3 || true)
+if [ -n "$LEFT" ]; then
+    echo "WARNING: CMSetupWizard still referenced in: $LEFT"
+fi

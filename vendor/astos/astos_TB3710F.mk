@@ -21,10 +21,12 @@ DEVICE_PACKAGE_OVERLAYS := vendor/astos/overlay $(DEVICE_PACKAGE_OVERLAYS)
 PRODUCT_COPY_FILES += \
     vendor/astos/configs/astos.rc:system/etc/init/astos.rc
 
-# The AstShell home-assistant dashboard, installed as a privileged
-# system app (re-signed with the platform key at build time)
+# The AstShell home-assistant dashboard and the AstSetup first-boot
+# wizard, both installed as privileged system apps (re-signed with the
+# platform key at build time)
 PRODUCT_PACKAGES += \
-    AstShell
+    AstShell \
+    AstSetup
 
 # --- Behaviour tuning --------------------------------------------------------
 
