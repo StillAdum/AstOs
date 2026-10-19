@@ -85,6 +85,25 @@ EOF
 fi
 grep -n "cm_astos_platres_stamp" "$CMSDK_MK" | head -5
 
+# ---- wallpaper: replace the AOSP base resource directly ----------------------
+# aapt's `-c hdpi-v4` flavor filter (PRODUCT_AAPT_PREF_CONFIG=hdpi) strips
+# density-flavored overlay files (x*hdpi) and the plain-nodpi overlay file
+# never replaces the base one in the final framework-res.apk — only the
+# hdpi/sw600dp/sw720dp flavors survive from the overlay. On TB3-710F
+# (ro.sf.lcd_density=160, 1024x600 => sw600dp) the runtime resolves
+# sw600dp-nodpi => our warm cream already. This direct base-file override
+# makes EVERY remaining flavor ours as well, so the warm look is guaranteed
+# under any config resolution.
+FWRES_RES="$ROMDIR/frameworks/base/core/res/res"
+for f in drawable-nodpi drawable-sw600dp-nodpi drawable-sw720dp-nodpi; do
+    SRC="$REPO_ROOT/vendor/astos/overlay/frameworks/base/core/res/res/$f/default_wallpaper.png"
+    DST="$FWRES_RES/$f/default_wallpaper.png"
+    if [ -f "$DST" ]; then
+        cp "$SRC" "$DST"
+        echo "base wallpaper replaced: $f"
+    fi
+done
+
 # ---- free the space the app build used --------------------------------------
 sudo rm -rf /usr/local/lib/android/sdk "$HOME/.gradle" /tmp/gradle.zip /tmp/vosk-model-small-en-us-0.15.zip 2>/dev/null || true
 
