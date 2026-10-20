@@ -1,4 +1,4 @@
-# Flashing AstOs 2.0
+# Flashing AstOs 2.1
 
 ## Before you start
 
@@ -27,7 +27,8 @@ back on your old ROM in five minutes.
    it is required when switching ROMs). Do NOT wipe your SD card if your
    ROM zip lives there — *Format Data* only touches internal storage.
 
-4. **Install** — Install → select `AstOs-1.0-…-TB3-710F.zip` → swipe to flash.
+4. **Install** — Install → select `AstOs-…-TB3-710F.zip` (the newest one from
+   the Releases page) → swipe to flash.
 
 5. *(Optional)* In the same TWRP session, also flash
    `open_gapps-arm-7.1-nano-…zip` if you want Google Play. Skip it for a
@@ -60,6 +61,32 @@ Boot TWRP → Restore → pick your backup → done. (Or flash the stock Lenovo
 firmware if you ever need to.)
 
 ## Troubleshooting
+
+### TWRP: "Updater process ended with ERROR: N"
+
+Every zip's `update-binary` exits with a code the recovery shows:
+
+- **ERROR 6** — the zip's updater-script failed to parse. **Nothing was
+  flashed.** Either the download is corrupted, or the zip is from the broken
+  releases (every AstOs zip published on 2026-10-19 between 12:42 and 18:09,
+  v1.0-1242 / v2.0-1602 / v2.0-1809 — their device-assert line had unbalanced
+  parentheses). Re-download the newest release and verify it (see below).
+- **ERROR 7** — the script *ran* and aborted. Read the last line above the
+  error:
+  - `E3004: This package is for device: …` — zip/device mismatch.
+  - `Can't install this package on top of incompatible data…` — you skipped
+    step 3 (*Format Data*). Do it and re-flash.
+- **ERROR 20/21/22** — TWRP itself could not open or verify the zip file —
+  the copy on the tablet is corrupt. Re-copy it.
+- For the exact cause, pull the log: `adb pull /tmp/recovery.log` while
+  still in TWRP (or TWRP → Advanced → File Manager → `/tmp/recovery.log`).
+
+**Verify the zip before flashing.** Every release page lists the sha256:
+`sha256sum AstOs-…zip` on Linux/macOS, `certutil -hashfile … SHA256` on
+Windows. Also prefer `adb push` over MTP drag-and-drop — MTP corrupts
+large files sometimes.
+
+### Other issues
 
 - **Bootloops:** boot back into TWRP and re-do step 3 (Format Data) then
   re-flash. Dirty flashes over the old ROM are not supported for v1.

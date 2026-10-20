@@ -53,25 +53,50 @@ EOF
 fi
 grep -n "BOARD_SEPOLICY_DIRS" "$BC" | tail -5
 
-# ---- OTA device assert fix (run #18: E3004 flash failure) ---------------------
-# The device tree ships TARGET_OTA_ASSERT_DEVICE := TB3-710F (hyphenated
-# marketing name) but the device and every TWRP build report "TB3710F".
-# The stock OTA assert then aborts flashing with
-#   E3004: This package is for device: TB3-710F; this Device is TB3710F
-# Point the native assert at the real device name; the finished zip is
-# additionally post-processed by scripts/fix_ota_assert.py to accept BOTH
-# names (belt and suspenders).
-if [ -f "$BC" ]; then
-    if grep -q 'TARGET_OTA_ASSERT_DEVICE := TB3-710F' "$BC"; then
-        sed -i 's/TARGET_OTA_ASSERT_DEVICE := TB3-710F/TARGET_OTA_ASSERT_DEVICE := TB3710F/' "$BC"
-        echo "BoardConfig.mk patched: OTA assert device -> TB3710F"
-    fi
-    grep -q 'TARGET_OTA_ASSERT_DEVICE := TB3710F' "$BC" || {
-        echo "TARGET_OTA_ASSERT_DEVICE := TB3710F" >> "$BC"
-        echo "BoardConfig.mk: appended TARGET_OTA_ASSERT_DEVICE := TB3710F"
-    }
-    grep -n "TARGET_OTA_ASSERT_DEVICE" "$BC"
-fi
+# ---- OTA device assert (E3004 flash failure) ----------------------------------
+# TWRP for this tablet reports ro.product.device=TB3710F (tree codename),
+# while the stock OTA assert checks TB3-710F (marketing name) — either alone
+# aborts the other with E3004. Fix it at the SOURCE: patch the tree's OTA
+# script generator so `mka bacon` natively emits a balanced multi-name assert
+# (signed afterwards as normal). NEVER rewrite the signed zip after bacon —
+# a hand-written assert once shipped unbalanced parens -> updater exit 6 ->
+# TWRP "Updater process ended with ERROR: 6" (nothing flashed, but confusing).
+# scripts/check_updater_script.py gates the finished zip in 50-build-rom.sh.
+EG="$ROMDIR/build/tools/releasetools/edify_generator.py"
+test -f "$EG" || { echo "FATAL: $EG missing — is the tree synced?"; exit 1; }
+python3 - "$EG" <<'PYEOF'
+import re, sys
+path = sys.argv[1]
+src = open(path).read()
+new_fn = '''  def AssertDevice(self, device):
+    """AstOs: balanced multi-name device assert. TWRP reports TB3710F,
+    the device tree ships TB3-710F — accept both. Syntax here is
+    load-bearing: an unbalanced assert makes the updater exit 6 (parse
+    errors) and TWRP refuses to flash. The finished zip is verified by
+    scripts/check_updater_script.py in 50-build-rom.sh."""
+    cmd = ('assert('
+           'getprop("ro.product.device") == "TB3710F" || '
+           'getprop("ro.build.product") == "TB3710F" || '
+           'getprop("ro.product.device") == "TB3-710F" || '
+           'getprop("ro.build.product") == "TB3-710F" || '
+           'abort("E3004: This package is for device: TB3710F / TB3-710F; '
+           'this device is " + getprop("ro.product.device") + ".");'
+           ');')
+    self.script.append(cmd)
+'''
+pat = re.compile(r'  def AssertDevice\(self, device\):.*?(?=\n  def AssertSomeBootloader)', re.S)
+if not pat.search(src):
+    sys.exit("FATAL: AssertDevice method not found in edify_generator.py")
+if 'AstOs: balanced multi-name device assert' in src:
+    print("edify_generator.py: AssertDevice already patched")
+else:
+    open(path, "w").write(src[:pat.search(src).start()] + new_fn + src[pat.search(src).end():])
+    print("edify_generator.py AssertDevice patched (multi-name, balanced)")
+PYEOF
+python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$EG" \
+    || { echo "FATAL: patched edify_generator.py is not valid python" >&2; exit 1; }
+grep -c 'TB3710F' "$EG" >/dev/null
+echo "AssertDevice patch OK"
 
 # ---- cmsdk ordering patch ------------------------------------------------------
 # Run #13 died at 43%: "Building with Jack: org.cyanogenmod.platform.internal"
@@ -148,10 +173,6 @@ echo "::group::Disk after embed"
 df -h / /mnt || true
 echo "::endgroup::"
 echo "AstOs embedded into ROM tree OK"
-
-# ---- E3004 fix: OTA assert device name ----------------------------------------
-# (moved above — see the BoardConfig patch block; this comment marks that the
-# finished zip is additionally normalized by scripts/fix_ota_assert.py)
 
 # ---- AstSetup: embed the first-boot wizard ------------------------------------
 APK2="$REPO_ROOT/astsetup/app/build/outputs/apk/release/app-release-unsigned.apk"

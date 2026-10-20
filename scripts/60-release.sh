@@ -12,13 +12,22 @@ if [ -z "$ZIP" ]; then
 fi
 echo "Releasing: $ZIP ($(du -h "$ZIP" | cut -f1))"
 
-TAG="v2.0-$(date +%Y%m%d-%H%M)"
+TAG="v2.1-$(date +%Y%m%d-%H%M)"
+
+SUM="$(sha256sum "$ZIP" | cut -d' ' -f1)"
 
 NOTES="$(cat <<EOF
-AstOs 2.0 — the ASCII custom OS for the Lenovo Tab 3 Essential (TB3-710F)
+AstOs 2.1 for the Lenovo Tab 3 Essential (TB3-710F)
 
-Base: LineageOS 14.1 core (Android 7.1.2)
-NEW in 2.0:
+FIXED: the 2.0 zips' updater-script had unbalanced parentheses in the
+device-assert line -> the updater exited with code 6 and TWRP showed
+"Updater process ended with ERROR: 6". Nothing was ever flashed by a
+broken zip (parse failure happens before any write); nothing on your
+device changed if you hit it. 2.1 generates the assert natively in the
+build (signed afterwards, no post-processing) and a hard parse gate in
+CI makes ERROR 6 unshippable in the future.
+
+Everything else is 2.0:
 * Full ASCII-art interface with animations: figlet clock, matrix rain,
   starfield, plasma, waves, scanlines, typewriter replies, glitch
   page transitions
@@ -33,8 +42,10 @@ NEW in 2.0:
 * Alexa-style cards: weather, latest news headlines, date/time
 * Clean custom setup wizard (AstSetup) replaces the CyanogenMod one:
   animated ASCII welcome, wifi, city, Groq key, look — no Android look
-* FIXED: E3004 flash error — the zip now accepts TB3710F (what TWRP
-  reports) as well as TB3-710F
+* Device assert accepts both TB3710F (what TWRP reports) and TB3-710F
+
+sha256: ${SUM}
+Verify yours matches after downloading (see FLASH.md Troubleshooting).
 
 Read FLASH.md and SETUP.md before installing.
 Always take a TWRP backup first.
@@ -45,7 +56,7 @@ gh release create "$TAG" \
     "$ZIP" \
     "docs/FLASH.md" \
     "docs/SETUP.md" \
-    --title "AstOs 2.0 — $TAG" \
+    --title "AstOs 2.1 — $TAG" \
     --notes "$NOTES" \
     --target "${GITHUB_SHA:-HEAD}"
 

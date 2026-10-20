@@ -65,16 +65,19 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAMP="$(date +%Y%m%d)"
 for z in "$OUT"/lineage-14.1*.zip "$OUT"/astos*.zip; do
     [ -f "$z" ] || continue
-    cp "$z" "$REPO_ROOT/AstOs-2.0-$STAMP-TB3-710F.zip"
+    cp "$z" "$REPO_ROOT/AstOs-2.1-$STAMP-TB3-710F.zip"
     break
 done
 
-# ---- E3004 fix: rewrite the zip's device assert to accept the REAL device ----
-# The community tree asserts "TB3-710F" but TWRP reports "TB3710F" — flashing
-# aborted with E3004. 40-embed-astos.sh fixes the source; this hard-guarantees
-# the shipped zip accepts BOTH names no matter what the OTA generator emitted.
-python3 "$REPO_ROOT/scripts/fix_ota_assert.py" "$REPO_ROOT/AstOs-2.0-$STAMP-TB3-710F.zip" || {
-    echo "FATAL: OTA device-assert fix failed — zip must NOT ship" >&2
+# ---- updater-script parse gate (TWRP "ERROR: 6" can never ship again) --------
+# Exit code 6 from the updater means the edify script failed to PARSE. The
+# released 2.0 zips had a hand-rewritten assert with unbalanced parens (the
+# old fix_ota_assert.py post-processor — now deleted). The assert is now born
+# correct (40-embed-astos.sh patches the tree's edify_generator.py), and this
+# gate parses the finished zip's updater-script with the REAL edify grammar
+# to guarantee it before release.
+python3 "$REPO_ROOT/scripts/check_updater_script.py" "$REPO_ROOT/AstOs-2.1-$STAMP-TB3-710F.zip" || {
+    echo "FATAL: updater-script failed the edify parse gate — zip must NOT ship" >&2
     exit 1
 }
 
