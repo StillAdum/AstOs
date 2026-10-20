@@ -70,7 +70,7 @@ path = sys.argv[1]
 src = open(path).read()
 new_fn = '''  def AssertDevice(self, device):
     """AstOs: balanced multi-name device assert. TWRP reports TB3710F,
-    the device tree ships TB3-710F — accept both. Syntax here is
+    the device tree ships TB3-710F - accept both. Syntax here is
     load-bearing: an unbalanced assert makes the updater exit 6 (parse
     errors) and TWRP refuses to flash. The finished zip is verified by
     scripts/check_updater_script.py in 50-build-rom.sh."""
@@ -95,6 +95,12 @@ else:
 PYEOF
 python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$EG" \
     || { echo "FATAL: patched edify_generator.py is not valid python" >&2; exit 1; }
+# The OTA packaging step (ota_from_target_files) runs under python2, which
+# rejects any non-ASCII byte without an encoding declaration - run #18 died
+# exactly there (SyntaxError: Non-ASCII character '\xe2') because the patched
+# docstring contained an em-dash. Gate on pure ASCII so this can never recur.
+python3 -c "open(sys.argv[1], encoding='ascii').read()" "$EG" \
+    || { echo "FATAL: patched edify_generator.py is not pure ASCII - the OTA packaging parses it with python2" >&2; exit 1; }
 grep -c 'TB3710F' "$EG" >/dev/null
 echo "AssertDevice patch OK"
 
