@@ -4,6 +4,14 @@
 set -e
 
 ROMDIR="${ROMDIR:-/mnt/rom}"
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+ASTOS_VERSION="2.2"
+
+# The proven TB3-710F kernel: raw zImage dumped from a real tablet
+# (aptivi-mobile/device_lenovo_TB3710F 7b762eb91), shipped as prebuilt because
+# compiling andrew264's kernel source produces a zImage that freezes the
+# device at the Lenovo logo. Nothing but this binary may end up in boot.img.
+PROVEN_KERNEL_SHA256="f862c0417d0aa984b74b1794b56f95c304a12a747097d74e7f44ea726a6c0450"
 
 # ---- JDK 8 -------------------------------------------------------------------
 if [ ! -d "$HOME/jdk8" ]; then
@@ -60,12 +68,32 @@ OUT="$ROMDIR/out/target/product/TB3710F"
 echo "Build outputs:"
 ls -lh "$OUT"/*.zip || true
 
+# ---- kernel identity gate #1: out/kernel + boot.img ---------------------------
+# The kernel compiled from andrew264's source does not boot on real TB3-710F
+# hardware (frozen Lenovo logo — kernel dies before userspace starts).
+# 40-embed-astos.sh installs the proven dumped zImage as
+# TARGET_PREBUILT_KERNEL (the kernel source repo is not synced, so
+# vendor/cm/build/tasks/kernel.mk copies it to $OUT/kernel); refuse to ship
+# anything else. check_bootimg_kernel.py parses the MTK boot image
+# (ANDROID! header + 88 16 88 58 KERNEL sub-header) and requires the raw
+# kernel to be byte-identical to the proven dump.
+if [ -f "$OUT/kernel" ]; then
+    KSHA="$(sha256sum "$OUT/kernel" | cut -d' ' -f1)"
+    echo "out/kernel sha256: $KSHA"
+    [ "$KSHA" = "$PROVEN_KERNEL_SHA256" ] \
+        || { echo "FATAL: out/kernel is NOT the proven prebuilt — the broken kernel source got compiled" >&2; exit 1; }
+else
+    echo "FATAL: \$OUT/kernel missing" >&2
+    exit 1
+fi
+python3 "$REPO_ROOT/scripts/check_bootimg_kernel.py" "$OUT/boot.img" \
+    || { echo "FATAL: out/boot.img does not carry the proven kernel" >&2; exit 1; }
+
 # Copy the ROM zip(s) out with a clean AstOs name
-REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 STAMP="$(date +%Y%m%d)"
 for z in "$OUT"/lineage-14.1*.zip "$OUT"/astos*.zip; do
     [ -f "$z" ] || continue
-    cp "$z" "$REPO_ROOT/AstOs-2.1-$STAMP-TB3-710F.zip"
+    cp "$z" "$REPO_ROOT/AstOs-$ASTOS_VERSION-$STAMP-TB3-710F.zip"
     break
 done
 
@@ -76,23 +104,27 @@ done
 # correct (40-embed-astos.sh patches the tree's edify_generator.py), and this
 # gate parses the finished zip's updater-script with the REAL edify grammar
 # to guarantee it before release.
-python3 "$REPO_ROOT/scripts/check_updater_script.py" "$REPO_ROOT/AstOs-2.1-$STAMP-TB3-710F.zip" || {
+python3 "$REPO_ROOT/scripts/check_updater_script.py" "$REPO_ROOT/AstOs-$ASTOS_VERSION-$STAMP-TB3-710F.zip" || {
     echo "FATAL: updater-script failed the edify parse gate — zip must NOT ship" >&2
     exit 1
 }
 
+# ---- kernel identity gate #2: the shipped OTA zip -----------------------------
+# The zip the user flashes must embed the same proven kernel in its boot.img.
+python3 "$REPO_ROOT/scripts/check_bootimg_kernel.py" "$REPO_ROOT/AstOs-$ASTOS_VERSION-$STAMP-TB3-710F.zip" \
+    || { echo "FATAL: OTA zip boot.img does not carry the proven kernel" >&2; exit 1; }
+
 # ---- kernel as a standalone rescue asset --------------------------------------
-# A frozen-at-logo boot almost always means the boot partition never got the
-# new kernel (the OTA writes it via /dev/bootimg, which not every TWRP build
-# maps). Shipping boot.img separately makes the rescue a 2-minute TWRP
-# "Install Image -> Boot" job (see FLASH.md Troubleshooting). Same bytes as
-# the boot.img inside the zip — verify against the release-listed sha256.
+# If a flash goes sideways, a standalone boot.img makes recovery a 2-minute
+# TWRP "Install Image -> Boot" job (see FLASH.md Troubleshooting). Same bytes
+# as the boot.img inside the zip — the release lists its sha256. Since v2.2
+# this asset carries the proven dumped kernel.
 if [ -f "$OUT/boot.img" ]; then
-    cp "$OUT/boot.img" "$REPO_ROOT/AstOs-2.1-$STAMP-TB3-710F-boot.img"
+    cp "$OUT/boot.img" "$REPO_ROOT/AstOs-$ASTOS_VERSION-$STAMP-TB3-710F-boot.img"
     ls -lh "$REPO_ROOT"/AstOs-*-boot.img
 else
     echo "WARNING: $OUT/boot.img missing — boot rescue asset skipped (zip still contains it)" >&2
 fi
 
 ls -lh "$REPO_ROOT"/AstOs-*.zip
-echo "ROM built OK"
+echo "ROM built OK (AstOs $ASTOS_VERSION, proven kernel verified)"

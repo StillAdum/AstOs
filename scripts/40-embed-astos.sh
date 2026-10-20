@@ -174,6 +174,74 @@ if grep -qE "\bLineageSetupWizard\b|\bTrebuchet\b" "$CM_COMMON_MK"; then
 fi
 echo "Debranded first boot: LineageSetupWizard + Trebuchet stripped from CM common.mk"
 
+# ---- prebuilt kernel: the proven zImage dumped from a real TB3-710F -----------
+# andrew264's kernel source compiles, but the resulting zImage does NOT boot
+# on real MT8127 hardware — the tablet freezes at the static Lenovo logo
+# (the kernel dies before userspace ever starts). The working LineageOS 14.1
+# build for this device (aptivi-mobile, 2023-03-23) ships a kernel DUMPED
+# FROM A REAL TB3-710F instead (commit 7b762eb91 "Added zImage dumped from
+# TB3-710F"). We pin the exact same binary. The kernel repo is not synced
+# (local_manifests), so vendor/cm/build/tasks/kernel.mk takes its
+# TARGET_PREBUILT_KERNEL path and copies this file to $(PRODUCT_OUT)/kernel,
+# which device/lenovo/TB3710F/mkbootimg.mk then MTK-wraps for boot.img and
+# recovery.img. Byte identity is enforced by scripts/check_bootimg_kernel.py.
+DEVDIR="$ROMDIR/device/lenovo/TB3710F"
+test -f "$DEVDIR/BoardConfig.mk" || { echo "FATAL: device tree missing at $DEVDIR"; exit 1; }
+
+ZIMG_URL="https://raw.githubusercontent.com/aptivi-mobile/device_lenovo_TB3710F/7b762eb91f053a119977057fc3b5c5ac73092c9b/zImage"
+ZIMG_SHA="10773efaa0bd51b9de663ca99253524815a193df0c127a46c61975b78897ccb3"
+RAW_SHA="f862c0417d0aa984b74b1794b56f95c304a12a747097d74e7f44ea726a6c0450"
+RAW_SIZE=3773648
+
+curl -fsSL --retry 5 --retry-all-errors "$ZIMG_URL" -o "$DEVDIR/zImage.dumped" \
+    || { echo "FATAL: could not download the proven zImage"; exit 1; }
+echo "$ZIMG_SHA  $DEVDIR/zImage.dumped" | sha256sum -c - \
+    || { echo "FATAL: dumped zImage sha256 mismatch — upstream artifact changed!"; exit 1; }
+# The upstream file carries the 512-byte MTK KERNEL header; our mkbootimg.mk
+# (make_header) adds exactly one such header itself, so strip it and feed the
+# build the RAW zImage.
+od -A n -t x1 -N 4 "$DEVDIR/zImage.dumped" | tr -d ' \n' | grep -q '^88168858$' \
+    || { echo "FATAL: dumped zImage lacks the MTK KERNEL magic"; exit 1; }
+dd if="$DEVDIR/zImage.dumped" of="$DEVDIR/zImage.raw" bs=512 skip=1 status=none
+[ "$(stat -c %s "$DEVDIR/zImage.raw")" -eq "$RAW_SIZE" ] \
+    || { echo "FATAL: raw kernel size mismatch"; exit 1; }
+echo "$RAW_SHA  $DEVDIR/zImage.raw" | sha256sum -c - \
+    || { echo "FATAL: raw kernel sha256 mismatch"; exit 1; }
+# ARM zImage magic 0x016f2818 (little-endian: 18 28 6f 01) at offset 0x24
+od -A n -t x1 -j 36 -N 4 "$DEVDIR/zImage.raw" | tr -d ' \n' | grep -q '^18286f01$' \
+    || { echo "FATAL: stripped file is not an ARM zImage"; exit 1; }
+mv "$DEVDIR/zImage.raw" "$DEVDIR/zImage"
+rm -f "$DEVDIR/zImage.dumped"
+ls -l "$DEVDIR/zImage"
+
+# Wire it: TARGET_PREBUILT_KERNEL (honored by kernel.mk because the kernel
+# source tree is intentionally absent).
+if ! grep -q "TARGET_PREBUILT_KERNEL" "$BC"; then
+    cat >> "$BC" <<'EOF'
+
+# AstOs fix: use the kernel dumped from a real TB3-710F. The kernel compiled
+# from andrew264's source freezes the tablet at the Lenovo logo on real
+# hardware; this prebuilt is byte-identical to the one shipped by the
+# working LineageOS 14.1 build (aptivi-mobile 7b762eb91). The kernel repo
+# is intentionally not synced, so kernel.mk takes the TARGET_PREBUILT_KERNEL
+# path instead of compiling the broken source.
+TARGET_PREBUILT_KERNEL := $(DEVICE_DIR)/zImage
+EOF
+    echo "BoardConfig.mk patched: TARGET_PREBUILT_KERNEL wired"
+fi
+grep -n "TARGET_PREBUILT_KERNEL" "$BC"
+
+# ---- sdcardfs: the proven kernel has no sdcardfs -------------------------------
+# Aptivi c33d4578d: "Don't enable sdcardfs! It won't work and will cause apps
+# to fail to write data to the internal storage, causing some of them to FC!
+# It's not compatible with the TB3-710F."
+DM="$DEVDIR/device.mk"
+if grep -q "ro.sys.sdcardfs=true" "$DM"; then
+    sed -i 's/ro\.sys\.sdcardfs=true/ro.sys.sdcardfs=false/' "$DM"
+    echo "device.mk patched: ro.sys.sdcardfs=false"
+fi
+grep -n "ro.sys.sdcardfs" "$DM" || echo "::warning::no sdcardfs prop found (device tree changed?)"
+
 # ---- free the space the app build used --------------------------------------
 sudo rm -rf /usr/local/lib/android/sdk "$HOME/.gradle" /tmp/gradle.zip /tmp/vosk-model-small-en-us-0.15.zip 2>/dev/null || true
 

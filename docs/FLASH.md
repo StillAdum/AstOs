@@ -1,4 +1,4 @@
-# Flashing AstOs 2.1
+# Flashing AstOs
 
 ## Before you start
 
@@ -6,8 +6,9 @@
 
 - Lenovo Tab 3 Essential (TB3-710F) with TWRP flashed — you have this ✅
 - Battery charged to at least 50 %
-- The `AstOs-<version>-<date>-TB3-710F.zip` from the [Releases](../../releases)
-  page, copied to your 32 GB SD card or the tablet's storage
+- The `AstOs-<version>-<date>-TB3-710F.zip` (v2.2 or newer) from the
+  [Releases](../../releases) page, copied to your 32 GB SD card or the
+  tablet's storage
 - (Optional) `open_gapps-arm-7.1-nano-<date>.zip` from
   [opengapps.org](https://opengapps.org) (ARM, Android 7.1, **nano**) if you
   want the Play Store
@@ -18,7 +19,7 @@ back on your old ROM in five minutes.
 
 ## Flash steps
 
-1. **Boot into TWRP** (Power + Vol- or however you normally enter recovery).
+1. **Boot into TWRP** (Power + Vol- or how you normally enter recovery).
 
 2. **Back up** — TWRP → Backup → select Boot + System + Data → select your SD
    card as storage → swipe.
@@ -90,18 +91,38 @@ large files sometimes.
 
 The bootanimation only plays after the new kernel **and** the Android
 framework come up. A logo that never moves means the boot died at the
-kernel stage — almost always the **boot partition** didn't get the new
-kernel (the zip writes it via `/dev/bootimg`, which not every TWRP build
-maps; the install then aborts at the very last step, after the system files
-are already in place). TWRP still works and `/system` is populated — only
-the kernel needs re-flashing:
+kernel stage. Two known causes:
+
+1. **A pre-v2.2 AstOs zip (v1.0 / v2.0 / v2.0.1 / v2.1).** These compiled
+   their kernel from source, and that kernel never boots on this hardware —
+   the flash itself succeeded and the logo still froze. **v2.2 fixes this
+   for good:** it ships the kernel dumped from a real TB3-710F (byte-identical
+   to the kernel of the known-good LineageOS 14.1 build), and CI now
+   refuses to ship any other kernel. If you froze on an older zip, just
+   flash v2.2 — no harm was done to the tablet.
+2. **The boot partition never got the new kernel** — the zip writes it via
+   `/dev/bootimg`, which not every TWRP build maps; the install then aborts
+   at the very last step, after the system files are already in place. TWRP
+   still works and `/system` is populated — only the kernel needs
+   re-flashing.
+
+Fix for both: flash the standalone kernel from the same release —
+`AstOs-…-TB3-710F-boot.img` (it carries the same proven v2.2 kernel):
 
 1. Download `AstOs-…-TB3-710F-boot.img` from the same release (or extract
    `boot.img` from the ROM zip — identical file). Verify its sha256 against
    the one listed on the release page.
 2. Copy it to the tablet (SD card, or `adb push boot.img /sdcard/` in TWRP).
 3. TWRP → **Install → Install Image** → select the boot image → target
-   partition **Boot** → flash. Reboot System.
+   partition **Boot** → flash.
+
+   - To test-boot BEFORE committing to a full flash (e.g. on the running
+     LineageOS): flash this boot.img over the current system and reboot.
+     It boots → the AstOs kernel is fine on your tablet; proceed with the
+     full v2.2 zip. Re-flash the LOS boot.img from the LOS zip to undo.
+   - On a logo-frozen AstOs install: flash this boot.img, then reboot —
+     if it boots to AstOs, you're done (cause 2). If it still freezes,
+     re-do the full flash with the v2.2 zip (cause 1).
 
 If Install Image errors out, write it from TWRP → Advanced → Terminal:
 `ls -l /dev/block/platform/*/by-name/` to find the `bootimg` entry, then
@@ -119,6 +140,8 @@ evidence for a bug report: `ls /sys/fs/pstore/`,
 
 - **Bootloops:** boot back into TWRP and re-do step 3 (Format Data) then
   re-flash. Dirty flashes over the old ROM are not supported for v1.
+- **Coming from the community LineageOS 14.1 build (or stock):** flash v2.2
+  exactly the same way — *Format Data*, then Install the zip.
 - **TWRP asks for a decryption password after flashing:** that's normal with
   a formatted data partition — tap cancel; internal storage is just empty.
 - **Voice doesn't hear you:** check that AstShell has microphone permission

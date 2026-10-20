@@ -7,10 +7,14 @@
            remote="github"
            revision="cm-14.1" />
 
-  <project path="kernel/lenovo/TB3710F"
-           name="andrew264/android_kernel_lenovo_mt8127"
-           remote="github"
-           revision="cm-14.1" />
+  <!-- The kernel repo (andrew264/android_kernel_lenovo_mt8127) is
+       deliberately NOT synced. Compiling that source produces a zImage
+       that never boots on real TB3-710F hardware (frozen Lenovo logo).
+       AstOs instead ships the kernel DUMPED FROM A REAL TB3-710F —
+       installed by scripts/40-embed-astos.sh as TARGET_PREBUILT_KERNEL,
+       byte-verified by scripts/check_bootimg_kernel.py. With no kernel
+       source tree, vendor/cm/build/tasks/kernel.mk takes its prebuilt
+       path and copies that binary into $(PRODUCT_OUT)/kernel. -->
 
   <project path="vendor/lenovo/TB3710F"
            name="andrew264/android_vendor_lenovo_TB3710F"
