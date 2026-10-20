@@ -17,3 +17,4 @@ astshell/app/build/
 astshell/app/src/main/assets/model/
 astshell/app/libs/
 local.properties
+__pycache__/
