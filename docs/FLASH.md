@@ -89,40 +89,38 @@ large files sometimes.
 
 ### Frozen at the Lenovo logo (no bootanimation ever starts)
 
-The bootanimation only plays after the new kernel **and** the Android
-framework come up. A logo that never moves means the boot died at the
-kernel stage. Two known causes:
+The bootanimation only plays after surfaceflinger — Android's display
+composer — comes up. A logo that never moves means nobody ever drew a
+frame. On v1.0-v2.1 that had two causes, both fixed in **v2.2**:
 
-1. **A pre-v2.2 AstOs zip (v1.0 / v2.0 / v2.0.1 / v2.1).** These compiled
-   their kernel from source, and that kernel never boots on this hardware —
-   the flash itself succeeded and the logo still froze. **v2.2 fixes this
-   for good:** it ships the kernel dumped from a real TB3-710F (byte-identical
-   to the kernel of the known-good LineageOS 14.1 build), and CI now
-   refuses to ship any other kernel. If you froze on an older zip, just
-   flash v2.2 — no harm was done to the tablet.
-2. **The boot partition never got the new kernel** — the zip writes it via
-   `/dev/bootimg`, which not every TWRP build maps; the install then aborts
-   at the very last step, after the system files are already in place. TWRP
-   still works and `/system` is populated — only the kernel needs
-   re-flashing.
+1. **surfaceflinger shipped with a file capability (CAP_SYS_NICE).** That
+   makes it AT_SECURE at startup, and the linker then ignores LD_PRELOAD —
+   but this tablet's MTK graphics blobs need libxlog.so/libmtk_symbols.so
+   from LD_PRELOAD to load. surfaceflinger died instantly and the logo
+   stayed on screen forever. v2.2 applies the device tree's
+   CAP_SYS_NICE-removal patch, so the ROM ships surfaceflinger with
+   capabilities 0x0 — and CI now refuses to ship any ROM that does not.
+2. **libstlport.so was missing** from /system/lib. The MTK display and
+   camera blobs (libdpframework, lib3a, libcam*) are linked against it and
+   the display pipeline dies without it. v2.2 ships the byte-identical
+   library from the known-good community LineageOS build (sha256-pinned,
+   verified by CI).
 
-Fix for both: flash the standalone kernel from the same release —
-`AstOs-…-TB3-710F-boot.img` (it carries the same proven v2.2 kernel):
+The kernel and boot.img were never the problem — v2.2's boot image is
+byte-equivalent in structure to the working community ROM's. If your
+tablet froze on an older AstOs build, no harm was done; just flash v2.2.
+
+If v2.2 STILL freezes at the logo (not expected), the boot partition may
+not have received the new boot.img — the zip writes it via /dev/bootimg,
+which not every TWRP build maps. TWRP still works and /system is
+populated — only the kernel image needs re-flashing:
 
 1. Download `AstOs-…-TB3-710F-boot.img` from the same release (or extract
    `boot.img` from the ROM zip — identical file). Verify its sha256 against
    the one listed on the release page.
 2. Copy it to the tablet (SD card, or `adb push boot.img /sdcard/` in TWRP).
 3. TWRP → **Install → Install Image** → select the boot image → target
-   partition **Boot** → flash.
-
-   - To test-boot BEFORE committing to a full flash (e.g. on the running
-     LineageOS): flash this boot.img over the current system and reboot.
-     It boots → the AstOs kernel is fine on your tablet; proceed with the
-     full v2.2 zip. Re-flash the LOS boot.img from the LOS zip to undo.
-   - On a logo-frozen AstOs install: flash this boot.img, then reboot —
-     if it boots to AstOs, you're done (cause 2). If it still freezes,
-     re-do the full flash with the v2.2 zip (cause 1).
+   partition **Boot** → flash. Reboot System.
 
 If Install Image errors out, write it from TWRP → Advanced → Terminal:
 `ls -l /dev/block/platform/*/by-name/` to find the `bootimg` entry, then

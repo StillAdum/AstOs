@@ -174,64 +174,89 @@ if grep -qE "\bLineageSetupWizard\b|\bTrebuchet\b" "$CM_COMMON_MK"; then
 fi
 echo "Debranded first boot: LineageSetupWizard + Trebuchet stripped from CM common.mk"
 
-# ---- prebuilt kernel: the proven zImage dumped from a real TB3-710F -----------
-# andrew264's kernel source compiles, but the resulting zImage does NOT boot
-# on real MT8127 hardware — the tablet freezes at the static Lenovo logo
-# (the kernel dies before userspace ever starts). The working LineageOS 14.1
-# build for this device (aptivi-mobile, 2023-03-23) ships a kernel DUMPED
-# FROM A REAL TB3-710F instead (commit 7b762eb91 "Added zImage dumped from
-# TB3-710F"). We pin the exact same binary. The kernel repo is not synced
-# (local_manifests), so vendor/cm/build/tasks/kernel.mk takes its
-# TARGET_PREBUILT_KERNEL path and copies this file to $(PRODUCT_OUT)/kernel,
-# which device/lenovo/TB3710F/mkbootimg.mk then MTK-wraps for boot.img and
-# recovery.img. Byte identity is enforced by scripts/check_bootimg_kernel.py.
+# ---- apply the device-tree patches — THE critical boot fix --------------------
+# andrew264's tree ships patches/patch.sh, a MANUAL pre-build step (git am)
+# that the AstOs CI never ran — and that is why every AstOs build so far
+# froze at the Lenovo logo while the community LOS build boots:
+#
+#  * patches/system/core/0001 removes CAP_SYS_NICE from surfaceflinger
+#    (libcutils/fs_config.c). WITH the cap, surfaceflinger is treated as
+#    AT_SECURE at exec and the linker SANITIZES LD_PRELOAD / LD_SHIM_LIBS —
+#    but init.environ.rc exports
+#        LD_PRELOAD libsigchain.so:libxlog.so:libmtk_symbols.so
+#    and the MTK mali blobs (libEGL_mali etc.) CANNOT load without the
+#    libxlog.so shims. surfaceflinger dies instantly, nobody ever redraws
+#    the framebuffer, and the LK-drawn Lenovo logo stays on screen forever.
+#    (The working LOS ROM's updater-script ships surfaceflinger with
+#    capabilities 0x0 — our unpatched zips shipped 0x800000.)
+#  * patches/system/core/0002 adds the MTK ifc_* bits to libnetutils,
+#    0003 grows init's ENV[] to 64 entries for MTK services.
+#  * patches/frameworks/av/* add MediaTek color formats, camera support
+#    and the mic fix; patches/external/wpa_supplicant_8 filters the fake
+#    "NVRAM WARNING" SSID.
+# The AstOs gates in 50-build-rom.sh hard-fail the build unless the
+# surfaceflinger cap is actually gone.
 DEVDIR="$ROMDIR/device/lenovo/TB3710F"
 test -f "$DEVDIR/BoardConfig.mk" || { echo "FATAL: device tree missing at $DEVDIR"; exit 1; }
 
-ZIMG_URL="https://raw.githubusercontent.com/aptivi-mobile/device_lenovo_TB3710F/7b762eb91f053a119977057fc3b5c5ac73092c9b/zImage"
-ZIMG_SHA="10773efaa0bd51b9de663ca99253524815a193df0c127a46c61975b78897ccb3"
-RAW_SHA="f862c0417d0aa984b74b1794b56f95c304a12a747097d74e7f44ea726a6c0450"
-RAW_SIZE=3773648
+apply_repo_patches() {  # <repo-dir> <patch-subject-substring> <content-marker>
+    local repo="$1" subject="$2" marker="$3"
+    if git -C "$ROMDIR/$repo" log --format=%s -10 2>/dev/null | grep -qF "$subject"; then
+        echo "patches for $repo already applied"
+        return 0
+    fi
+    (cd "$ROMDIR/$repo" && \
+        git am --whitespace=nowarn --keep-cr \
+            "$ROMDIR/device/lenovo/TB3710F/patches/$repo"/*) \
+        || { (cd "$ROMDIR/$repo" && git am --abort >/dev/null 2>&1); \
+             echo "FATAL: git am failed for $repo" >&2; exit 1; }
+    git -C "$ROMDIR/$repo" log --format=%s -10 | grep -qF "$subject" \
+        || { echo "FATAL: '$subject' not on top of $repo git log" >&2; exit 1; }
+    grep -rqF "$marker" "$ROMDIR/$repo" 2>/dev/null \
+        || { echo "FATAL: marker '$marker' missing after patching $repo" >&2; exit 1; }
+    echo "$repo: device patches applied OK"
+}
 
-curl -fsSL --retry 5 --retry-all-errors "$ZIMG_URL" -o "$DEVDIR/zImage.dumped" \
-    || { echo "FATAL: could not download the proven zImage"; exit 1; }
-echo "$ZIMG_SHA  $DEVDIR/zImage.dumped" | sha256sum -c - \
-    || { echo "FATAL: dumped zImage sha256 mismatch — upstream artifact changed!"; exit 1; }
-# The upstream file carries the 512-byte MTK KERNEL header; our mkbootimg.mk
-# (make_header) adds exactly one such header itself, so strip it and feed the
-# build the RAW zImage.
-od -A n -t x1 -N 4 "$DEVDIR/zImage.dumped" | tr -d ' \n' | grep -q '^88168858$' \
-    || { echo "FATAL: dumped zImage lacks the MTK KERNEL magic"; exit 1; }
-dd if="$DEVDIR/zImage.dumped" of="$DEVDIR/zImage.raw" bs=512 skip=1 status=none
-[ "$(stat -c %s "$DEVDIR/zImage.raw")" -eq "$RAW_SIZE" ] \
-    || { echo "FATAL: raw kernel size mismatch"; exit 1; }
-echo "$RAW_SHA  $DEVDIR/zImage.raw" | sha256sum -c - \
-    || { echo "FATAL: raw kernel sha256 mismatch"; exit 1; }
-# ARM zImage magic 0x016f2818 (little-endian: 18 28 6f 01) at offset 0x24
-od -A n -t x1 -j 36 -N 4 "$DEVDIR/zImage.raw" | tr -d ' \n' | grep -q '^18286f01$' \
-    || { echo "FATAL: stripped file is not an ARM zImage"; exit 1; }
-mv "$DEVDIR/zImage.raw" "$DEVDIR/zImage"
-rm -f "$DEVDIR/zImage.dumped"
-ls -l "$DEVDIR/zImage"
+apply_repo_patches "system/core" "Remove CAP_SYS_NICE from surfaceflinger" "Disabled for now as this caused LD_PRELOAD"
+apply_repo_patches "frameworks/av" "Add MediaTek color format support" "eMTKYUV"
+apply_repo_patches "external/wpa_supplicant_8" "ignore fake NVRAM SSID" "NVRAM WARNING: Err ="
 
-# Wire it: TARGET_PREBUILT_KERNEL (honored by kernel.mk because the kernel
-# source tree is intentionally absent).
-if ! grep -q "TARGET_PREBUILT_KERNEL" "$BC"; then
-    cat >> "$BC" <<'EOF'
-
-# AstOs fix: use the kernel dumped from a real TB3-710F. The kernel compiled
-# from andrew264's source freezes the tablet at the Lenovo logo on real
-# hardware; this prebuilt is byte-identical to the one shipped by the
-# working LineageOS 14.1 build (aptivi-mobile 7b762eb91). The kernel repo
-# is intentionally not synced, so kernel.mk takes the TARGET_PREBUILT_KERNEL
-# path instead of compiling the broken source.
-TARGET_PREBUILT_KERNEL := $(DEVICE_DIR)/zImage
-EOF
-    echo "BoardConfig.mk patched: TARGET_PREBUILT_KERNEL wired"
+# belt & braces: the patch COMMENTS OUT the caps entry, so look for an
+# ACTIVE (uncommented) 00755 surfaceflinger line — none may remain.
+if grep -Eq '^[[:space:]]*\{[[:space:]]*00755.*surfaceflinger' \
+        "$ROMDIR/system/core/libcutils/fs_config.c"; then
+    echo "FATAL: surfaceflinger still has an ACTIVE 00755 caps entry in fs_config.c" >&2
+    exit 1
 fi
-grep -n "TARGET_PREBUILT_KERNEL" "$BC"
+grep -q "ENV\[64\]" "$ROMDIR/system/core/init/init.h" \
+    || { echo "FATAL: init ENV[64] patch not applied" >&2; exit 1; }
+echo "surfaceflinger CAP_SYS_NICE removal verified in fs_config.c"
 
-# ---- sdcardfs: the proven kernel has no sdcardfs -------------------------------
+# ---- libstlport.so: required by the MTK display/camera blobs ------------------
+# libdpframework.so, lib3a.so, libcam*.so, libimageio*.so are linked against
+# libstlport.so and the display pipeline fails during HWC init without it.
+# The community LOS build documents this exact failure ("Fixed Android
+# failing to boot because of missing libstlport.so" — their 2023-03-05
+# changelog) and ships the lib built from LineageOS/android_external_stlport.
+# AstOs ships the byte-identical prebuilt from that known-good ROM, pinned
+# by sha256 and verified again in 50-build-rom.sh.
+STL_SHA="0267d702674aa88ee28c90c96eaefa82602b50912dd8994667c75bd8582bc935"
+STL="$DEVDIR/libstlport.so"
+cp "$REPO_ROOT/vendor/astos/prebuilts/libstlport.so" "$STL"
+echo "$STL_SHA  $STL" | sha256sum -c - \
+    || { echo "FATAL: vendored libstlport.so sha256 mismatch" >&2; exit 1; }
+if ! grep -q "libstlport.so" "$DEVDIR/device.mk"; then
+    cat >> "$DEVDIR/device.mk" <<'EOF'
+
+# AstOs fix: MTK blobs (libdpframework and the camera HAL chain) are linked
+# against libstlport.so — the display pipeline cannot boot without it.
+PRODUCT_COPY_FILES += device/lenovo/TB3710F/libstlport.so:system/lib/libstlport.so
+EOF
+    echo "device.mk patched: libstlport.so packaged into /system/lib"
+fi
+grep -n "libstlport.so" "$DEVDIR/device.mk"
+
+# ---- sdcardfs: the working ROM runs FUSE, not sdcardfs --------------------------
 # Aptivi c33d4578d: "Don't enable sdcardfs! It won't work and will cause apps
 # to fail to write data to the internal storage, causing some of them to FC!
 # It's not compatible with the TB3-710F."

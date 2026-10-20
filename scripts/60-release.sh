@@ -29,19 +29,33 @@ fi
 NOTES="$(cat <<EOF
 AstOs 2.2 for the Lenovo Tab 3 Essential (TB3-710F)
 
-THE BOOT FIX. Every earlier AstOs build compiled its kernel from source,
-and that kernel never boots on this hardware — the tablet froze forever at
-the static Lenovo logo (the kernel died before Android ever started). The
-A/B proof: the community LineageOS 14.1 build for this tablet boots fine,
-and it doesn't compile a kernel at all — it ships one DUMPED FROM A REAL
-TB3-710F. AstOs 2.2 now ships that exact proven kernel:
+THE BOOT FIX. Every earlier AstOs build froze forever at the static Lenovo
+logo. Root cause (proven by full forensics against the known-good community
+LineageOS 14.1 build, which boots on this tablet): the TB3710F device tree
+ships a set of pre-build patches (patches/patch.sh) that our CI never
+applied. Without them:
 
-* Kernel: byte-identical to the kernel of the known-good LineageOS 14.1
-  build (dumped from a real TB3-710F, pinned + double sha256-verified in CI)
-* Storage: sdcardfs disabled — the proven kernel has no sdcardfs, and
-  leaving it on made apps crash when writing to internal storage
-* CI gate: the build now hard-fails unless boot.img carries the proven
-  kernel, so a dead-kernel ROM can never ship again
+* surfaceflinger kept the CAP_SYS_NICE file capability -> at exec it is
+  AT_SECURE -> the linker SANITIZES LD_PRELOAD -> but the MTK mali blobs
+  need libxlog.so/libmtk_symbols.so from LD_PRELOAD -> surfaceflinger died
+  instantly -> nobody ever drew a frame -> frozen logo. (The good ROM ships
+  surfaceflinger with capabilities 0x0; ours shipped 0x800000.)
+* system/lib/libstlport.so was missing — the MTK display/camera blobs
+  (libdpframework, lib3a, libcam*) are linked against it and the display
+  pipeline dies without it (the community build documents this exact
+  failure: "Fixed Android failing to boot because of missing libstlport.so").
+
+v2.2 fixes:
+* Device patches now applied in CI (system/core: CAP_SYS_NICE removal,
+  MTK libnetutils bits, init ENV[64]; frameworks/av: MediaTek color
+  formats, camera, mic; wpa_supplicant: NVRAM warning SSID filter)
+* libstlport.so shipped — byte-identical to the known-good ROM's build,
+  sha256-pinned
+* sdcardfs disabled (ro.sys.sdcardfs=false) — matches the working ROM;
+  leaving it on broke app writes to internal storage
+* CI boot gates: the build now hard-fails unless the OTA ships
+  surfaceflinger with capabilities 0x0 and the pinned libstlport.so —
+  these two freeze bugs can never ship again
 
 Everything else is 2.1/2.0:
 * Full ASCII-art interface with animations: figlet clock, matrix rain,
@@ -75,9 +89,8 @@ if [ -n "$BOOT" ]; then
 
 Standalone kernel: ${BOOT}
 boot.img sha256: ${BOOT_SUM}
-Carries the SAME proven kernel as the full ROM. Flash it alone via TWRP
-Install Image -> Boot partition to test-boot the fix first — or to rescue
-a logo-frozen tablet (FLASH.md Troubleshooting)."
+Same boot.img as inside the ROM zip. Flash via TWRP Install Image ->
+Boot partition for quick testing or rescue (FLASH.md Troubleshooting)."
 fi
 
 ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md")
