@@ -81,5 +81,18 @@ python3 "$REPO_ROOT/scripts/check_updater_script.py" "$REPO_ROOT/AstOs-2.1-$STAM
     exit 1
 }
 
+# ---- kernel as a standalone rescue asset --------------------------------------
+# A frozen-at-logo boot almost always means the boot partition never got the
+# new kernel (the OTA writes it via /dev/bootimg, which not every TWRP build
+# maps). Shipping boot.img separately makes the rescue a 2-minute TWRP
+# "Install Image -> Boot" job (see FLASH.md Troubleshooting). Same bytes as
+# the boot.img inside the zip — verify against the release-listed sha256.
+if [ -f "$OUT/boot.img" ]; then
+    cp "$OUT/boot.img" "$REPO_ROOT/AstOs-2.1-$STAMP-TB3-710F-boot.img"
+    ls -lh "$REPO_ROOT"/AstOs-*-boot.img
+else
+    echo "WARNING: $OUT/boot.img missing — boot rescue asset skipped (zip still contains it)" >&2
+fi
+
 ls -lh "$REPO_ROOT"/AstOs-*.zip
 echo "ROM built OK"

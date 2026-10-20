@@ -16,6 +16,16 @@ TAG="v2.1-$(date +%Y%m%d-%H%M)"
 
 SUM="$(sha256sum "$ZIP" | cut -d' ' -f1)"
 
+# Standalone kernel rescue asset (built by 50-build-rom.sh). If the flash
+# succeeds but the tablet freezes at the Lenovo logo, this boot.img is the
+# 2-minute fix — see FLASH.md Troubleshooting.
+BOOT="$(ls AstOs-*-boot.img 2>/dev/null | head -1)"
+BOOT_SUM=""
+if [ -n "$BOOT" ]; then
+    BOOT_SUM="$(sha256sum "$BOOT" | cut -d' ' -f1)"
+    echo "Boot rescue asset: $BOOT (sha256 $BOOT_SUM)"
+fi
+
 NOTES="$(cat <<EOF
 AstOs 2.1 for the Lenovo Tab 3 Essential (TB3-710F)
 
@@ -52,10 +62,22 @@ Always take a TWRP backup first.
 EOF
 )"
 
+if [ -n "$BOOT" ]; then
+    NOTES="${NOTES}
+
+Standalone kernel: ${BOOT}
+boot.img sha256: ${BOOT_SUM}
+If the tablet freezes at the Lenovo logo after flashing, flash this file
+via TWRP Install Image -> Boot partition (FLASH.md Troubleshooting)."
+fi
+
+ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md")
+if [ -n "$BOOT" ]; then
+    ASSETS=("$BOOT" "${ASSETS[@]}")
+fi
+
 gh release create "$TAG" \
-    "$ZIP" \
-    "docs/FLASH.md" \
-    "docs/SETUP.md" \
+    "${ASSETS[@]}" \
     --title "AstOs 2.1 — $TAG" \
     --notes "$NOTES" \
     --target "${GITHUB_SHA:-HEAD}"

@@ -6,8 +6,8 @@
 
 - Lenovo Tab 3 Essential (TB3-710F) with TWRP flashed — you have this ✅
 - Battery charged to at least 50 %
-- The `AstOs-2.0-<date>-TB3-710F.zip` from the [Releases](../../releases) page,
-  copied to your 32 GB SD card or the tablet's storage
+- The `AstOs-<version>-<date>-TB3-710F.zip` from the [Releases](../../releases)
+  page, copied to your 32 GB SD card or the tablet's storage
 - (Optional) `open_gapps-arm-7.1-nano-<date>.zip` from
   [opengapps.org](https://opengapps.org) (ARM, Android 7.1, **nano**) if you
   want the Play Store
@@ -85,6 +85,35 @@ Every zip's `update-binary` exits with a code the recovery shows:
 `sha256sum AstOs-…zip` on Linux/macOS, `certutil -hashfile … SHA256` on
 Windows. Also prefer `adb push` over MTP drag-and-drop — MTP corrupts
 large files sometimes.
+
+### Frozen at the Lenovo logo (no bootanimation ever starts)
+
+The bootanimation only plays after the new kernel **and** the Android
+framework come up. A logo that never moves means the boot died at the
+kernel stage — almost always the **boot partition** didn't get the new
+kernel (the zip writes it via `/dev/bootimg`, which not every TWRP build
+maps; the install then aborts at the very last step, after the system files
+are already in place). TWRP still works and `/system` is populated — only
+the kernel needs re-flashing:
+
+1. Download `AstOs-…-TB3-710F-boot.img` from the same release (or extract
+   `boot.img` from the ROM zip — identical file). Verify its sha256 against
+   the one listed on the release page.
+2. Copy it to the tablet (SD card, or `adb push boot.img /sdcard/` in TWRP).
+3. TWRP → **Install → Install Image** → select the boot image → target
+   partition **Boot** → flash. Reboot System.
+
+If Install Image errors out, write it from TWRP → Advanced → Terminal:
+`ls -l /dev/block/platform/*/by-name/` to find the `bootimg` entry, then
+`dd if=/sdcard/boot.img of=/dev/block/platform/<...>/by-name/bootimg`.
+
+To check what's actually on the boot partition: in TWRP terminal run
+`head -c <size> /dev/bootimg > /sdcard/bootdump.bin` (size = the listed
+boot.img size) and compare `sha256sum /sdcard/bootdump.bin` with the
+release page. If it already matches and the tablet STILL freezes, capture
+evidence for a bug report: `ls /sys/fs/pstore/`,
+`cat /sys/fs/pstore/console-ramoops*` (previous boot's kernel log) and
+`adb pull /tmp/recovery.log`.
 
 ### Other issues
 

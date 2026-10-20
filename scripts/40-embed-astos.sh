@@ -96,10 +96,12 @@ PYEOF
 python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$EG" \
     || { echo "FATAL: patched edify_generator.py is not valid python" >&2; exit 1; }
 # The OTA packaging step (ota_from_target_files) runs under python2, which
-# rejects any non-ASCII byte without an encoding declaration - run #18 died
+# rejects any non-ASCII byte without an encoding declaration - run #21 died
 # exactly there (SyntaxError: Non-ASCII character '\xe2') because the patched
 # docstring contained an em-dash. Gate on pure ASCII so this can never recur.
-python3 -c "open(sys.argv[1], encoding='ascii').read()" "$EG" \
+# NOTE: the -c snippet must import sys itself (run #22 died here with NameError:
+# sys is not defined - sys.argv is NOT pre-imported in `python3 -c`).
+python3 -c "import sys; open(sys.argv[1], encoding='ascii').read()" "$EG" \
     || { echo "FATAL: patched edify_generator.py is not pure ASCII - the OTA packaging parses it with python2" >&2; exit 1; }
 grep -c 'TB3710F' "$EG" >/dev/null
 echo "AssertDevice patch OK"
