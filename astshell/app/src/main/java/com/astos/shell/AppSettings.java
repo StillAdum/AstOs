@@ -40,13 +40,41 @@ public final class AppSettings {
         } catch (Throwable ignored) {}
     }
 
-    // ---- Home Assistant -----------------------------------------------------------
+    // ---- Home Assistant (shared with the setup wizard via Global) ------------
 
-    public static String haUrl(Context c)            { return p(c).getString("ha_url", ""); }
-    public static void setHaUrl(Context c, String v) { p(c).edit().putString("ha_url", v).apply(); }
+    public static String haUrl(Context c) {
+        String g = "";
+        try {
+            g = android.provider.Settings.Global.getString(
+                    c.getContentResolver(), "astos_ha_url");
+        } catch (Throwable ignored) {}
+        if (g != null && !g.isEmpty()) return g;
+        return p(c).getString("ha_url", "");
+    }
+    public static void setHaUrl(Context c, String v) {
+        v = v == null ? "" : v;
+        p(c).edit().putString("ha_url", v).apply();
+        try {
+            android.provider.Settings.Global.putString(c.getContentResolver(), "astos_ha_url", v);
+        } catch (Throwable ignored) {}
+    }
 
-    public static String haToken(Context c)            { return p(c).getString("ha_token", ""); }
-    public static void setHaToken(Context c, String v) { p(c).edit().putString("ha_token", v).apply(); }
+    public static String haToken(Context c) {
+        String g = "";
+        try {
+            g = android.provider.Settings.Global.getString(
+                    c.getContentResolver(), "astos_ha_token");
+        } catch (Throwable ignored) {}
+        if (g != null && !g.isEmpty()) return g;
+        return p(c).getString("ha_token", "");
+    }
+    public static void setHaToken(Context c, String v) {
+        v = v == null ? "" : v;
+        p(c).edit().putString("ha_token", v).apply();
+        try {
+            android.provider.Settings.Global.putString(c.getContentResolver(), "astos_ha_token", v);
+        } catch (Throwable ignored) {}
+    }
 
     // ---- Look & feel ------------------------------------------------------------
 
@@ -86,8 +114,8 @@ public final class AppSettings {
         } catch (Throwable ignored) {}
     }
 
-    /** font px for the ASCII grid: 14 (small), 18 (medium), 22 (large) */
-    public static int fontPx(Context c)                  { return p(c).getInt("font_px", 18); }
+    /** font px for the ASCII grid: 16 (small), 20 (medium), 24 (large) */
+    public static int fontPx(Context c)                  { return p(c).getInt("font_px", 20); }
     public static void setFontPx(Context c, int v)       { p(c).edit().putInt("font_px", v).apply(); }
 
     /** 0 = animations off (static screen), 1 = full animations */

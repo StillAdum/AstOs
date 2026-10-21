@@ -10,8 +10,8 @@ android {
         applicationId "com.astos.shell"
         minSdk 24          // device runs Android 7.1 (API 25)
         targetSdk 25       // aligned with the ROM platform
-        versionCode 2
-        versionName "2.0"
+        versionCode 3
+        versionName "2.3"
     }
 
     buildTypes {
@@ -35,10 +35,9 @@ android {
         checkReleaseBuilds false
     }
 
-    // Vosk model files are copied to assets/model/ by the build script
-    androidResources {
-        noCompress 'al', 'bin', 'mat', 'txt'
-    }
+    // The Vosk model is NOT bundled anymore: the device downloads it during
+    // first-boot setup ("Setup is almost finished, just downloading a few
+    // more things...") and on demand from the home screen.
 }
 
 dependencies {

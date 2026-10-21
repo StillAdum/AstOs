@@ -1,8 +1,24 @@
-# Setting up AstOs 2.0
+# Setting up AstOs 2.3
 
-On first boot the **AstOs setup wizard** opens — a clean ASCII experience
-(no CyanogenMod screens): animated logo, WiFi, your city, your free Groq
-API key, and your look. That's it.
+On first boot the **AstOs setup wizard** ALWAYS opens on a fresh flash —
+a clean ASCII experience (no CyanogenMod screens): animated logo, WiFi,
+your city, your free Groq key, phone pairing, your look, and the final
+on-device downloads.
+
+The wizard steps:
+
+1. **Welcome** — animated ASCII logo, tap to begin
+2. **WiFi** — tap a network, type the password with the AstOs keyboard
+3. **City / Groq** — weather location and your free console.groq.com key
+4. **Pair with your phone** — scan the QR code (or open the
+   `http://<tablet-address>:8420` page on your phone) and push Home
+   Assistant URL + token, city, Groq key, theme and background straight
+   from the phone
+5. **Look** — theme (12 palettes) + animated background, live preview
+6. **Downloads** — "Setup is almost finished, just downloading a few
+   more things…" — the offline voice model (~40 MB) downloads HERE,
+   never before setup. Retry/skip if you must; AstShell also finishes
+   the download automatically when you're on WiFi.
 
 ## 1. Music that plays anything — free, no account
 
@@ -56,6 +72,11 @@ photo), **FONT size**, ASCII album-art mode, and animation on/off.
 The setup wizard's LOOK page has the same controls with a live preview.
 
 ## 5. Offline voice control
+
+The voice model is NOT inside the ROM: it downloads at the end of setup
+("Setup is almost finished, just downloading a few more things…") or
+automatically from the home screen once you're on WiFi. Tap the MIC to
+retry or kick it off manually.
 
 Tap the mic (HOME or ASSIST) and allow microphone access. The Vosk model
 is on-device; recognition never uploads anything. Commands also include:

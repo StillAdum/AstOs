@@ -23,6 +23,7 @@ jobs:
 
     env:
       ROMDIR: /mnt/rom
+      CCACHE_DIR: /mnt/ccache
 
     steps:
       - name: Checkout
@@ -36,6 +37,21 @@ jobs:
 
       - name: Free disk space
         run: bash scripts/10-free-disk.sh
+
+      # Build-time accelerator: ccache (kernel, bionic, frameworks/native,
+      # ...) + the Gradle/JDK toolchain are persisted between runs. The
+      # first run stays as-is; every later run gets a warm head start.
+      - name: Restore build caches
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /mnt/ccache
+            /home/runner/gradle-8.7
+            /home/runner/.gradle
+            /home/runner/jdk17
+          key: astos-caches-v1-${{ github.run_id }}
+          restore-keys: |
+            astos-caches-v1-
 
       - name: Prepare host build deps
         run: bash scripts/05-prepare-host.sh
@@ -65,3 +81,14 @@ jobs:
         env:
           REPO_ROOT: ${{ github.workspace }}
           GH_TOKEN: ${{ github.token }}
+
+      - name: Save build caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /mnt/ccache
+            /home/runner/gradle-8.7
+            /home/runner/.gradle
+            /home/runner/jdk17
+          key: astos-caches-v1-${{ github.run_id }}

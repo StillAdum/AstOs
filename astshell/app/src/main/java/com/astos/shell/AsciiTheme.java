@@ -32,6 +32,10 @@ public final class AsciiTheme {
         new Palette("Mono Slate",   0xFFE8E8E8, 0xFF7A7A7A, 0xFFB0B0B0, 0xFF101012, "SCANLINES"),
         new Palette("Cyan Ghost",   0xFFCFF7FF, 0xFF5D8A93, 0xFF4DE0FC, 0xFF081114, "PLASMA"),
         new Palette("Violet Dusk",  0xFFE6D8FF, 0xFF7A6494, 0xFFB279FF, 0xFF120E1C, "STARS"),
+        new Palette("Phosphor",    0xFF8AF59B, 0xFF3E8A54, 0xFF3DDC6C, 0xFF081108, "SCANLINES"),
+        new Palette("Ember Gold",  0xFFFFE9A8, 0xFF9B7E4E, 0xFFFFC93C, 0xFF171106, "RAIN"),
+        new Palette("Ice Cavern",  0xFFEAF6FF, 0xFF8FB0C0, 0xFFB7E3FF, 0xFF0D1418, "WAVES"),
+        new Palette("Vaporwave",   0xFFFFC7E8, 0xFFB06FA0, 0xFFFF7AC8, 0xFF160B18, "STARS"),
     };
 
     public static final String[] BG_MODES = {

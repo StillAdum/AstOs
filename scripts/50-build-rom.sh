@@ -5,7 +5,7 @@ set -e
 
 ROMDIR="${ROMDIR:-/mnt/rom}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-ASTOS_VERSION="2.2"
+ASTOS_VERSION="2.3"
 
 # ---- JDK 8 -------------------------------------------------------------------
 if [ ! -d "$HOME/jdk8" ]; then
@@ -40,6 +40,23 @@ export BUILD_HOSTNAME="github-actions"
 # The TB3710F tree doesn't define CM_SRC_API_DIR, so the CM SDK api-drift
 # check resolves to a bogus /7.txt dependency. Skip the check (dev-only).
 export WITHOUT_CHECK_API=true
+
+# ---- ccache --------------------------------------------------------------------
+# The 14.1 tree ships its own ccache binary in prebuilts. With USE_CCACHE all
+# C/C++ compilation (kernel, bionic, frameworks/native, ...) is cached across
+# runs via the Actions cache at /mnt/ccache (see build.yml) — a big cut in
+# rebuild time after the first run.
+export USE_CCACHE=1
+export CCACHE_DIR="${CCACHE_DIR:-/mnt/ccache}"
+export CCACHE_UMASK=000
+mkdir -p "$CCACHE_DIR"
+CCACHE_BIN="$ROMDIR/prebuilts/misc/linux-x86/ccache/ccache"
+if [ -x "$CCACHE_BIN" ]; then
+    "$CCACHE_BIN" -M 8G
+    "$CCACHE_BIN" -s 2>/dev/null | head -6 || true
+else
+    echo "WARNING: in-tree ccache missing, continuing uncached"
+fi
 
 cd "$ROMDIR"
 

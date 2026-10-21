@@ -11,16 +11,17 @@ import org.vosk.android.RecognitionListener;
 import org.vosk.android.SpeechService;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 
 /**
  * Fully offline voice recognition built on Vosk.
- * The small English model ships in APK assets and is unpacked on first use.
+ * The small English model is downloaded ON DEVICE after the first-boot
+ * setup (see ModelDownloader) and lives in filesDir/model.
  */
 public class VoiceEngine implements RecognitionListener {
+
+    /** ReadyListener message when the model has not been downloaded yet. */
+    public static final String MISSING_MODEL = "model_missing";
 
     public interface Callback {
         void onPartial(String text);
@@ -47,7 +48,7 @@ public class VoiceEngine implements RecognitionListener {
 
     private VoiceEngine() {}
 
-    /** Copies assets/model -> filesDir/model (once) and loads Vosk. */
+    /** Loads Vosk from filesDir/model (downloaded by ModelDownloader). */
     public void prepare(final Context ctx, final ReadyListener ready) {
         if (mModel != null) { ready.onReady(true, null); return; }
         final Context app = ctx.getApplicationContext();
@@ -55,14 +56,16 @@ public class VoiceEngine implements RecognitionListener {
             @Override
             public void run() {
                 try {
-                    File dir = new File(app.getFilesDir(), "model");
-                    File marker = new File(app.getFilesDir(), ".model_copied");
-                    if (!marker.exists()) {
-                        copyAssets(app, "model", dir);
-                        marker.createNewFile();
+                    if (!ModelDownloader.present(app)) {
+                        throw new MissingModelException();
                     }
+                    File dir = new File(app.getFilesDir(), "model");
                     mModel = new Model(dir.getAbsolutePath());
                     mMain.post(new Runnable() { @Override public void run() { ready.onReady(true, null); }});
+                } catch (MissingModelException me) {
+                    mMain.post(new Runnable() { @Override public void run() {
+                        ready.onReady(false, MISSING_MODEL);
+                    }});
                 } catch (final Exception e) {
                     mMain.post(new Runnable() { @Override public void run() {
                         ready.onReady(false, "Voice model failed to load: " + e.getMessage());
@@ -72,23 +75,11 @@ public class VoiceEngine implements RecognitionListener {
         }, "vosk-init").start();
     }
 
-    private static void copyAssets(Context ctx, String path, File out) throws IOException {
-        String[] children = ctx.getAssets().list(path);
-        if (children == null || children.length == 0) {
-            // leaf file
-            File f = new File(out, path.substring(path.lastIndexOf('/') + 1));
-            f.getParentFile().mkdirs();
-            InputStream in = ctx.getAssets().open(path);
-            OutputStream os = new FileOutputStream(f);
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
-            os.close(); in.close();
-            return;
-        }
-        for (String child : children) {
-            copyAssets(ctx, path + "/" + child, new File(out, child));
-        }
+    private static class MissingModelException extends Exception {}
+
+    /** Convenience: is the model downloaded and ready to load? */
+    public static boolean modelReady(Context c) {
+        return ModelDownloader.present(c);
     }
 
     public void setCallback(Callback cb) { mCallback = cb; }

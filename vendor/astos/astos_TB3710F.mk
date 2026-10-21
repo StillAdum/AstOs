@@ -9,6 +9,10 @@
 
 $(call inherit-product, device/lenovo/TB3710F/lineage.mk)
 
+# Single-home kiosk: drop Trebuchet so AstShell is the ONLY home app —
+# no home chooser ever appears, the tablet boots straight into AstOs.
+PRODUCT_PACKAGES := $(filter-out Trebuchet,$(PRODUCT_PACKAGES))
+
 # --- AstOs identity ---------------------------------------------------------
 
 # Warm boot animation (1024x600, espresso -> terracotta bloom)
@@ -31,7 +35,7 @@ PRODUCT_PACKAGES += \
 # --- Behaviour tuning --------------------------------------------------------
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.astos.version=1.0.0 \
+    ro.astos.version=2.3.0 \
     ro.astos.device=TB3-710F \
     ro.config.low_ram=true
 

@@ -6,20 +6,24 @@ import android.content.Intent;
 import android.provider.Settings;
 
 /**
- * Relaunch AstShell after boot (kiosk mode). On very first boot it hands
- * the session to the AstOs setup wizard instead — a clean, custom welcome,
- * not the CyanogenMod/Android one.
+ * Boot kiosk: re-apply the system lockdown (no shade / nav bar / lock
+ * screen, our keyboard as default IME) and open the dashboard — or the
+ * first-boot setup wizard when the device is fresh (astos_setup_done
+ * defaults to 0, so the wizard always runs on a new flash).
  */
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
+
+        Kiosk.apply(context);
+
         if (!AppSettings.bootLaunch(context)) return;
 
-        boolean setupDone = true;
+        boolean setupDone = false;
         try {
             setupDone = Settings.Global.getInt(context.getContentResolver(),
-                    "astos_setup_done", 1) == 1;
+                    "astos_setup_done", 0) == 1;
         } catch (Throwable ignored) {}
 
         if (!setupDone) {
@@ -34,10 +38,8 @@ public class BootReceiver extends BroadcastReceiver {
             }
         }
 
-        if (AppSettings.bootLaunch(context)) {
-            Intent i = new Intent(context, HomeActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(i);
-        }
+        Intent i = new Intent(context, HomeActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(i);
     }
 }

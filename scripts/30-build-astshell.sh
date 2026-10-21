@@ -35,19 +35,10 @@ if [ ! -x "$GRADLE_HOME/bin/gradle" ]; then
 fi
 "$GRADLE_HOME/bin/gradle" --version
 
-# ---- Vosk offline model (small en-US, ~40 MB) -------------------------------
-MODEL_DIR="app/src/main/assets/model"
-MODEL_ZIP="vosk-model-small-en-us-0.15.zip"
-mkdir -p app/src/main/assets
-if [ ! -f "$MODEL_DIR/conf/model.conf" ]; then
-    echo "Downloading Vosk model…"
-    rm -rf app/src/main/assets/model app/src/main/assets/vosk-*
-    curl -sL "https://alphacephei.com/vosk/models/$MODEL_ZIP" -o "/tmp/$MODEL_ZIP"
-    unzip -q "/tmp/$MODEL_ZIP" -d /tmp
-    rm -rf "$MODEL_DIR"
-    mv "/tmp/vosk-model-small-en-us-0.15" "$MODEL_DIR"
-fi
-echo "Model: $(du -sh $MODEL_DIR | cut -f1)"
+# NOTE: the Vosk voice model is NOT bundled anymore — the wizard downloads
+# it on the device at the end of setup ("Setup is almost finished, just
+# downloading a few more things..."). scripts/60-release.sh self-hosts the
+# zip on this repo's releases as the device-side fallback mirror.
 
 # ---- Android SDK bits (compileSdk 34 for AGP 8.5) -----------------------------
 export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"

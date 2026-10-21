@@ -37,13 +37,18 @@ an AstOs layer baked into `/system`.
 
 | | |
 |---|---|
-| 🎤 **Offline voice control** | Vosk speech recognition runs entirely on-device. No Google account, no cloud. |
-| 🏠 **Home Assistant, for real** | Lights, switches and scenes over the HA REST API — local network only. |
-| 🎵 **Spotify free + local music** | Transport controls (play/pause/next) work with free Spotify via media sessions. Built-in offline player for SD-card music. |
-| 🌤️ **Weather & clock** | Open-Meteo (no API key). |
-| ⏱️ **Voice timers** | "Set a timer for five minutes." |
-| 🧠 **1 GB RAM tuning** | zram swap + low-RAM profile keep Android 7.1 smooth. |
-| 🎨 **Warm, minimal UI** | Cream / terracotta / sage. Deliberately zero blue. |
+| 🧭 **First-boot setup wizard** | Always runs on a fresh flash: WiFi, city, Groq, **QR / localhost phone pairing**, then "Setup is almost finished, just downloading a few more things…" fetches the voice model on-device — never before setup. |
+| 🔒 **Pure kiosk** | Landscape-locked. No lock screen, no notification shade, no nav bar, no edge-swipe surprises — power-on goes straight to the ASCII dashboard. Nobody guesses it's Android. |
+| ⌨️ **AstOs keyboard** | Custom terminal IME — chunky monospace keys, digits row, [DEL]/[HIDE]/[GO], hold-DEL repeat, themed with the active palette. Selected automatically. |
+| 🎤 **Offline voice control** | Vosk speech recognition runs entirely on-device. No Google account, no cloud. Model downloads after setup over your WiFi. |
+| 🎵 **Discord-bot music** | "Play despacito" — on-device YouTube Music search + free streaming. Local SD music too. |
+| 🤖 **Groq AI assistant** | Ask anything; paste a free key in setup or the SETUP page. |
+| 🏠 **Home Assistant, for real** | Lights, switches and scenes over the HA REST API — pair it from your phone. |
+| 🌤️ **Weather, news & timers** | Open-Meteo (no API key), headlines, voice timers. |
+| 🎨 **12 theme palettes + 7 background FX** | Phosphor, Amber CRT, Ember Gold, Ice Cavern, Vaporwave and more — all switchable live. |
+| 🔘 **Bigger touch targets** | 2-row tap areas + larger default font (16/20/24 px) — the whole UI is finger-friendly now. |
+| 🔌 **Redesigned power + volume** | SHUT DOWN / REBOOT only, terminal-styled rows; warm espresso volume panel with terracotta sliders. |
+| 🧠 **1 GB RAM tuning + CI caching** | zram swap + low-RAM profile; ccache-cached builds make rebuilds much faster. |
 | 🔏 **GApps-free by default** | Nothing phones home. Flash OpenGApps if you want Play. |
 
 ## Device support

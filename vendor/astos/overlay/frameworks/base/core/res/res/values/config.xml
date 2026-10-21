@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AstOs power menu: just SHUT DOWN + REBOOT, nothing else -->
+    <string-array translatable="false" name="config_globalActionsList">
+        <item>power</item>
+        <item>restart</item>
+    </string-array>
+
+    <!-- Kiosk: never show the Android navigation bar (also enforced via
+         qemu.hw.mainkeys=1 in vendor/astos/configs/astos.rc) -->
+    <bool name="config_showNavigationBar">false</bool>
+</resources>

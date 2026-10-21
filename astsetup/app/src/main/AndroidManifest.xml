@@ -2,10 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- the wizard saves the voice model zip to /sdcard/AstOs/ for AstShell -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <!-- Platform-signed inside the ROM: marks the device provisioned,
          stores the user's AstOs choices where AstShell can read them. -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
@@ -26,6 +30,7 @@
             android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:immersive="true"
+            android:screenOrientation="landscape"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>

@@ -79,7 +79,7 @@ public class HomeActivity extends Activity
     private String mReplyFull = "";
     private int mReplyShown = 0;
     private String mPartial = "";            // live voice partial
-    private String mTicker = "AstOs 2.0 - your custom OS";
+    private String mTicker = "AstOs 2.3 - your custom OS";
     private Bitmap mCoverArt;
     private boolean mCoverArtIsAsciiPending;
     private CountDownTimer mTimer;
@@ -88,14 +88,21 @@ public class HomeActivity extends Activity
     private int mTransFrame = 0;
     private int mEqSeed = 0;
 
+    // voice model download progress (ASCII line on HOME)
+    private int mModelPct = -2;              // -2 idle, -1 indeterminate, 0..100
+    private String mModelNote = "";
+    private boolean mModelBusy = false;
+
     // equalizer bars smooth state
     private final int[] mEq = new int[10];
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
         // first boot: run the AstOs setup wizard before anything else
+        // (astos_setup_done defaults to 0 — a fresh flash ALWAYS gets the wizard)
         if (!setupDone(this)) {
             try {
                 startActivity(new Intent().setClassName("com.astos.setup",
@@ -111,6 +118,9 @@ public class HomeActivity extends Activity
         Speak.init(this);
         MusicEngine.listen(this);
 
+        // system lockdown: no lock screen, no shade, no nav bar, our keyboard
+        Kiosk.apply(this);
+
         buildUi();
 
         if (AppSettings.keepScreenOn(this)) {
@@ -121,10 +131,14 @@ public class HomeActivity extends Activity
         registerReceiver(mBatRecv, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         registerReceiver(mBatRecv, new IntentFilter(Intent.ACTION_TIME_TICK));
 
-        // voice model loads in background — mic works when ready
+        // voice model loads in background — it is NOT bundled anymore:
+        // after setup, on WiFi, it downloads on-device with a progress line
         VoiceEngine.get().prepare(this, new VoiceEngine.ReadyListener() {
             @Override public void onReady(boolean ok, String message) {
-                if (!ok) toast(message);
+                if (!ok) {
+                    if (VoiceEngine.MISSING_MODEL.equals(message)) onModelMissing();
+                    else toast(message);
+                }
             }
         });
 
@@ -137,8 +151,59 @@ public class HomeActivity extends Activity
 
     private static boolean setupDone(Context c) {
         try {
-            return Settings.Global.getInt(c.getContentResolver(), "astos_setup_done", 1) == 1;
-        } catch (Throwable t) { return true; }
+            return Settings.Global.getInt(c.getContentResolver(), "astos_setup_done", 0) == 1;
+        } catch (Throwable t) { return false; }
+    }
+
+    // ---------------------------------------------------------------- voice model
+
+    /** Model not on the device: auto-download on WiFi, else prompt on the MIC. */
+    private void onModelMissing() {
+        if (mModelBusy) return;
+        if (networkConnected()) {
+            downloadModel();
+        } else {
+            mModelPct = -2;
+            mModelNote = "voice model: connect WiFi, then tap MIC to download";
+        }
+    }
+
+    private boolean networkConnected() {
+        try {
+            android.net.ConnectivityManager cm =
+                    (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            android.net.NetworkInfo n = cm.getActiveNetworkInfo();
+            return n != null && n.isConnected();
+        } catch (Throwable t) { return false; }
+    }
+
+    private void downloadModel() {
+        if (mModelBusy) return;
+        mModelBusy = true;
+        mModelPct = -1;
+        mModelNote = "Setup is almost finished, just downloading a few more things...";
+        ModelDownloader.download(this, new ModelDownloader.Listener() {
+            @Override public void onProgress(int pct, String note) {
+                mModelPct = pct;
+                if (note != null) mModelNote = note;
+            }
+            @Override public void onDone() {
+                mModelBusy = false;
+                mModelPct = -2;
+                mModelNote = "";
+                VoiceEngine.get().prepare(HomeActivity.this, new VoiceEngine.ReadyListener() {
+                    @Override public void onReady(boolean ok, String message) {
+                        if (ok) toast("Voice ready");
+                        else toast(message);
+                    }
+                });
+            }
+            @Override public void onError(String msg) {
+                mModelBusy = false;
+                mModelPct = -2;
+                mModelNote = "voice model download failed - tap MIC to retry";
+            }
+        });
     }
 
     // ---------------------------------------------------------------- UI construction
@@ -255,7 +320,7 @@ public class HomeActivity extends Activity
         for (int i = 0; i < TABS.length; i++) {
             String label = (i == mPage ? "[ " + TABS[i] + " ]" : "  " + TABS[i] + "  ");
             v.put(x, 0, label, i == mPage ? mPal.accent : mPal.dim);
-            v.hit(x, 0, label.length(), 1, tabTap(i));
+            v.hit(x, 0, label.length(), 2, tabTap(i));
             x += label.length();
         }
         // right: battery + wifi
@@ -354,14 +419,22 @@ public class HomeActivity extends Activity
             v.putC(cx, y + 4, "tap ASSIST then NEWS for the latest headlines", mPal.dim);
         }
 
-        // action buttons
+        // action buttons — no APPS button by design ("people shouldn't even
+        // know it's Android"); everything is voice + these four pages
         int bx = cx - 24;
-        String[] labels = {"[ MIC ]", "[ APPS ]", "[ MUSIC ]", "[ SETUP ]"};
+        String[] labels = {"[ MIC ]", "[ MUSIC ]", "[ ASSIST ]", "[ SETUP ]"};
         for (int i = 0; i < labels.length; i++) {
             int w = labels[i].length();
             v.put(bx, y + 6, labels[i], mPal.fg);
-            v.hit(bx, y + 6, w, 1, btnTap(i));
+            v.hit(bx, y + 6, w, 2, btnTap(i));
             bx += w + 4;
+        }
+
+        // voice model download progress line ("Setup is almost finished...")
+        if (!mModelNote.isEmpty()) {
+            String pct = mModelPct >= 0 ? (" " + mModelPct + "%")
+                    : mModelPct == -1 ? " [..]" : "";
+            v.putC(cx, y + 8, clip("~ " + mModelNote + pct, cols - 8), mPal.accent);
         }
 
         // live voice partial
@@ -401,8 +474,8 @@ public class HomeActivity extends Activity
         final HomeActivity self = this;
         return new Runnable() { @Override public void run() {
             if (i == 0) startVoice();
-            else if (i == 1) allApps();
-            else if (i == 2) switchPage(PAGE_MUSIC);
+            else if (i == 1) switchPage(PAGE_MUSIC);
+            else if (i == 2) switchPage(PAGE_ASSIST);
             else switchPage(PAGE_SETUP);
         }};
     }
@@ -419,7 +492,7 @@ public class HomeActivity extends Activity
             v.putC(cx, 13, "say \"play <song name>\"  -  or tap below to type", mPal.dim);
             String search = "[ + SEARCH A SONG ]";
             v.putC(cx, 16, search, mPal.accent);
-            v.hit(cx - search.length() / 2, 16, search.length(), 1, new Runnable() {
+            v.hit(cx - search.length() / 2, 16, search.length(), 2, new Runnable() {
                 @Override public void run() { openInput("song", ""); }
             });
             drawLocalHint(v, cx, 19);
@@ -478,7 +551,7 @@ public class HomeActivity extends Activity
         int bxx = cx - bw / 2;
         for (int i = 0; i < btns.length; i++) {
             v.put(bxx, cy, btns[i][0], i == 4 ? mPal.dim : mPal.fg);
-            v.hit(bxx, cy, btns[i][0].length(), 1, musicBtn(btns[i][1]));
+            v.hit(bxx, cy, btns[i][0].length(), 2, musicBtn(btns[i][1]));
             bxx += btns[i][0].length() + 3;
         }
 
@@ -510,7 +583,7 @@ public class HomeActivity extends Activity
 
     private void drawLocalHint(AsciiView v, int cx, int y) {
         v.putC(cx, y, "[ PLAY MY LOCAL MUSIC ]", mPal.dim);
-        v.hit(cx - 11, y, 22, 1, new Runnable() { @Override public void run() { playLocalMusic(); }});
+        v.hit(cx - 11, y, 22, 2, new Runnable() { @Override public void run() { playLocalMusic(); }});
     }
 
     /** ASCII-art render of the cover bitmap, or a placeholder frame. */
@@ -579,7 +652,7 @@ public class HomeActivity extends Activity
         int cxx = cx - cw / 2;
         for (String[] c : chips) {
             v.put(cxx, y, c[0], mPal.dim);
-            v.hit(cxx, y, c[0].length(), 1, chipTap(c[1]));
+            v.hit(cxx, y, c[0].length(), 2, chipTap(c[1]));
             cxx += c[0].length() + 2;
         }
 
@@ -637,8 +710,8 @@ public class HomeActivity extends Activity
         String mode = AppSettings.bgMode(this);
         String bgLine = "< " + mode + " >";
         v.put(x + 12, y, bgLine, mPal.accent);
-        v.hit(x + 11, y, 1, 1, bgShift(-1));
-        v.hit(x + 12 + bgLine.length(), y, 1, 1, bgShift(1));
+        v.hit(x + 10, y, 3, 2, bgShift(-1));
+        v.hit(x + 12 + bgLine.length() - 1, y, 3, 2, bgShift(1));
         v.put(x + 12 + bgLine.length() + 2, y,
                 " " + joinNames(AsciiTheme.BG_MODES, mode), mPal.dim);
         y += 2;
@@ -647,17 +720,17 @@ public class HomeActivity extends Activity
         String pal = AppSettings.palette(this);
         String palLine = "< " + pal + " >";
         v.put(x + 12, y, palLine, mPal.accent);
-        v.hit(x + 11, y, 1, 1, palShift(-1));
-        v.hit(x + 12 + palLine.length(), y, 1, 1, palShift(1));
+        v.hit(x + 10, y, 3, 2, palShift(-1));
+        v.hit(x + 12 + palLine.length() - 1, y, 3, 2, palShift(1));
         y += 2;
 
         v.put(x, y, "FONT:", mPal.fg);
         String[] fonts = {"SMALL", "MED", "LARGE"};
-        int curF = AppSettings.fontPx(this) >= 22 ? 2 : (AppSettings.fontPx(this) <= 14 ? 0 : 1);
+        int curF = AppSettings.fontPx(this) >= 24 ? 2 : (AppSettings.fontPx(this) <= 16 ? 0 : 1);
         String fontLine = "< " + fonts[curF] + " >";
         v.put(x + 12, y, fontLine, mPal.accent);
-        v.hit(x + 11, y, 1, 1, fontShift(-1));
-        v.hit(x + 12 + fontLine.length(), y, 1, 1, fontShift(1));
+        v.hit(x + 10, y, 3, 2, fontShift(-1));
+        v.hit(x + 12 + fontLine.length() - 1, y, 3, 2, fontShift(1));
         y += 2;
 
         // toggle rows
@@ -673,7 +746,7 @@ public class HomeActivity extends Activity
         String key = AppSettings.groqKey(this);
         String keyTxt = key.isEmpty() ? "[ ADD FREE API KEY ]" : "[ gsk_...*** - CHANGE ]";
         v.put(x + 12, y, keyTxt, mPal.accent);
-        v.hit(x + 12, y, keyTxt.length(), 1, new Runnable() { @Override public void run() {
+        v.hit(x + 12, y, keyTxt.length(), 2, new Runnable() { @Override public void run() {
             openInput("groq", AppSettings.groqKey(HomeActivity.this));
         }});
         v.put(x + 12 + keyTxt.length() + 2, y, "console.groq.com - free", mPal.dim);
@@ -683,7 +756,7 @@ public class HomeActivity extends Activity
         String city = AppSettings.resolvedCity(this);
         String cityTxt = city.isEmpty() ? "[ SET CITY ]" : "[ " + city + " - CHANGE ]";
         v.put(x + 15, y, cityTxt, mPal.accent);
-        v.hit(x + 15, y, cityTxt.length(), 1, new Runnable() { @Override public void run() {
+        v.hit(x + 15, y, cityTxt.length(), 2, new Runnable() { @Override public void run() {
             openInput("city", AppSettings.city(HomeActivity.this));
         }});
         y += 2;
@@ -691,7 +764,7 @@ public class HomeActivity extends Activity
         v.put(x, y, "HOME ASSISTANT:", mPal.fg);
         String haTxt = AppSettings.haUrl(this).isEmpty() ? "[ CONNECT ]" : "[ CHANGE SERVER ]";
         v.put(x + 18, y, haTxt, mPal.accent);
-        v.hit(x + 18, y, haTxt.length(), 1, new Runnable() { @Override public void run() {
+        v.hit(x + 18, y, haTxt.length(), 2, new Runnable() { @Override public void run() {
             openInput("ha", AppSettings.haUrl(HomeActivity.this));
         }});
         y += 3;
@@ -700,17 +773,16 @@ public class HomeActivity extends Activity
         String[][] acts = {
                 {"[ RUN SETUP WIZARD ]", "wizard"},
                 {"[ ANDROID SETTINGS ]", "android"},
-                {"[ NOTIFICATION ACCESS ]", "notif"},
-                {"[ ALL APPS ]", "apps"}};
+                {"[ NOTIFICATION ACCESS ]", "notif"}};
         int ax = x;
         for (String[] act : acts) {
             v.put(ax, y, act[0], mPal.dim);
-            v.hit(ax, y, act[0].length(), 1, sysTap(act[1]));
+            v.hit(ax, y, act[0].length(), 2, sysTap(act[1]));
             ax += act[0].length() + 2;
         }
         y += 3;
 
-        v.put(x, y, "AstOs 2.0 - AstShell 2.0 - a real custom OS (LineageOS 14.1 core)", mPal.dim);
+        v.put(x, y, "AstOs 2.3 - AstShell 2.3 - a real custom OS (LineageOS 14.1 core)", mPal.dim);
     }
 
     private int drawToggle(AsciiView v, int x, int y, String label, boolean on, final String key) {
@@ -762,8 +834,8 @@ public class HomeActivity extends Activity
     private Runnable fontShift(final int d) {
         return new Runnable() { @Override public void run() {
             int cur = AppSettings.fontPx(HomeActivity.this);
-            int[] sizes = {14, 18, 22};
-            int idx = cur >= 22 ? 2 : (cur <= 14 ? 0 : 1);
+            int[] sizes = {16, 20, 24};
+            int idx = cur >= 24 ? 2 : (cur <= 16 ? 0 : 1);
             int next = sizes[(idx + d + 3) % 3];
             AppSettings.setFontPx(HomeActivity.this, next);
             mAscii.setFontPx(next);
@@ -781,8 +853,6 @@ public class HomeActivity extends Activity
                 startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
             } else if ("notif".equals(tag)) {
                 openNotificationAccess();
-            } else if ("apps".equals(tag)) {
-                allApps();
             }
         }};
     }
@@ -874,6 +944,14 @@ public class HomeActivity extends Activity
     private void startVoice() {
         if (VoiceEngine.get().isListening()) {
             VoiceEngine.get().stopListening();
+            return;
+        }
+        if (!VoiceEngine.modelReady(this)) {
+            if (!networkConnected()) {
+                toast("No network - connect WiFi to download the voice model");
+                return;
+            }
+            downloadModel();
             return;
         }
         try {

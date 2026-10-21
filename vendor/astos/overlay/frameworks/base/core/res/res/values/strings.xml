@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AstOs power menu wording: terminal style -->
+    <string name="global_action_power_off">SHUT DOWN</string>
+    <string name="global_action_restart">REBOOT</string>
+</resources>

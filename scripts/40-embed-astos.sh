@@ -268,7 +268,17 @@ fi
 grep -n "ro.sys.sdcardfs" "$DM" || echo "::warning::no sdcardfs prop found (device tree changed?)"
 
 # ---- free the space the app build used --------------------------------------
-sudo rm -rf /usr/local/lib/android/sdk "$HOME/.gradle" /tmp/gradle.zip /tmp/vosk-model-small-en-us-0.15.zip 2>/dev/null || true
+# Keep $HOME/.gradle — it is cached between runs (build-time win). The SDK is
+# ~2 GB and no longer needed once the APKs are embedded.
+sudo rm -rf /usr/local/lib/android/sdk /tmp/gradle.zip 2>/dev/null || true
+
+# sanity: the AstOs system overlays (power menu + volume redesign, no nav bar)
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/layout/global_actions_item.xml"
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/values/config.xml"
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/values-en/strings.xml"
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/packages/SystemUI/res/values/styles.xml"
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/packages/SystemUI/res/drawable/ic_volume_media.xml"
+grep -q "qemu.hw.mainkeys" "$ROMDIR/vendor/astos/configs/astos.rc"
 
 echo "::group::Disk after embed"
 df -h / /mnt || true

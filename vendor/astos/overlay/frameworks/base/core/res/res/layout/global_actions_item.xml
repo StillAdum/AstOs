@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AstOs power menu item: chunky monospace terminal row (long-press power). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="84dip"
+    android:orientation="horizontal"
+    android:paddingStart="20dip"
+    android:paddingEnd="24dip"
+    android:paddingTop="12dip"
+    android:paddingBottom="12dip"
+    >
+    <ImageView android:id="@+id/icon"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="center"
+        android:layout_marginEnd="20dip"
+        android:scaleType="center"/>
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:layout_marginEnd="8dip"
+        >
+        <TextView android:id="@+id/message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:gravity="center_vertical|start"
+            android:fontFamily="monospace"
+            android:textStyle="bold"
+            android:letterSpacing="0.08"
+            android:textSize="22sp"
+            android:textColor="#FFF2E7DA"
+            />
+        <TextView android:id="@+id/status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:minHeight="28dp"
+            android:fontFamily="monospace"
+            android:textSize="15sp"
+            android:textColor="#FFC4B39D"
+            />
+    </LinearLayout>
+</LinearLayout>
