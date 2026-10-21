@@ -49,7 +49,8 @@ export WITHOUT_CHECK_API=true
 export USE_CCACHE=1
 export CCACHE_DIR="${CCACHE_DIR:-/mnt/ccache}"
 export CCACHE_UMASK=000
-mkdir -p "$CCACHE_DIR"
+sudo mkdir -p "$CCACHE_DIR"
+sudo chown -R "$(id -un):$(id -gn)" "$CCACHE_DIR"
 CCACHE_BIN="$ROMDIR/prebuilts/misc/linux-x86/ccache/ccache"
 if [ -x "$CCACHE_BIN" ]; then
     "$CCACHE_BIN" -M 8G
