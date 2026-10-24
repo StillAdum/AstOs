@@ -276,6 +276,8 @@ sudo rm -rf /usr/local/lib/android/sdk /tmp/gradle.zip 2>/dev/null || true
 test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/layout/global_actions_item.xml"
 test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/values/config.xml"
 test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/values-en/strings.xml"
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/values/themes_device_defaults.xml"
+test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/core/res/res/drawable/ast_power_bg.xml"
 test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/packages/SystemUI/res/values/styles.xml"
 test -f "$ROMDIR/vendor/astos/overlay/frameworks/base/packages/SystemUI/res/drawable/ic_volume_media.xml"
 grep -q "qemu.hw.mainkeys" "$ROMDIR/vendor/astos/configs/astos.rc"

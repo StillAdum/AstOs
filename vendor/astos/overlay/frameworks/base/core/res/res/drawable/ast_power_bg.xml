@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AstOs power menu dialog background: warm espresso card with a soft
+     terracotta border (replaces the white Material dialog background that
+     made the v2.3 power options unreadable). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#FF2A211B"/>
+    <corners android:radius="22dp"/>
+    <stroke android:width="2dp" android:color="#66C96F4A"/>
+</shape>

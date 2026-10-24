@@ -1,27 +1,43 @@
 #!/usr/bin/env python3
 """
-gen_bootanimation.py — the AstOs ASCII boot animation.
+gen_bootanimation.py — the AstOs ASCII boot animation, v2 (orientation fix).
 
-1024x600 @ 20 fps, two parts:
-  part0 (once):  the ASCII "AstOs" figlet logo types itself in with a
-                 blinking block cursor, then the tagline "YOUR OWN OS"
-  part1 (loop):  the logo pulses gently, an ASCII spinner spins, dots march
+WHY PORTRAIT: the TB3-710F LCD is a portrait-scanned 600x1024 panel behind
+ro.sf.hwrotation=270 (SurfaceFlinger rotates the landscape UI for it).
+The device tree declares TARGET_SCREEN_WIDTH=600 / TARGET_SCREEN_HEIGHT=1024
+and the MTK gralloc hands the bootanimation a portrait window, so our old
+1024x600 landscape frames were center-cropped -> "boot animation not
+landscape" on the real device.
 
-Palette: warm amber on near-black (the no-blue AstOs identity).
-Output: vendor/astos/bootanimation/bootanimation.zip
+So: we DESIGN everything in landscape (1024x600) exactly as it must read on
+the glass, then pre-rotate each frame 90 degrees counter-clockwise and ship
+600x1024 portrait frames with desc "600 1024 20".  The hwrotation pipeline
+rotates them back to upright landscape on the glass.
+
+If a future build ever reads sideways, flip ROT_SIGN below (-90) and
+rebuild — that means the panel mount rotation went the other way.
+
+Style: the boot animation is the one place that stays ASCII-art (blocky
+figlet "AstOs" typing itself in, blinking cursor, ASCII spinner).  The
+shell itself moved on to the pixel UI in AstOs 2.4.
 """
 import os
 import zipfile
 from PIL import Image, ImageDraw, ImageFont
 
-W, H, FPS = 1024, 600, 20
+# ---- the only two knobs that matter ------------------------------------------
+DESIGN_W, DESIGN_H = 1024, 600      # what we draw (landscape, as on glass)
+ROT_SIGN = 90                       # CCW pre-rotation for hwrotation=270
+FPS = 20
+
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 
 BG = (20, 16, 10)
 FG = (255, 184, 77)       # amber
 FG_SOFT = (242, 217, 160)  # cream
+SHADE = (122, 96, 66)      # dim amber for the spinner rail
 
-# ---- the same 5-line figlet font as the shell (keep them in sync) ----------
+# ---- the same 5-line blocky font as before (keep the brand) ------------------
 FONT5 = {
     'A': ["  #  ", " # # ", "#####", "#   #", "#   #"],
     'B': ["#### ", "#   #", "#### ", "#   #", "#### "],
@@ -50,11 +66,16 @@ FONT5 = {
     'Y': ["#   #", " # # ", "  #  ", "  #  ", "  #  "],
     'Z': ["#####", "   # ", "  #  ", " #   ", "#####"],
     ' ': ["     ", "     ", "     ", "     ", "     "],
-    # lowercase glyphs for the mixed-case "AstOs" brand
     's': [" ####", "#    ", " ### ", "    #", "#### "],
     't': ["  #  ", "  #  ", "#####", "  #  ", "  #  "],
     'o': ["     ", " ### ", "#   #", "#   #", " ### "],
 }
+
+# content kept compact + centered with generous margins: even a wrong
+# rotation guess yields a complete (sideways) logo, never a cropped one.
+CELL = 16                             # px per block
+LOGO_X_CENTER = DESIGN_W // 2
+LOGO_Y_CENTER = (DESIGN_H // 2) - 70  # slightly above middle for the tagline
 
 
 def render_figlet(text):
@@ -66,123 +87,130 @@ def render_figlet(text):
     return rows
 
 
-def draw_ascii(img_draw, rows, origin_x, origin_y, cell, color, max_cols=None):
-    """Draw figlet rows as colored blocks of 'cell' px (blocky ASCII look)."""
-    for r, line in enumerate(rows):
-        if max_cols is not None:
-            line = line[:max_cols]
-        for c, ch in enumerate(line):
-            if ch == '#':
-                x = origin_x + c * cell
-                y = origin_y + r * cell
-                img_draw.rectangle([x, y, x + cell - 1, y + cell - 1], fill=color)
+def logo_origin(rows):
+    lw = len(rows[0]) * CELL
+    lx = LOGO_X_CENTER - lw // 2
+    ly = LOGO_Y_CENTER - (5 * CELL) // 2
+    return lx, ly
 
 
-def frame_logo_typing(progress, tag_progress, cursor_on):
-    img = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(img)
-    rows = render_figlet("AstOs")
-    cell = 14
-    lw = len(rows[0]) * cell
-    lx = (W - lw) // 2
-    ly = (H - 5 * cell) // 2 - 60
-
-    total_hashes = sum(line.count('#') for line in rows)
-    shown = int(total_hashes * min(1.0, progress))
-    # reveal left-to-right, top-to-bottom
+def draw_blocks(d, rows, shown, color, soft_blocks=None):
+    """Reveal 'shown' hashes left-to-right / top-to-bottom."""
     count = 0
-    done = False
     for r, line in enumerate(rows):
         for c, ch in enumerate(line):
-            if ch == '#':
-                count += 1
-                if count > shown:
-                    done = True
-                    break
-                x = lx + c * cell
-                y = ly + r * cell
-                d.rectangle([x, y, x + cell - 1, y + cell - 1], fill=FG)
-        if done:
-            break
-
-    # blinking block cursor at the write position
-    if not done and cursor_on:
-        cx_ = lx
-        cy_ = ly
-        count = 0
-        for r, line in enumerate(rows):
-            for c, ch in enumerate(line):
-                if ch == '#':
-                    if count >= shown:
-                        cx_ = lx + c * cell
-                        cy_ = ly + r * cell
-                        count = -1
-                        break
-                    count += 1
-            if count == -1:
-                break
-        d.rectangle([cx_, cy_, cx_ + cell - 1, cy_ + cell - 1], fill=FG_SOFT)
-
-    if done:
-        # tagline typing
-        tag = "YOUR OWN OPERATING SYSTEM"
-        f = ImageFont.truetype(FONT, 28)
-        shown_chars = int(len(tag) * min(1.0, tag_progress))
-        d.text(((W - d.textlength(tag, font=f)) // 2, ly + 5 * cell + 90),
-               tag[:shown_chars] + ("_" if cursor_on else ""), font=f, fill=FG_SOFT)
-    return img
+            if ch != '#':
+                continue
+            count += 1
+            if count > shown:
+                return count, None, None   # next block pos not reached yet
+            x, y = _block_xy(rows, r, c)
+            d.rectangle([x, y, x + CELL - 1, y + CELL - 1], fill=color)
+    return count, None, None
 
 
-def frame_pulse(pulse, spinner_char, dots):
-    img = Image.new("RGB", (W, H), BG)
+def _block_xy(rows, r, c):
+    lx, ly = logo_origin(rows)
+    return lx + c * CELL, ly + r * CELL
+
+
+def total_hashes(rows):
+    return sum(line.count('#') for line in rows)
+
+
+def frame_design(progress, tag_progress, cursor_on, pulse_on,
+                 spinner, dots):
+    """Design in LANDSCAPE coords (1024x600) — how it must read on glass."""
+    img = Image.new("RGB", (DESIGN_W, DESIGN_H), BG)
     d = ImageDraw.Draw(img)
     rows = render_figlet("AstOs")
-    cell = 14
-    lx = (W - len(rows[0]) * cell) // 2
-    ly = (H - 5 * cell) // 2 - 60
-    color = FG if pulse else FG_SOFT
-    for r, line in enumerate(rows):
-        for c, ch in enumerate(line):
-            if ch == '#':
-                x = lx + c * cell
-                y = ly + r * cell
-                d.rectangle([x, y, x + cell - 1, y + cell - 1], fill=color)
+    total = total_hashes(rows)
 
-    f = ImageFont.truetype(FONT, 28)
-    f2 = ImageFont.truetype(FONT, 24)
-    d.text(((W - d.textlength("booting", font=f)) // 2, ly + 5 * cell + 90),
-           "booting", font=f, fill=FG_SOFT)
-    d.text(((W - d.textlength(spinner_char + " " + dots, font=f2)) // 2,
-            ly + 5 * cell + 130), spinner_char + " " + dots, font=f2, fill=FG)
+    if progress < 1.0:
+        # type-in phase
+        shown = int(total * max(0.0, min(1.0, progress)))
+        draw_blocks(d, rows, shown, FG)
+        # blinking block cursor at the write head
+        if cursor_on and shown < total:
+            nxt = shown + 1
+            count = 0
+            for r, line in enumerate(rows):
+                for c, ch in enumerate(line):
+                    if ch != '#':
+                        continue
+                    count += 1
+                    if count == nxt:
+                        x, y = _block_xy(rows, r, c)
+                        d.rectangle([x, y, x + CELL - 1, y + CELL - 1],
+                                    fill=FG_SOFT)
+    else:
+        # fully typed: gentle pulse
+        color = FG if pulse_on else FG_SOFT
+        draw_blocks(d, rows, total, color)
+
+    # tagline (typed after the logo)
+    tag = "YOUR OWN OPERATING SYSTEM"
+    f = ImageFont.truetype(FONT, 30)
+    shown_chars = int(len(tag) * max(0.0, min(1.0, tag_progress)))
+    text = tag[:shown_chars] + ("_" if (cursor_on and progress >= 1.0
+                                        and shown_chars < len(tag)) else "")
+    if text:
+        tw = d.textlength(text, font=f)
+        d.text(((DESIGN_W - tw) // 2, LOGO_Y_CENTER + 5 * CELL // 2 + 90),
+               text, font=f, fill=FG_SOFT)
+
+    # spinner + marching dots (ASCII, boot-anim-only as allowed)
+    f2 = ImageFont.truetype(FONT, 26)
+    line = (spinner + "  " + dots) if progress >= 1.0 else ""
+    if line:
+        tw = d.textlength(line, font=f2)
+        d.text(((DESIGN_W - tw) // 2, LOGO_Y_CENTER + 5 * CELL // 2 + 140),
+               line, font=f2, fill=FG)
+
+    # bottom micro-caption: version + "booting"
+    f3 = ImageFont.truetype(FONT, 22)
+    cap = "AstOs 2.4  -  booting"
+    tw = d.textlength(cap, font=f3)
+    d.text(((DESIGN_W - tw) // 2, DESIGN_H - 64), cap, font=f3, fill=SHADE)
     return img
+
+
+def to_panel(design):
+    """Rotate the landscape design into the portrait panel format."""
+    return design.rotate(ROT_SIGN, expand=True)
 
 
 def main():
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "..", "vendor", "astos", "bootanimation")
-    work = "/tmp/bootanim"
+    work = "/tmp/bootanim24"
     os.makedirs(os.path.join(work, "part0"), exist_ok=True)
     os.makedirs(os.path.join(work, "part1"), exist_ok=True)
 
-    # ---- part0: logo types in (72 frames @ 20fps = 3.6s), tagline, hold ----
-    n0 = 72
+    spin = "|/-\\"
+
+    # ---- part0: logo types in (60 frames @ 20fps = 3s) + tagline + hold ----
+    n0 = 60
     for i in range(n0):
-        progress = min(1.0, i / 48.0)               # logo by frame 48
-        tag_progress = max(0.0, min(1.0, (i - 54) / 14.0))
-        cursor_on = (i // 4) % 2 == 0
-        frame_logo_typing(progress, tag_progress, cursor_on).save(
-            os.path.join(work, "part0", f"{i:04d}.png"), optimize=True)
+        logo_p = min(1.0, i / 36.0)               # logo by frame 36
+        tag_p = max(0.0, min(1.0, (i - 42) / 12.0))
+        cursor = (i // 4) % 2 == 0
+        design = frame_design(logo_p, tag_p, cursor, False, spin[0], ".")
+        to_panel(design).save(os.path.join(work, "part0", f"{i:04d}.png"),
+                              optimize=True)
 
     # ---- part1: pulse + spinner loop (40 frames = 2s) ----
-    spin = "|/-\\"
     n1 = 40
     for i in range(n1):
         pulse = (i // 10) % 2 == 0
-        frame_pulse(pulse, spin[i % 4], "." * (1 + (i // 5) % 6)).save(
-            os.path.join(work, "part1", f"{i:04d}.png"), optimize=True)
+        dots = "." * (1 + (i // 5) % 6)
+        design = frame_design(1.0, 1.0, False, pulse,
+                              spin[i % 4], dots)
+        to_panel(design).save(os.path.join(work, "part1", f"{i:04d}.png"),
+                              optimize=True)
 
-    # ---- desc.txt ----
-    desc = f"{W} {H} {FPS}\np 1 8 part0\np 0 0 part1\n"
+    # ---- desc.txt: portrait panel dims (see header) ----
+    desc = f"600 1024 {FPS}\np 1 8 part0\np 0 0 part1\n"
 
     # ---- pack (desc.txt first, entries STORED) ----
     out_zip = os.path.normpath(os.path.join(out_dir, "bootanimation.zip"))
@@ -202,12 +230,18 @@ def main():
     size = os.path.getsize(out_zip)
     print(f"bootanimation.zip: {size/1024:.0f} KB")
     print(desc)
-    # sanity
+
+    # sanity: dims + order + completeness
     with zipfile.ZipFile(out_zip) as z:
         names = z.namelist()
         assert names[0] == "desc.txt", "desc.txt must be first"
         assert "part0/0000.png" in names and "part1/0039.png" in names
-        print(f"OK: {len(names)} entries; desc.txt first; parts verified")
+        from PIL import Image as I
+        with z.open("part0/0000.png") as fh:
+            im = I.open(fh)
+            assert im.size == (600, 1024), f"frame must be 600x1024, got {im.size}"
+        assert z.read("desc.txt").decode().startswith("600 1024")
+        print(f"OK: {len(names)} entries; portrait 600x1024; desc first")
 
 
 if __name__ == "__main__":

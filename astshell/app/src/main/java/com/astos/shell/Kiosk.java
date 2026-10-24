@@ -56,6 +56,16 @@ public final class Kiosk {
         pinLandscape(c);
     }
 
+    /** Public re-assert used by KioskService / HomeActivity heartbeats. */
+    public static void disableShadePublic(Context c) {
+        disableShade(c);
+    }
+
+    /** Public re-assert of the immersive policy_control (KioskService). */
+    public static void hideSystemBarsPublic(Context c) {
+        hideSystemBars(c);
+    }
+
     /** Hide status + navigation bars everywhere (survives reboot). */
     static void hideSystemBars(Context c) {
         try {
@@ -67,7 +77,13 @@ public final class Kiosk {
 
     /** Shade can never expand; no notification icons or ticker anywhere.
      *  StatusBarManager.disable() is hidden API -> reflection (values are the
-     *  View.STATUS_BAR_DISABLE_* constants from the 7.1 framework). */
+     *  View.STATUS_BAR_DISABLE_* constants from the 7.1 framework).
+     *
+     *  IMPORTANT: SystemUI binds these flags to the CALLER's binder token and
+     *  clears them when that process dies or when SystemUI itself restarts —
+     *  that is why the v2.3 shade still opened sometimes. KioskService now
+     *  holds this disable from a persistent foreground process and re-asserts
+     *  it on a 20 s heartbeat + SCREEN_ON / TIME_TICK / USER_PRESENT. */
     static void disableShade(Context c) {
         try {
             Object sbm = c.getSystemService("statusbar");

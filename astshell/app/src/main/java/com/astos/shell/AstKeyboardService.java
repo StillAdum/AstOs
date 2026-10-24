@@ -1,10 +1,8 @@
 package com.astos.shell;
 
 import android.content.Context;
-import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
@@ -18,10 +16,22 @@ import android.inputmethodservice.InputMethodService;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * The AstOs keyboard — a chunky terminal-styled landscape IME, drawn in the
- * active AsciiTheme palette. Fully programmatic: big monospace keys, digit
- * row always visible, [DEL] with hold-to-repeat, [HIDE] and [GO] keys.
+ * The AstOs keyboard — a chunky warm landscape IME, drawn in the active
+ * AsciiTheme palette.
+ *
+ * v2.4 "the keyboard just disappears" fix: the old version rebuilt the whole
+ * input view with setInputView(onCreateInputView()) on every shift / layer
+ * toggle / auto-unshift. On Android 7.1 that tear-down mid-typing (often
+ * while the IME window is still animating in, or racing a focus change)
+ * intermittently leaves the IME window hidden — the reported bug. This
+ * version builds the view exactly ONCE and updates every key label in
+ * place; setInputView() is never called again for the lifetime of the
+ * service. onEvaluateInputViewShown() is forced true so a hiccup in the
+ * shown-state heuristic can never eat the keyboard either.
  */
 public class AstKeyboardService extends InputMethodService {
 
@@ -45,12 +55,24 @@ public class AstKeyboardService extends InputMethodService {
     private int mGap;
     private AsciiTheme.Palette mPal;
 
+    /** Every label-bearing key that changes with shift / layer, in place. */
+    private final List<TextView> mDynamicKeys = new ArrayList<TextView>();
+    /** The base character each dynamic key currently represents (same order). */
+    private final List<String> mDynamicBase = new ArrayList<String>();
+    private TextView mShiftKey;
+    private TextView mLayerKey;
+
     @Override
     public View onCreateInputView() {
+        mDynamicKeys.clear();
+        mDynamicBase.clear();
+        mShiftKey = null;
+        mLayerKey = null;
+
         Context c = getBaseContext();
         mPal = AsciiTheme.byName(AppSettings.palette(c));
 
-        // 5 rows of ~48dp-equivalent keys fits the landscape IME budget
+        // 5 rows of ~46dp keys fits the landscape IME budget
         mKeyHeight = Math.round(getResources().getDisplayMetrics().density * 46);
         mGap = Math.round(getResources().getDisplayMetrics().density * 4);
 
@@ -83,18 +105,29 @@ public class AstKeyboardService extends InputMethodService {
     /** Rows 1-3: letters or symbols depending on the layer toggle. */
     private LinearLayout letterRow(Context c, int rowIdx) {
         LinearLayout row = row(c);
-        String[] labels = (mSymbols ? LAYER_SYMBOLS : LAYER_LETTERS)[rowIdx];
 
         if (rowIdx == 2) {
-            TextView shift = key(c, "SHIFT", 1.4f, true);
-            if (mShifted) styleAccent(shift);
-            shift.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { toggleShift(); }
+            mShiftKey = key(c, "SHIFT", 1.4f, true);
+            mShiftKey.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    mShifted = !mShifted;
+                    refreshKeys();          // in place — never rebuild
+                }
             });
-            row.addView(shift);
+            row.addView(mShiftKey);
         }
 
-        for (String k : labels) row.addView(letterKey(c, k));
+        String[] labels = (mSymbols ? LAYER_SYMBOLS : LAYER_LETTERS)[rowIdx];
+        for (String k : labels) {
+            TextView kv = key(c, display(k), 1.0f, false);
+            final String base = k;
+            kv.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { commit(v, base); }
+            });
+            mDynamicKeys.add(kv);          // tracked for in-place relabeling
+            mDynamicBase.add(k);
+            row.addView(kv);
+        }
 
         View del = key(c, "DEL", 1.2f, true);
         bindDelete(del);
@@ -116,16 +149,20 @@ public class AstKeyboardService extends InputMethodService {
     private LinearLayout bottomRow(Context c) {
         LinearLayout row = row(c);
 
-        TextView layer = key(c, mSymbols ? "ABC" : "?123", 1.3f, true);
-        layer.setOnClickListener(new View.OnClickListener() {
+        mLayerKey = key(c, mSymbols ? "ABC" : "?123", 1.3f, true);
+        mLayerKey.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 mSymbols = !mSymbols;
-                setInputView(onCreateInputView()); // rebuild with new layer
+                refreshKeys();              // in place — never rebuild
             }
         });
-        row.addView(layer);
+        row.addView(mLayerKey);
 
-        row.addView(letterKey(c, ","));
+        TextView comma = key(c, ",", 1.0f, false);
+        comma.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { commit(v, ","); }
+        });
+        row.addView(comma);
 
         TextView space = key(c, "SPACE", 3.0f, false);
         space.setOnClickListener(new View.OnClickListener() {
@@ -133,7 +170,11 @@ public class AstKeyboardService extends InputMethodService {
         });
         row.addView(space);
 
-        row.addView(letterKey(c, "."));
+        TextView dot = key(c, ".", 1.0f, false);
+        dot.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { commit(v, "."); }
+        });
+        row.addView(dot);
 
         TextView hide = key(c, "HIDE", 1.4f, true);
         hide.setOnClickListener(new View.OnClickListener() {
@@ -178,18 +219,32 @@ public class AstKeyboardService extends InputMethodService {
         return k;
     }
 
-    private TextView letterKey(Context c, final String base) {
-        final TextView k = key(c, display(base), 1.0f, false);
-        k.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { commit(v, base); }
-        });
-        return k;
-    }
-
     private String display(String base) {
         boolean letter = base.length() == 1 && Character.isLetter(base.charAt(0));
         if (!letter) return base;
         return mShifted ? base.toUpperCase() : base;
+    }
+
+    /**
+     * THE v2.4 fix: relabel + restyle every tracked key in place.
+     * No setInputView(), no view rebuild, no window churn — the IME window
+     * is never torn down mid-typing again.
+     */
+    private void refreshKeys() {
+        for (int i = 0; i < mDynamicKeys.size(); i++) {
+            mDynamicKeys.get(i).setText(display(mDynamicBase.get(i)));
+        }
+        if (mLayerKey != null) mLayerKey.setText(mSymbols ? "ABC" : "?123");
+        if (mShiftKey != null) styleShiftKey();
+    }
+
+    private void styleShiftKey() {
+        if (mShiftKey == null) return;
+        if (mShifted) styleAccent(mShiftKey);
+        else {
+            mShiftKey.setTextColor(mPal.dim);
+            mShiftKey.setBackground(makeKeyBg(false));
+        }
     }
 
     private void styleAccent(TextView k) {
@@ -209,11 +264,6 @@ public class AstKeyboardService extends InputMethodService {
 
     // ------------------------------------------------------------- actions
 
-    private void toggleShift() {
-        mShifted = !mShifted;
-        setInputView(onCreateInputView());
-    }
-
     private void commit(View source, String s) {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
@@ -223,7 +273,7 @@ public class AstKeyboardService extends InputMethodService {
             mShifted = false;
         }
         ic.commitText(out, 1);
-        if (!out.equals(s)) setInputView(onCreateInputView());
+        if (!out.equals(s)) refreshKeys();   // in place, safe mid-typing
         tap(source);
     }
 
@@ -283,11 +333,31 @@ public class AstKeyboardService extends InputMethodService {
         if (v != null) v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
-    // ------------------------------------------------------------- misc
+    // ------------------------------------------------------------- robustness
 
-    /** Never enter ugly fullscreen extract mode — keep the ASCII UI visible. */
+    /** Never enter ugly fullscreen extract mode — keep the AstOs UI visible. */
     @Override
     public boolean onEvaluateFullscreenMode() {
         return false;
+    }
+
+    /**
+     * v2.4: always report the input view as shown-able. The framework's
+     * default heuristic (isFullscreenMode || mViewsCreated) can transiently
+     * return false right after an app-side focus churn and permanently hide
+     * the IME for that field — one more disappearing-keyboard vector closed.
+     */
+    @Override
+    public boolean onEvaluateInputViewShown() {
+        return true;
+    }
+
+    /** Self-heal: if some race left the input view hidden, show it again. */
+    @Override
+    public void onStartInputView(EditorInfo info, boolean restarting) {
+        super.onStartInputView(info, restarting);
+        try {
+            if (!isInputViewShown()) updateInputViewShown();
+        } catch (Throwable ignored) {}
     }
 }

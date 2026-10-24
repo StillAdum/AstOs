@@ -10,8 +10,8 @@ android {
         applicationId "com.astos.shell"
         minSdk 24          // device runs Android 7.1 (API 25)
         targetSdk 25       // aligned with the ROM platform
-        versionCode 3
-        versionName "2.3"
+        versionCode 4
+        versionName "2.4"
     }
 
     buildTypes {

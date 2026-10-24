@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Warm espresso alert-dialog background (AstShell in-app dialogs:
+     gallery picker etc.). Matches the ROM-wide power menu styling. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#FF2A211B"/>
+    <corners android:radius="20dp"/>
+    <stroke android:width="2dp" android:color="#66C96F4A"/>
+</shape>

@@ -1,6 +1,8 @@
 package com.astos.setup;
 
 import android.content.Context;
+import android.net.wifi.ScanResult;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -13,23 +15,33 @@ import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URLDecoder;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * A tiny hand-rolled HTTP server for phone pairing: the wizard shows a QR
- * code (and prints the http://<lan-ip>:8420/ address); the user opens it
- * on their phone and pushes Home Assistant credentials, Groq key, city and
- * theme straight into the wizard.
+ * PairServer v3 — the phone half of AstOs setup.
  *
- * Zero dependencies: ServerSocket + manual HTTP/1.1 parsing.
+ * Setup is FULLY phone-driven: the tablet opens the AstSetup_xxxx hotspot,
+ * the phone connects to it, opens the QR'd localhost URL and pushes the
+ * ENTIRE configuration from this page: home WiFi credentials (picked from
+ * the tablet's live scan list), city, Groq key, Home Assistant, theme.
+ * When the hotspot cannot start (side-loaded dev build), the server also
+ * answers on the LAN and the same page works over the shared network.
+ *
+ * Zero dependencies: ServerSocket + manual HTTP/1.1 parsing. The page is
+ * fully self-contained (no external resources — the setup hotspot has no
+ * internet).
  */
 public class PairServer {
 
     public interface Callback {
-        void onPosted(String haUrl, String haToken, String city, String groq, String theme, String bg);
+        void onPosted(String wifiSsid, String wifiPass, String haUrl,
+                      String haToken, String city, String groq,
+                      String theme, String bg);
         void onLog(String line);
     }
 
@@ -41,14 +53,22 @@ public class PairServer {
     private ServerSocket mServer;
     private volatile boolean mRunning = false;
 
+    /** Live wifi scan (tablet side), shown on the phone page. */
+    private volatile List<ScanResult> mNetworks = new ArrayList<ScanResult>();
+
     public PairServer(Context ctx, Callback cb) {
         mCtx = ctx.getApplicationContext();
         mCb = cb;
     }
 
+    public void setNetworks(List<ScanResult> networks) {
+        if (networks != null) mNetworks = networks;
+    }
+
     public synchronized void start() {
         if (mRunning) return;
         try {
+            // 0.0.0.0: answers on the AstSetup hotspot (ap0) AND the LAN
             mServer = new ServerSocket(PORT);
             mRunning = true;
             Thread t = new Thread(new Runnable() {
@@ -69,8 +89,10 @@ public class PairServer {
 
     public boolean isRunning() { return mRunning; }
 
+    /** The URL baked into the QR: the hotspot ip while the AP is up. */
     public String url() {
-        String ip = lanIp(mCtx);
+        String ip = SoftAp.hotspotIp();          // ap0 while hotspot is on
+        if (ip == null) ip = lanIp();            // LAN fallback (dev builds)
         if (ip == null) return null;
         return "http://" + ip + ":" + PORT;
     }
@@ -108,7 +130,11 @@ public class PairServer {
             }
 
             if ("GET".equals(method)) {
-                respond(s, 200, "text/html; charset=utf-8", page());
+                if (path.startsWith("/favicon")) {
+                    respond(s, 404, "image/png", "");
+                } else {
+                    respond(s, 200, "text/html; charset=utf-8", page());
+                }
             } else if ("POST".equals(method) && path.startsWith("/api")) {
                 char[] body = new char[Math.min(contentLength, 64 * 1024)];
                 int read = 0, n;
@@ -119,7 +145,8 @@ public class PairServer {
                 respond(s, 200, "application/json", "{\"ok\":true}");
                 mMain.post(new Runnable() {
                     @Override public void run() {
-                        mCb.onPosted(params.get("ha_url"), params.get("ha_token"),
+                        mCb.onPosted(params.get("wifi_ssid"), params.get("wifi_pass"),
+                                params.get("ha_url"), params.get("ha_token"),
                                 params.get("city"), params.get("groq"),
                                 params.get("theme"), params.get("bg"));
                     }
@@ -137,7 +164,7 @@ public class PairServer {
         OutputStream os = s.getOutputStream();
         PrintWriter w = new PrintWriter(os);
         byte[] b = body.getBytes("UTF-8");
-        w.print("HTTP/1.1 " + code + " OK\r\n"); // 404 OK is sloppy but harmless
+        w.print("HTTP/1.1 " + code + " OK\r\n");
         w.print("Content-Type: " + mime + "\r\n");
         w.print("Content-Length: " + b.length + "\r\n");
         w.print("Connection: close\r\n\r\n");
@@ -165,93 +192,160 @@ public class PairServer {
         mMain.post(new Runnable() { @Override public void run() { mCb.onLog(l); }});
     }
 
-    /** First site-local IPv4, preferring wlan0. */
-    static String lanIp(Context ctx) {
+    static String lanIp() {
         try {
-            NetworkInterface wlan = null;
-            Enumeration<NetworkInterface> all = NetworkInterface.getNetworkInterfaces();
-            while (all.hasMoreElements()) {
-                NetworkInterface ni = all.nextElement();
-                if (!ni.isUp() || ni.isLoopback()) continue;
-                if (ni.getName().startsWith("wlan")) { wlan = ni; break; }
-            }
-            if (wlan != null) {
-                String ip = firstIp(wlan);
-                if (ip != null) return ip;
-            }
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback()) continue;
-                String ip = firstIp(ni);
-                if (ip != null) return ip;
+                if (!ni.getName().startsWith("wlan")) continue;
+                for (InetAddress a : Collections.list(ni.getInetAddresses())) {
+                    if (a.isLoopbackAddress()) continue;
+                    String s = a.getHostAddress();
+                    if (s != null && s.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) return s;
+                }
             }
         } catch (Exception ignored) {}
         return null;
     }
 
-    private static String firstIp(NetworkInterface ni) {
-        for (InetAddress a : Collections.list(ni.getInetAddresses())) {
-            if (a.isLoopbackAddress()) continue;
-            String s = a.getHostAddress();
-            if (s != null && s.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) return s;
-        }
-        return null;
-    }
-
     // ----------------------------------------------------------------- page
 
+    private static String esc(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;");
+    }
+
+    private static String bars(int level) {
+        if (level > -55) return "\u2588\u2588\u2588\u2588";
+        if (level > -66) return "\u2588\u2588\u2588\u2584";
+        if (level > -77) return "\u2588\u2588\u2584\u2584";
+        return "\u2588\u2584\u2584\u2584";
+    }
+
     private String page() {
-        StringBuilder sb = new StringBuilder(4096);
+        // dedupe + sort the live scan by signal strength
+        java.util.LinkedHashMap<String, int[]> nets = new java.util.LinkedHashMap<String, int[]>();
+        List<ScanResult> scan = mNetworks;
+        try {
+            java.util.Collections.sort(scan, new java.util.Comparator<ScanResult>() {
+                @Override public int compare(ScanResult a, ScanResult b) {
+                    return Integer.compare(b.level, a.level);
+                }
+            });
+        } catch (Throwable ignored) {}
+        for (ScanResult r : scan) {
+            if (r.SSID == null || r.SSID.isEmpty()) continue;
+            boolean locked = r.capabilities != null
+                    && (r.capabilities.contains("WPA") || r.capabilities.contains("WEP")
+                    || r.capabilities.contains("EAP"));
+            if (nets.containsKey(r.SSID)) continue;
+            nets.put(r.SSID, new int[]{r.level, locked ? 1 : 0});
+        }
+
+        StringBuilder sb = new StringBuilder(8192);
         sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'>");
         sb.append("<meta name='viewport' content='width=device-width, initial-scale=1'>");
         sb.append("<title>AstOs Setup</title><style>");
         sb.append("body{background:#14100A;color:#F2D9A0;font-family:Menlo,Consolas,monospace;");
-        sb.append("margin:0;padding:24px;max-width:640px;}");
-        sb.append("h1{color:#FFB84D;font-size:18px;letter-spacing:2px;margin:0 0 4px}");
-        sb.append(".banner{white-space:pre;color:#FFB84D;font-size:11px;line-height:1.1;margin-bottom:18px}");
+        sb.append("margin:0;padding:20px 18px 60px;max-width:640px;}");
+        sb.append("h1{color:#FFB84D;font-size:20px;letter-spacing:2px;margin:0 0 2px}");
+        sb.append(".sub{color:#8A6F4D;font-size:12px;margin-bottom:18px}");
         sb.append("p{color:#8A6F4D;font-size:13px;line-height:1.5}");
         sb.append("label{display:block;margin:14px 0 6px;font-size:12px;color:#C8A96A;letter-spacing:1px}");
-        sb.append("input,select{width:100%;padding:14px;font-size:15px;background:#1E1810;");
-        sb.append("color:#F2D9A0;border:1px solid #4A3B26;border-radius:10px;font-family:inherit}");
-        sb.append("button{width:100%;margin-top:22px;padding:16px;font-size:16px;font-weight:bold;");
+        sb.append("input,select{width:100%;box-sizing:border-box;padding:14px;font-size:15px;");
+        sb.append("background:#1E1810;color:#F2D9A0;border:1px solid #4A3B26;");
+        sb.append("border-radius:10px;font-family:inherit}");
+        sb.append("button{width:100%;margin-top:24px;padding:16px;font-size:16px;font-weight:bold;");
         sb.append("background:#FFB84D;color:#14100A;border:0;border-radius:10px;font-family:inherit}");
-        sb.append(".ok{display:none;margin-top:16px;color:#C8A96A;font-size:14px;border:1px solid #4A3B26;");
-        sb.append("padding:14px;border-radius:10px}");
+        sb.append(".ok{display:none;margin-top:16px;color:#FFB84D;font-size:15px;");
+        sb.append("border:1px solid #C96F4A;padding:14px;border-radius:10px;line-height:1.5}");
         sb.append("fieldset{margin-top:14px;border:1px solid #4A3B26;border-radius:10px;padding:10px 14px}");
         sb.append("legend{color:#C8A96A;font-size:11px;letter-spacing:1px}");
-        sb.append(".r{display:block;margin:8px 0;font-size:14px}");
-        sb.append(".r input{width:auto;display:inline-block;margin-right:8px;}</style></head><body>");
-        sb.append("<div class='banner'>   _       _    ___  ___\n  /_\\   __| |_ / _ \\/ __|\n / _ \\ (_-&lt;  _| (_) \\__ \\\n/_/ \\_\\__/\\__|\\___/|___/</div>");
-        sb.append("<h1>PAIRING</h1>");
-        sb.append("<p>Send these settings straight to your AstOs tablet. Everything is optional — you can change it all later in the AstOs SETUP page.</p>");
+        sb.append(".r{display:block;margin:10px 0;font-size:15px}");
+        sb.append(".r input{width:auto;display:inline-block;margin-right:10px}");
+        sb.append(".net{display:block;margin:8px 0;font-size:15px}");
+        sb.append(".net input{width:auto;display:inline-block;margin-right:10px}");
+        sb.append(".sig{color:#8A6F4D;font-size:12px}");
+        sb.append("#pwrow{display:none}");
+        sb.append(".hint{font-size:11px;color:#8A6F4D;margin-top:4px}");
+        sb.append("</style></head><body>");
+        sb.append("<h1>AstOs SETUP</h1>");
+        sb.append("<div class='sub'>").append(esc(Build.MANUFACTURER)).append(' ')
+          .append(esc(Build.MODEL)).append(" &middot; pair by phone</div>");
+        sb.append("<p>Everything you enter here is pushed straight to the tablet over its ");
+        sb.append("setup network. Nothing leaves the room.</p>");
+
         sb.append("<form id='f'>");
-        sb.append("<label>HOME ASSISTANT URL</label>");
-        sb.append("<input name='ha_url' placeholder='http://homeassistant.local:8123' autocomplete='off'>");
-        sb.append("<label>HOME ASSISTANT TOKEN</label>");
-        sb.append("<input name='ha_token' placeholder='Profile - Security - long-lived access token' autocomplete='off'>");
+
+        // ---- home wifi (the reason setup is phone-driven) ----
+        sb.append("<fieldset><legend>YOUR HOME WIFI &middot; the tablet will join it</legend>");
+        if (nets.isEmpty()) {
+            sb.append("<label>NETWORK NAME (SSID)</label>");
+            sb.append("<input name='wifi_ssid' placeholder='your wifi name' autocomplete='off'>");
+        } else {
+            int i = 0;
+            for (Map.Entry<String, int[]> e : nets.entrySet()) {
+                String ssid = e.getKey();
+                int level = e.getValue()[0];
+                boolean locked = e.getValue()[1] == 1;
+                sb.append("<label class='net'><input type='radio' name='wifi_ssid' value='")
+                  .append(esc(ssid)).append('\'');
+                if (i == 0) sb.append(" checked");
+                sb.append(" onchange='pwtoggle(this)'> ")
+                  .append(esc(ssid)).append(" <span class='sig'>")
+                  .append(bars(level)).append(locked ? " &middot; &#128274;" : "")
+                  .append("</span></label>");
+                i++;
+            }
+            sb.append("<label>OTHER NETWORK (optional)</label>");
+            sb.append("<input name='wifi_ssid_other' placeholder='type a different name' autocomplete='off'>");
+        }
+        sb.append("<div id='pwrow'><label>WIFI PASSWORD</label>");
+        sb.append("<input name='wifi_pass' placeholder='password' autocomplete='off'>");
+        sb.append("<div class='hint'>left blank for open networks</div></div>");
+        sb.append("</fieldset>");
+
+        // ---- services ----
         sb.append("<label>WEATHER CITY</label>");
         sb.append("<input name='city' placeholder='e.g. Berlin' autocomplete='off'>");
-        sb.append("<label>GROQ API KEY (free, console.groq.com)</label>");
+        sb.append("<label>GROQ API KEY &middot; free, console.groq.com</label>");
         sb.append("<input name='groq' placeholder='gsk_...' autocomplete='off'>");
+        sb.append("<label>HOME ASSISTANT URL (optional)</label>");
+        sb.append("<input name='ha_url' placeholder='http://homeassistant.local:8123' autocomplete='off'>");
+        sb.append("<label>HOME ASSISTANT TOKEN (optional)</label>");
+        sb.append("<input name='ha_token' placeholder='long-lived access token' autocomplete='off'>");
+
+        // ---- theme ----
         sb.append("<fieldset><legend>THEME</legend>");
         for (AsciiTheme.Palette p : AsciiTheme.PALETTES) {
-            sb.append("<label class='r'><input type='radio' name='theme' value='").append(p.name)
-              .append("'").append(p == AsciiTheme.PALETTES[0] ? " checked" : "")
-              .append("> ").append(p.name).append("</label>");
+            sb.append("<label class='r'><input type='radio' name='theme' value='")
+              .append(esc(p.name)).append('\'')
+              .append(p == AsciiTheme.PALETTES[0] ? " checked" : "")
+              .append("> ").append(esc(p.name)).append("</label>");
         }
         sb.append("</fieldset><fieldset><legend>BACKGROUND FX</legend>");
         for (String m : AsciiTheme.BG_MODES) {
             if ("IMAGE".equals(m)) continue;
             sb.append("<label class='r'><input type='radio' name='bg' value='").append(m)
-              .append("'").append("RAIN".equals(m) ? " checked" : "")
+              .append('\'').append("RAIN".equals(m) ? " checked" : "")
               .append("> ").append(m).append("</label>");
         }
         sb.append("</fieldset>");
+
         sb.append("<button type='submit'>SEND TO TABLET</button></form>");
-        sb.append("<div class='ok' id='ok'>[ SENT ] Settings received — check your tablet.</div>");
-        sb.append("<script>document.getElementById('f').addEventListener('submit',function(ev){");
+        sb.append("<div class='ok' id='ok'>&#10003; SENT &mdash; watch your tablet.<br>");
+        sb.append("It will now leave the setup hotspot and join your home wifi.</div>");
+
+        sb.append("<script>");
+        sb.append("document.getElementById('f').addEventListener('submit',function(ev){");
         sb.append("ev.preventDefault();");
-        sb.append("fetch('/api',{method:'POST',body:new URLSearchParams(new FormData(ev.target)).toString()})");
-        sb.append(".then(function(){document.getElementById('ok').style.display='block';ev.target.reset();});");
+        sb.append("var fd=new FormData(ev.target);");
+        sb.append("var other=(fd.get('wifi_ssid_other')||'').trim();");
+        sb.append("if(other){fd.set('wifi_ssid',other);}");
+        sb.append("fd.delete('wifi_ssid_other');");
+        sb.append("fetch('/api',{method:'POST',body:new URLSearchParams(fd).toString()})");
+        sb.append(".then(function(){document.getElementById('ok').style.display='block';");
+        sb.append("document.querySelector('button').disabled=true;});");
         sb.append("});</script></body></html>");
         return sb.toString();
     }

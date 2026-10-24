@@ -12,7 +12,9 @@ import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.os.BatteryManager;
 import android.os.Bundle;
@@ -20,13 +22,9 @@ import android.os.CountDownTimer;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
@@ -43,13 +41,18 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * AstShell 2.0 — the ASCII home of AstOs.
+ * AstShell 2.4 — the pixel home of AstOs.
  *
- * Everything is drawn as monospace character art through AsciiView:
- * a figlet clock, ASCII weather cards, an animated Now Playing screen
- * with album art, a matrix-rain background, and very nice animations.
- * Four pages: HOME, MUSIC (Discord-bot-style on-demand songs), ASSIST
+ * The v2.x ASCII character-grid dashboard was too cluttered, mis-scaled
+ * and hard to read, so the shell now renders a clean, spacious canvas UI
+ * (PixelUi + PixelIcon): big blocky pixel clock, warm cards, chunky
+ * pixel-art icons, and smooth sine-wave animations — ASCII art now only
+ * lives in the boot animation, where it belongs.
+ *
+ * Four pages: HOME, MUSIC (Discord-bot style on-demand songs), ASSIST
  * (weather/news/date/AI), SETUP (theme, background, keys).
+ * Everything is laid out in dp from the measured view size, so it scales
+ * properly on the 1024x600 screen — nothing out of frame anymore.
  */
 public class HomeActivity extends Activity
         implements CommandRouter.Actions, VoiceEngine.Callback, MusicEngine.Listener {
@@ -61,16 +64,16 @@ public class HomeActivity extends Activity
     private static final int PAGE_ASSIST = 2;
     private static final int PAGE_SETUP = 3;
     private static final String[] TABS = {"HOME", "MUSIC", "ASSIST", "SETUP"};
+    private static final String[] TAB_ICONS =
+            {PixelIcon.HOME, PixelIcon.NOTE, PixelIcon.CHAT, PixelIcon.SLIDERS};
 
-    private AsciiView mAscii;
-    private BackgroundFX mBgFx;
+    private PixelUi mUi;
     private AsciiTheme.Palette mPal;
     private EditText mInput;
-    private ImageView mArt;
     private FrameLayout mRoot;
 
     private int mPage = PAGE_HOME;
-    private String mInputMode = ""; // "", "song", "groq", "city"
+    private String mInputMode = ""; // "", "song", "groq", "city", "ha"
 
     // state
     private WeatherProvider.WeatherInfo mWeather;
@@ -79,22 +82,21 @@ public class HomeActivity extends Activity
     private String mReplyFull = "";
     private int mReplyShown = 0;
     private String mPartial = "";            // live voice partial
-    private String mTicker = "AstOs 2.3 - your custom OS";
     private Bitmap mCoverArt;
-    private boolean mCoverArtIsAsciiPending;
     private CountDownTimer mTimer;
     private long mTimerEnds;
-    private String mTransition;
-    private int mTransFrame = 0;
-    private int mEqSeed = 0;
 
-    // voice model download progress (ASCII line on HOME)
+    // page transition animation (smooth slide, not ascii wipe)
+    private long mPageAnimStart = -1;
+    private int mPageAnimDir;
+
+    // voice model download progress (slim bar on HOME)
     private int mModelPct = -2;              // -2 idle, -1 indeterminate, 0..100
     private String mModelNote = "";
     private boolean mModelBusy = false;
 
-    // equalizer bars smooth state
-    private final int[] mEq = new int[10];
+    // smooth equalizer state (0..100 per bar)
+    private final int[] mEq = new int[9];
 
     @Override
     protected void onCreate(Bundle b) {
@@ -120,6 +122,8 @@ public class HomeActivity extends Activity
 
         // system lockdown: no lock screen, no shade, no nav bar, our keyboard
         Kiosk.apply(this);
+        // persistent shade-killer heartbeat (v2.4: the shade must NEVER open)
+        KioskService.ensureRunning(this);
 
         buildUi();
 
@@ -128,8 +132,9 @@ public class HomeActivity extends Activity
         }
         if (AppSettings.kiosk(this)) applyFullscreen(true);
 
-        registerReceiver(mBatRecv, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        registerReceiver(mBatRecv, new IntentFilter(Intent.ACTION_TIME_TICK));
+        registerReceiver(mTickRecv, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        registerReceiver(mTickRecv, new IntentFilter(Intent.ACTION_TIME_TICK));
+        registerReceiver(mTickRecv, new IntentFilter(Intent.ACTION_SCREEN_ON));
 
         // voice model loads in background — it is NOT bundled anymore:
         // after setup, on WiFi, it downloads on-device with a progress line
@@ -214,29 +219,36 @@ public class HomeActivity extends Activity
         mRoot = new FrameLayout(this);
         mRoot.setBackgroundColor(mPal.bg);
 
-        mAscii = new AsciiView(this);
-        mAscii.setBgColor(mPal.bg);
-        mAscii.setFontPx(AppSettings.fontPx(this));
-        mAscii.setFps(AppSettings.animations(this) ? 24 : 4);
-        mRoot.addView(mAscii, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mUi = new PixelUi(this);
+        mUi.setPalette(mPal);
+        mUi.setUiScale(uiScale());
+        mUi.setBgMode(AppSettings.bgMode(this));
+        mRoot.addView(mUi, new FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // album-art overlay (real bitmap mode) — hidden unless MUSIC page
-        mArt = new ImageView(this);
-        mArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        mArt.setVisibility(View.GONE);
-        mRoot.addView(mArt);
-
-        // terminal-style input line overlay
+        // terminal-style input bar overlay (restyled, IME-safe)
         mInput = new EditText(this);
         mInput.setTypeface(Typeface.MONOSPACE);
         mInput.setTextColor(mPal.fg);
-        mInput.setBackgroundColor(Color.argb(200,
-                Color.red(mPal.bg), Color.green(mPal.bg), Color.blue(mPal.bg)));
+        mInput.setTextSize(15f);
+        GradientDrawable inputBg = new GradientDrawable();
+        inputBg.setCornerRadius(dp(10));
+        inputBg.setColor(Color.argb(230, Color.red(mPal.bg), Color.green(mPal.bg),
+                Color.blue(mPal.bg)));
+        inputBg.setStroke(Math.max(2, (int) dp(0.7f)),
+                AsciiTheme.dimColor(mPal.accent, 0.6f, mPal.bg));
+        mInput.setBackground(inputBg);
+        mInput.setPadding((int) dp(14), (int) dp(10), (int) dp(14), (int) dp(10));
         mInput.setVisibility(View.GONE);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM);
+        int mar = (int) dp(16);
+        lp.leftMargin = mar;
+        lp.rightMargin = mar;
+        lp.bottomMargin = (int) dp(10);
         mRoot.addView(mInput, lp);
         mInput.setOnEditorActionListener(new EditText.OnEditorActionListener() {
             @Override public boolean onEditorAction(android.widget.TextView v, int actionId, KeyEvent event) {
@@ -252,202 +264,429 @@ public class HomeActivity extends Activity
 
         setContentView(mRoot);
 
-        mBgFx = new BackgroundFX(AppSettings.bgMode(this));
-        mAscii.setBackgroundFx(mBgFx);
-        mAscii.setRenderer(new AsciiView.Renderer() {
-            @Override public void onFrame(AsciiView v, long frame) {
-                drawFrame(v, frame);
+        mUi.setRenderer(new PixelUi.Renderer() {
+            @Override public void onFrame(PixelUi ui, android.graphics.Canvas c, long tms) {
+                drawFrame(ui, c, tms);
             }
         });
-        mAscii.start();
+        mUi.setSwipeListener(new PixelUi.SwipeListener() {
+            @Override public void onSwipe(int dir) {
+                switchPage(dir < 0 ? (mPage + 1) % 4 : (mPage + 3) % 4);
+            }
+        });
+        mUi.start();
+    }
 
-        // swipe left/right to change pages
-        mAscii.setOnTouchListener(new View.OnTouchListener() {
-            float x0; boolean used;
-            @Override public boolean onTouch(View v, MotionEvent ev) {
-                if (ev.getAction() == MotionEvent.ACTION_DOWN) { x0 = ev.getX(); used = false; }
-                if (ev.getAction() == MotionEvent.ACTION_MOVE && !used
-                        && Math.abs(ev.getX() - x0) > 90) {
-                    used = true;
-                    switchPage(ev.getX() < x0 ? (mPage + 1) % 4 : (mPage + 3) % 4);
-                }
-                if (ev.getAction() == MotionEvent.ACTION_UP && !used) {
-                    // let AsciiView handle taps
-                    mAscii.dispatchTap(ev);
-                }
-                return true;
-            }
-        });
+    private float uiScale() {
+        int f = AppSettings.fontPx(this);
+        if (f >= 24) return 1.18f;
+        if (f <= 16) return 0.92f;
+        return 1f;
+    }
+
+    private float dp(float v) {
+        return v * getResources().getDisplayMetrics().density;
     }
 
     // ---------------------------------------------------------------- frame render
 
-    private void drawFrame(AsciiView v, long frame) {
-        mPal = AsciiTheme.byName(AppSettings.palette(this));
-        v.setBgColor(mPal.bg);
-        mRoot.setBackgroundColor(mPal.bg);
+    private void drawFrame(PixelUi ui, android.graphics.Canvas c, long tms) {
+        AsciiTheme.Palette pal = AsciiTheme.byName(AppSettings.palette(this));
+        if (pal != mPal) {
+            mPal = pal;
+            ui.setPalette(pal);
+            mRoot.setBackgroundColor(pal.bg);
+        }
 
-        v.wipe();
-        mBgFx.render(v, frame, mPal);
+        float w = ui.widthDp(), h = ui.heightDp();
+        ui.drawBackground(c, tms);
 
-        int cols = v.cols(), rows = v.rows();
-        drawTopBar(v, cols, frame);
-        drawInputLine(v, cols, rows);
-        drawHint(v, cols, rows);
+        // top status strip + bottom nav frame every page
+        float topH = drawTopBar(ui, c, w);
+        float navY = h - 72 - 10;
+        drawNav(ui, c, w, h, navY);
 
+        // page content, with a smooth slide transition
+        float cy = topH + 6;
+        float ch = navY - 12 - cy;
+        int save = c.save();
+        float slide = 0f, alpha = 1f;
+        if (mPageAnimStart > 0) {
+            float p = Math.min(1f, (tms - mPageAnimStart) / 220f);
+            float ease = 1f - (1f - p) * (1f - p);   // ease-out quad
+            slide = mPageAnimDir * (1f - ease) * w * 0.22f;
+            alpha = 0.25f + 0.75f * ease;
+            if (p >= 1f) mPageAnimStart = -1;
+        }
+        c.translate(slide * dp(1), 0);
+        c.saveLayerAlpha(0, cy * dp(1), w * dp(1), (cy + ch) * dp(1),
+                (int) (alpha * 255));
         switch (mPage) {
-            case PAGE_HOME:  drawHome(v, cols, rows, frame); break;
-            case PAGE_MUSIC: drawMusic(v, cols, rows, frame); break;
-            case PAGE_ASSIST: drawAssist(v, cols, rows, frame); break;
-            case PAGE_SETUP: drawSetup(v, cols, rows, frame); break;
+            case PAGE_HOME:  drawHome(ui, c, w, cy, ch, tms); break;
+            case PAGE_MUSIC: drawMusic(ui, c, w, cy, ch, tms); break;
+            case PAGE_ASSIST: drawAssist(ui, c, w, cy, ch, tms); break;
+            case PAGE_SETUP: drawSetup(ui, c, w, cy, ch, tms); break;
+        }
+        c.restore();
+        c.restoreToCount(save);
+
+        // live voice partial — always visible while listening
+        if (!mPartial.isEmpty()) {
+            String s = clip(mPartial, 48);
+            ui.textCentered(c, s, w / 2f, navY - 12, 14, mPal.accent, true, false);
         }
 
-        if (mTransition != null) drawTransition(v, cols, rows, frame);
-    }
-
-    private void drawTopBar(AsciiView v, int cols, long frame) {
-        // shimmer logo
-        String logo = " AstOs ";
-        for (int i = 0; i < logo.length(); i++) {
-            int ph = (int) ((frame / 2 + i) % 12);
-            int col = ph < 3 ? mPal.accent : mPal.fg;
-            v.setCellChar(1 + i, 0, logo.charAt(i), col);
+        // timer chip (top-right, below the bar)
+        if (mTimer != null) {
+            long left = Math.max(0, mTimerEnds - System.currentTimeMillis());
+            String s = "timer " + fmtMs(left);
+            float tw = ui.textWidth(s, 12, true);
+            ui.pill(c, w - tw - 22, topH + 4, tw + 14, 22, false, 6);
+            ui.text(c, s, w - tw - 15, topH + 20, 12, mPal.accent, true, true);
         }
-        // tabs, centered
-        int total = 0;
-        for (String t : TABS) total += t.length() + 4;
-        int x = (cols - total) / 2;
-        for (int i = 0; i < TABS.length; i++) {
-            String label = (i == mPage ? "[ " + TABS[i] + " ]" : "  " + TABS[i] + "  ");
-            v.put(x, 0, label, i == mPage ? mPal.accent : mPal.dim);
-            v.hit(x, 0, label.length(), 2, tabTap(i));
-            x += label.length();
-        }
-        // right: battery + wifi
-        String stat = " " + batteryPct() + "%" + (wifiUp() ? " [~] " : " [x] ");
-        v.put(cols - stat.length(), 0, stat, mPal.dim);
     }
 
-    private Runnable tabTap(final int i) {
-        return new Runnable() { @Override public void run() { switchPage(i); }};
+    /** Top status strip: wordmark left, connectivity + battery right. */
+    private float drawTopBar(PixelUi ui, android.graphics.Canvas c, float w) {
+        // wordmark: blocky AstOs + two accent pixels
+        ui.text(c, "AstOs", 14, 22, 17, mPal.fg, true, true);
+        ui.pill(c, 58, 10, 5, 5, true, 1);
+        ui.pill(c, 58, 17, 5, 5, false, 1);
+
+        String stat = batteryPct() + "%";
+        float sw = ui.textWidth(stat, 13, true);
+        ui.text(c, stat, w - sw - 8, 22, 13, mPal.dim, true, true);
+        ui.icon(c, PixelIcon.BATTERY, w - sw - 30, 16, 14);
+        ui.icon(c, wifiUp() ? PixelIcon.WIFI : PixelIcon.CHAT,
+                w - sw - 52, 16, 14);
+        return 34f;
     }
 
-    private void drawInputLine(AsciiView v, int cols, int rows) {
-        if (mInputMode.isEmpty()) return;
-        String hint = "song".equals(mInputMode) ? "SONG NAME"
-                : "groq".equals(mInputMode) ? "GROQ API KEY (gsk_...)"
-                : "city".equals(mInputMode) ? "CITY NAME" : "";
-        v.put(cols - hint.length() - 2, rows - 3, hint, mPal.dim);
-    }
-
-    private void drawHint(AsciiView v, int cols, int rows) {
-        String h = hintFor();
-        v.putC(cols / 2, rows - 1, h, mPal.dim);
-    }
-
-    private String hintFor() {
-        switch (mPage) {
-            case PAGE_HOME:
-                return "tap MIC to talk - say \"play despacito\" or \"what's the news\" - swipe for pages";
-            case PAGE_MUSIC:
-                return "say \"play <song>\" or type a song name - free, no account, Discord-bot style";
-            case PAGE_ASSIST:
-                return "ask me anything - weather, news, date, or any question (Groq AI)";
-            default:
-                return "make it yours: theme, background, keys - all ASCII, all yours";
+    /** Bottom navigation: four big, readable cards — tap or swipe. */
+    private void drawNav(PixelUi ui, android.graphics.Canvas c, float w, float h,
+                         float navY) {
+        float gap = 10;
+        float bw = (w - gap * 5) / 4f;
+        float bh = 60;
+        float y = h - bh - 10;
+        for (int i = 0; i < 4; i++) {
+            float x = gap + i * (bw + gap);
+            boolean active = i == mPage;
+            ui.card(c, x, y, bw, bh, 10, active);
+            float cx = x + bw / 2f;
+            ui.icon(c, TAB_ICONS[i], cx, y + bh * 0.42f, active ? 20 : 18);
+            String label = active ? "[" + TABS[i] + "]" : TABS[i];
+            ui.textCentered(c, label, cx, y + bh - 10, 11,
+                    active ? mPal.accent : mPal.dim, active, true);
+            final int page = i;
+            ui.hit(x, y, bw, bh, new Runnable() {
+                @Override public void run() { switchPage(page); }
+            });
         }
     }
 
     // ---------------------------------------------------------------- HOME
 
-    private void drawHome(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        Date now = new Date();
+    private void drawHome(PixelUi ui, android.graphics.Canvas c, float w,
+                          float cy, float ch, long tms) {
+        float midX = w / 2f;
+        boolean anims = AppSettings.animations(this);
 
-        // big figlet clock with blinking colon
-        String hm = new SimpleDateFormat("HH:mm", Locale.US).format(now);
-        if (!AppSettings.animations(this)) {
-            Figlet.draw(v, cx, 2, hm, mPal.fg);
+        // ---- big blocky pixel clock (the star of the show) ----
+        String hm = new SimpleDateFormat("HH:mm", Locale.US).format(new Date());
+        float block = ch >= 300 ? 9f : 7f;
+        float clockH = block * 7;
+        float clockW = PixelIcon.measurePixelNumber(hm, block);
+        PixelIcon.drawPixelNumber(c, hm, midX - clockW / 2f, cy + 8,
+                block, mPal.fg, mPixelPaint);
+        if (anims) {
+            // subtle warm underline that breathes (smooth, not ascii)
+            float breathe = 0.5f + 0.5f * (float) Math.sin(tms / 900.0);
+            ui.pill(c, midX - 70, cy + 8 + clockH + 6, 140 * breathe, 3, true, 2);
+        }
+
+        // ---- date + weather line ----
+        float dy = cy + 8 + clockH + 18;
+        String date = new SimpleDateFormat("EEEE  ·  MMMM d", Locale.US).format(new Date());
+        ui.textCentered(c, date.toUpperCase(Locale.US), midX, dy, 14, mPal.dim, false, false);
+
+        if (mWeather != null) {
+            float wy = dy + 26;
+            String line = Math.round(mWeather.temp) + "\u00B0  "
+                    + WeatherProvider.describe(mWeather.code).toUpperCase(Locale.US)
+                    + "   ·   " + mWeather.city.toUpperCase(Locale.US);
+            float tw = ui.textWidth(line, 14, false);
+            ui.pill(c, midX - tw / 2f - 16, wy - 18, tw + 32, 30, false, 8);
+            ui.icon(c, weatherIcon(mWeather.code), midX - tw / 2f - 4, wy - 5, 14);
+            ui.text(c, line, midX - tw / 2f + 10, wy, 14, mPal.accent, true, false);
         } else {
-            boolean blink = (frame / 12) % 2 == 0;
-            String left = hm.substring(0, 2), right = hm.substring(3);
-            String[] gl = Figlet.render(left), gr = Figlet.render(right), gc = Figlet.render(":");
-            int lw = gl[0].length(), gw = gr[0].length();
-            int startX = cx - (lw + 2 + gw) / 2;
-            for (int r = 0; r < 5; r++) {
-                v.put(startX, 2 + r, gl[r], mPal.fg);
-                v.put(startX + lw + 2, 2 + r, gc[r], blink ? mPal.accent : mPal.dim);
-                v.put(startX + lw + 4, 2 + r, gr[r], mPal.fg);
+            ui.textCentered(c, "weather loads once you set your city (SETUP)",
+                    midX, dy + 20, 12, mPal.dim, false, false);
+        }
+
+        // ---- now playing card ----
+        SongSearch.Track t = MusicEngine.current();
+        float npY = dy + (mWeather != null ? 44 : 24);
+        if (t != null || MusicEngine.isBusy()) {
+            float cw = Math.min(w - 40, 500);
+            float cx0 = midX - cw / 2f;
+            ui.card(c, cx0, npY, cw, 62, 10, false);
+            // art thumb (pixelated covers per setting)
+            if (mCoverArt != null) {
+                drawArtThumb(ui, c, cx0 + 31, npY + 31, 22, mCoverArt);
+            } else {
+                ui.icon(c, PixelIcon.NOTE, cx0 + 31, npY + 31, 20);
+            }
+            String status = MusicEngine.isBusy() && !MusicEngine.isPlaying()
+                    ? MusicEngine.searchStatus() : t.title;
+            ui.text(c, clip(status, 30), cx0 + 62, npY + 24, 14, mPal.fg, true, false);
+            String sub = t == null ? "searching..." : t.artist.isEmpty() ? "unknown"
+                    : t.artist;
+            ui.text(c, clip(sub, 34) + (MusicEngine.isPlaying() ? "   · playing" : "   · paused"),
+                    cx0 + 62, npY + 44, 11, mPal.dim, false, false);
+            ui.hit(cx0, npY, cw, 62, new Runnable() {
+                @Override public void run() { switchPage(PAGE_MUSIC); }
+            });
+            npY += 74;
+        }
+
+        // ---- model download progress ----
+        if (!mModelNote.isEmpty()) {
+            float bw2 = Math.min(w - 60, 380);
+            String s = clip(mModelNote, 52)
+                    + (mModelPct >= 0 ? "  " + mModelPct + "%" : "");
+            ui.textCentered(c, s, midX, npY + 14, 11, mPal.accent, true, false);
+            if (mModelPct >= 0) {
+                ui.progressBar(c, midX - bw2 / 2f, npY + 24, bw2, 5,
+                        mModelPct / 100f, true);
+            } else if (mModelPct == -1) {
+                ui.progressBar(c, midX - bw2 / 2f, npY + 24, bw2, 5,
+                        0.5f + 0.45f * (float) Math.sin(tms / 400.0), true);
+            }
+            npY += 44;
+        }
+
+        // ---- MIC orb (voice) ----
+        float orbY = Math.max(npY + 56, cy + ch - 64);
+        boolean listening = VoiceEngine.get().isListening();
+        ui.micOrb(c, midX, orbY, 30, listening && AppSettings.animations(this), tms);
+        ui.hit(midX - 46, orbY - 46, midX + 46, orbY + 46, new Runnable() {
+            @Override public void run() { startVoice(); }
+        });
+        ui.textCentered(c, listening ? "listening..." : "tap to speak",
+                midX, orbY + 54, 11,
+                listening ? mPal.accent : mPal.dim, listening, false);
+
+        // ---- hint ----
+        ui.textCentered(c, "say \u201Cplay despacito\u201D · \u201Cwhat\u2019s the news\u201D · swipe for pages",
+                midX, cy + ch - 6, 11, mPal.dim, false, false);
+    }
+
+    /** Render "HH:MM" with the blocky pixel font. */
+    private String clockString(Date now) {
+        return new SimpleDateFormat("HH:mm", Locale.US).format(now);
+    }
+
+    private final android.graphics.Paint mPixelPaint = new android.graphics.Paint();
+
+    private String weatherIcon(int code) {
+        if (code == 0) return PixelIcon.SUN;
+        if (code <= 2) return PixelIcon.CLOUD;
+        if (code == 3) return PixelIcon.CLOUD;
+        if (code <= 48) return PixelIcon.CLOUD;
+        if (code <= 57) return PixelIcon.RAIN;
+        if (code <= 67) return PixelIcon.RAIN;
+        if (code <= 77) return PixelIcon.SNOW;
+        if (code <= 82) return PixelIcon.RAIN;
+        return PixelIcon.CLOUD;
+    }
+
+    /** Draw album art thumb, optionally pixelated (the "pixel kinda" covers). */
+    private void drawArtThumb(PixelUi ui, android.graphics.Canvas c, float cx, float cy,
+                              float sizeDp, Bitmap art) {
+        if (art == null) {
+            ui.icon(c, PixelIcon.NOTE, cx, cy, sizeDp * 0.8f);
+            return;
+        }
+        if (AppSettings.asciiCover(this)) {
+            // pixelate: downscale hard, then draw nearest-neighbor big
+            Bitmap small = Bitmap.createScaledBitmap(art, 24, 24, false);
+            Bitmap big = Bitmap.createScaledBitmap(small,
+                    (int) ui.dp(sizeDp), (int) ui.dp(sizeDp), false);
+            android.graphics.Paint p = mPixelPaint;
+            p.setFilterBitmap(false);
+            c.drawBitmap(big, cx - ui.dp(sizeDp) / 2f, cy - ui.dp(sizeDp) / 2f, p);
+            p.setFilterBitmap(true);
+        } else {
+            android.graphics.Paint p = mPixelPaint;
+            p.setFilterBitmap(true);
+            c.drawBitmap(art, null,
+                    new android.graphics.RectF(cx - ui.dp(sizeDp) / 2f,
+                            cy - ui.dp(sizeDp) / 2f, cx + ui.dp(sizeDp) / 2f,
+                            cy + ui.dp(sizeDp) / 2f), p);
+        }
+    }
+
+    // ---------------------------------------------------------------- MUSIC
+
+    private void drawMusic(PixelUi ui, android.graphics.Canvas c, float w,
+                           float cy, float ch, long tms) {
+        float midX = w / 2f;
+        SongSearch.Track t = MusicEngine.current();
+
+        // ---- empty state ----
+        if (t == null && !MusicEngine.isBusy()) {
+            ui.icon(c, PixelIcon.NOTE, midX, cy + 70, 72);
+            ui.textCentered(c, "nothing playing", midX, cy + 150, 20, mPal.fg,
+                    true, false);
+            ui.textCentered(c, "say \u201Cplay <song name>\u201D - free, no account",
+                    midX, cy + 178, 13, mPal.dim, false, false);
+
+            // big friendly search button
+            float bw = 230;
+            float bx = midX - bw / 2f;
+            float by = cy + 200;
+            ui.pill(c, bx, by, bw, 48, true, 12);
+            ui.icon(c, PixelIcon.SEARCH, bx + 34, by + 24, 18);
+            ui.textCentered(c, "SEARCH A SONG", midX + 16, by + 30, 15,
+                    mPal.bg, true, true);
+            ui.hit(bx, by, bw, 48, new Runnable() {
+                @Override public void run() { openInput("song", ""); }
+            });
+
+            float ly = by + 66;
+            float lw = 210;
+            float lx = midX - lw / 2f;
+            ui.pill(c, lx, ly, lw, 34, false, 10);
+            ui.textCentered(c, "play my local music", midX, ly + 22, 12,
+                    mPal.dim, false, false);
+            ui.hit(lx, ly, lw, 34, new Runnable() {
+                @Override public void run() { playLocalMusic(); }
+            });
+            return;
+        }
+
+        // ---- searching state ----
+        if (t == null) {
+            String status = MusicEngine.searchStatus();
+            ui.spinner(c, midX, cy + ch * 0.32f, 26, tms, mPal.accent);
+            ui.textCentered(c, clip(status, 40), midX, cy + ch * 0.32f + 52, 14,
+                    mPal.accent, true, false);
+            ui.textCentered(c, "searching on-device (like a Discord bot)",
+                    midX, cy + ch * 0.32f + 76, 12, mPal.dim, false, false);
+            return;
+        }
+
+        // ---- now playing ----
+        float artSize = Math.min(190, ch * 0.72f);
+        float left = Math.max(24, midX - 430);
+        float artY = cy + (ch - artSize) / 2f;
+
+        // album art card
+        ui.card(c, left, artY, artSize, artSize, 12, true);
+        float artInset = artSize * 0.08f;
+        if (mCoverArt != null) {
+            drawArtThumb(ui, c, left + artSize / 2f, artY + artSize / 2f,
+                    artSize - artInset, mCoverArt);
+        } else {
+            ui.icon(c, PixelIcon.NOTE, left + artSize / 2f, artY + artSize / 2f,
+                    artSize * 0.4f);
+        }
+
+        // info column
+        float ix = left + artSize + 24;
+        float iw = w - ix - 24;
+        float ty = artY + 8;
+        List<String> titleLines = ui.wrap(t.title, 19, iw, 3);
+        for (int i = 0; i < titleLines.size(); i++) {
+            ui.text(c, titleLines.get(i), ix, ty + 22 + i * 26, 19, mPal.fg,
+                    true, false);
+        }
+        ty += 22 + titleLines.size() * 26;
+        ui.text(c, "by " + (t.artist.isEmpty() ? "unknown" : t.artist),
+                ix, ty, 13, mPal.dim, false, false);
+        ty += 18;
+        String tag = sourceTag(t);
+        if (!tag.isEmpty()) {
+            float tw = ui.textWidth(tag, 11, true) + 16;
+            ui.pill(c, ix, ty - 13, tw, 22, true, 6);
+            ui.text(c, tag, ix + 8, ty + 2, 11, mPal.bg, true, true);
+        }
+
+        // progress + times
+        float py = ty + 34;
+        float p = MusicEngine.progress();
+        ui.progressBar(c, ix, py, iw, 8, p, true);
+        String times = fmtMs(MusicEngine.positionMs()) + " / "
+                + fmtMs(t.durationMs > 0 ? (int) t.durationMs : MusicEngine.durationMs());
+        ui.text(c, times, ix, py + 24, 11, mPal.dim, true, true);
+
+        // controls: PREV  PLAY/PAUSE  NEXT  STOP  SEARCH
+        float coy = py + 44;
+        float bs = 52;
+        float gap = 14;
+        String[] icons = {PixelIcon.PREV,
+                MusicEngine.isPlaying() ? PixelIcon.PAUSE : PixelIcon.PLAY,
+                PixelIcon.NEXT, PixelIcon.STOP, PixelIcon.SEARCH};
+        final String[] acts = {"PREV", "TOGGLE", "NEXT", "STOP", "SEARCH"};
+        float total = icons.length * bs + (icons.length - 1) * gap;
+        float x = ix + Math.max(0, (iw - total) / 2);
+        for (int i = 0; i < icons.length; i++) {
+            boolean main = i == 1;
+            ui.pill(c, x, coy, bs, bs, main, 10);
+            // icons render in palette fg; on the main (accent) button we
+            // need the inverted-colored variant
+            drawButtonIcon(ui, c, icons[i], x + bs / 2f, coy + bs / 2f,
+                    22, main);
+            final String act = acts[i];
+            ui.hit(x, coy, bs, bs, new Runnable() {
+                @Override public void run() { musicBtn(act); }
+            });
+            x += bs + gap;
+        }
+
+        // equalizer + queue
+        float eqY = coy + bs + 18;
+        float eqW = Math.min(iw, 360);
+        ui.equalizer(c, ix, eqY, eqW, 26, MusicEngine.isPlaying(), tms, mEq);
+
+        List<SongSearch.Track> q = MusicEngine.queue();
+        float qy = eqY + 34;
+        if (!q.isEmpty()) {
+            ui.text(c, "up next", ix, qy, 11, mPal.dim, true, true);
+            for (int i = 0; i < q.size() && i < 3; i++) {
+                ui.text(c, (i + 1) + ".  " + clip(q.get(i).title + "  ·  "
+                                + q.get(i).artist, 40),
+                        ix, qy + 16 + i * 16, 11, mPal.dim, false, false);
             }
         }
+    }
 
-        v.putC(cx, 8, new SimpleDateFormat("EEEE - MMMM d yyyy", Locale.US).format(now), mPal.dim);
-
-        // weather mini-card
-        if (mWeather != null) {
-            String line = " " + Math.round(mWeather.temp) + "C  "
-                    + WeatherProvider.describe(mWeather.code).toUpperCase()
-                    + "  " + mWeather.city.toUpperCase() + " ";
-            String icon = asciiWeatherIcon(mWeather.code);
-            String box = "[" + icon + "] " + line;
-            v.putC(cx, 10, "+-- weather " + repeat('-', Math.max(2, box.length() - 12)) + "+", mPal.dim);
-            v.putC(cx, 11, box, mPal.accent);
-            v.putC(cx, 12, "+" + repeat('-', box.length()) + "+", mPal.dim);
+    /** Draw a control icon; on the accent-filled button, tint against bg. */
+    private void drawButtonIcon(PixelUi ui, android.graphics.Canvas c, String icon,
+                                float cx, float cy, float sizeDp, boolean invert) {
+        if (!invert) {
+            ui.icon(c, icon, cx, cy, sizeDp);
+            return;
         }
+        int fg = mPal.fg;
+        int saveAccent = mPal.accent;
+        // trick: temporarily re-render the icon with bg-colored pixels by
+        // swapping palette roles in a tiny bitmap
+        Bitmap b = PixelIcon.render(icon, (int) ui.dp(sizeDp), mPal.bg,
+                mPal.bg, mPal.bg);
+        android.graphics.Paint p = mPixelPaint;
+        p.setFilterBitmap(false);
+        c.drawBitmap(b, cx - ui.dp(sizeDp) / 2f, cy - ui.dp(sizeDp) / 2f, p);
+        p.setFilterBitmap(true);
+    }
 
-        // now playing strip + equalizer
-        SongSearch.Track t = MusicEngine.current();
-        int y = 14;
-        if (t != null || MusicEngine.isBusy()) {
-            drawEqualizer(v, cx - 26, y + 1, frame);
-            String status = MusicEngine.isBusy() && !MusicEngine.isPlaying()
-                    ? MusicEngine.searchStatus() : t.title + "  -  " + (t.artist.isEmpty() ? "?" : t.artist);
-            v.put(cx - 14, y, "~ " + clip(status, 40), mPal.accent);
-            v.put(cx - 14, y + 1, "  " + (MusicEngine.isPlaying() ? "[ PLAYING " + sourceTag(t) + " ]" : "[ PAUSED ]"), mPal.dim);
-        } else {
-            v.putC(cx, y, "say \"play <song>\" for free on-demand music", mPal.dim);
-        }
-
-        // news ticker (marquee)
-        if (mNews != null && !mNews.isEmpty()) {
-            String t1 = mNews.get(0).title;
-            int shift = (int) (frame / 2) % Math.max(1, t1.length());
-            String shown = ("NEWS >> " + t1 + "   ***   ").substring(shift);
-            shown = clip(shown, cols - 16);
-            v.putC(cx, y + 4, shown, mPal.dim);
-        } else {
-            v.putC(cx, y + 4, "tap ASSIST then NEWS for the latest headlines", mPal.dim);
-        }
-
-        // action buttons — no APPS button by design ("people shouldn't even
-        // know it's Android"); everything is voice + these four pages
-        int bx = cx - 24;
-        String[] labels = {"[ MIC ]", "[ MUSIC ]", "[ ASSIST ]", "[ SETUP ]"};
-        for (int i = 0; i < labels.length; i++) {
-            int w = labels[i].length();
-            v.put(bx, y + 6, labels[i], mPal.fg);
-            v.hit(bx, y + 6, w, 2, btnTap(i));
-            bx += w + 4;
-        }
-
-        // voice model download progress line ("Setup is almost finished...")
-        if (!mModelNote.isEmpty()) {
-            String pct = mModelPct >= 0 ? (" " + mModelPct + "%")
-                    : mModelPct == -1 ? " [..]" : "";
-            v.putC(cx, y + 8, clip("~ " + mModelNote + pct, cols - 8), mPal.accent);
-        }
-
-        // live voice partial
-        if (!mPartial.isEmpty()) {
-            boolean cursor = (frame / 8) % 2 == 0;
-            v.put(2, rows - 4, "> " + clip(mPartial, cols - 6) + (cursor ? "_" : " "), mPal.accent);
-        }
-
-        // timer line
-        if (mTimer != null) {
-            long left = Math.max(0, mTimerEnds - System.currentTimeMillis());
-            v.put(cols - 18, rows - 4, "timer " + fmtMs(left), mPal.accent);
-        }
+    private void musicBtn(String tag) {
+        if ("PREV".equals(tag)) MusicEngine.prev(this);
+        else if ("TOGGLE".equals(tag)) MusicEngine.toggle(this);
+        else if ("NEXT".equals(tag)) MusicEngine.next(this);
+        else if ("STOP".equals(tag)) MusicEngine.stop(this);
+        else openInput("song", "");
     }
 
     private String sourceTag(SongSearch.Track t) {
@@ -458,427 +697,314 @@ public class HomeActivity extends Activity
         return "";
     }
 
-    private void drawEqualizer(AsciiView v, int x, int y, long frame) {
-        boolean playing = MusicEngine.isPlaying();
-        for (int i = 0; i < 10; i++) {
-            int target = playing ? 1 + (int) ((i * 7 + (frame / 3)) % 5) : 1;
-            mEq[i] += (target - mEq[i]) / 2;
-            for (int h = 0; h < 5; h++) {
-                char c = h < mEq[i] ? (h % 2 == 0 ? '#' : '=') : '.';
-                v.setCellChar(x + i * 2, y - h, c, h < mEq[i] ? mPal.accent : mPal.dim);
-            }
-        }
-    }
-
-    private Runnable btnTap(final int i) {
-        final HomeActivity self = this;
-        return new Runnable() { @Override public void run() {
-            if (i == 0) startVoice();
-            else if (i == 1) switchPage(PAGE_MUSIC);
-            else if (i == 2) switchPage(PAGE_ASSIST);
-            else switchPage(PAGE_SETUP);
-        }};
-    }
-
-    // ---------------------------------------------------------------- MUSIC
-
-    private void drawMusic(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        SongSearch.Track t = MusicEngine.current();
-
-        if (t == null && !MusicEngine.isBusy()) {
-            Figlet.draw(v, cx, 4, "NOW PLAYING", mPal.fg);
-            v.putC(cx, 11, "nothing playing", mPal.dim);
-            v.putC(cx, 13, "say \"play <song name>\"  -  or tap below to type", mPal.dim);
-            String search = "[ + SEARCH A SONG ]";
-            v.putC(cx, 16, search, mPal.accent);
-            v.hit(cx - search.length() / 2, 16, search.length(), 2, new Runnable() {
-                @Override public void run() { openInput("song", ""); }
-            });
-            drawLocalHint(v, cx, 19);
-            return;
-        }
-
-        String status = MusicEngine.searchStatus();
-        if (t == null) {
-            // still searching
-            String dots = repeat('.', (int) (frame / 6 % 6));
-            v.putC(cx, 8, clip(status, cols - 8) + dots, mPal.accent);
-            v.putC(cx, 10, "searching YouTube Music on-device (like a Discord bot)", mPal.dim);
-            return;
-        }
-
-        // ---- album art (ASCII-art cover or bitmap) ----
-        int artX = Math.max(4, cx - 34), artY = 4, artS = 16;
-        if (AppSettings.asciiCover(this)) {
-            mArt.setVisibility(View.GONE);
-            drawAsciiCover(v, artX, artY, artS, frame);
-        } else if (mCoverArt != null) {
-            // bitmap art: ASCII frame around a real cover image
-            v.box(artX - 1, artY - 1, artS + 2, artS + 2, mPal.dim, "now");
-            placeArtOverlay(artX, artY, artS);
-        } else {
-            v.box(artX, artY, artS, artS, mPal.dim, "ART");
-            v.putC(artX + artS / 2, artY + artS / 2, "*", mPal.accent);
-        }
-
-        // ---- track info ----
-        int infoX = artX + artS + 4;
-        int infoW = Math.max(20, cols - infoX - 4);
-        String[] titleLines = wrap(t.title, infoW);
-        for (int i = 0; i < titleLines.length && i < 3; i++)
-            v.put(infoX, 4 + i, titleLines[i], mPal.fg);
-        v.put(infoX, 4 + Math.min(3, titleLines.length) + 1, "by " + (t.artist.isEmpty() ? "unknown" : t.artist), mPal.dim);
-        v.put(infoX, 4 + Math.min(3, titleLines.length) + 2, "[" + sourceTag(t) + "]", mPal.accent);
-
-        // progress bar
-        int py = Math.min(12, artY + artS + 2);
-        float p = MusicEngine.progress();
-        int barW = Math.min(40, cols - 10);
-        int barX = cx - barW / 2;
-        StringBuilder bar = new StringBuilder();
-        int filled = (int) (barW * p);
-        for (int i = 0; i < barW; i++) bar.append(i < filled ? '=' : '-');
-        v.put(barX, py, "|" + bar + "|", mPal.accent);
-        String times = fmtMs(MusicEngine.positionMs()) + " / " + fmtMs(t.durationMs > 0 ? (int) t.durationMs : MusicEngine.durationMs());
-        v.putC(cx, py + 1, times, mPal.dim);
-
-        // controls
-        int cy = py + 3;
-        String[][] btns = {{"|<", "PREV"}, {"[ " + (MusicEngine.isPlaying() ? "PAUSE" : "PLAY") + " ]", "TOGGLE"}, {">|", "NEXT"}, {"[ STOP ]", "STOP"}, {"[ + SONG ]", "SEARCH"}};
-        int bw = 0;
-        for (String[] bb : btns) bw += bb[0].length() + 3;
-        int bxx = cx - bw / 2;
-        for (int i = 0; i < btns.length; i++) {
-            v.put(bxx, cy, btns[i][0], i == 4 ? mPal.dim : mPal.fg);
-            v.hit(bxx, cy, btns[i][0].length(), 2, musicBtn(btns[i][1]));
-            bxx += btns[i][0].length() + 3;
-        }
-
-        // equalizer + status line
-        drawEqualizer(v, cx - 26, cy + 3, frame);
-        if (!status.isEmpty()) v.putC(cx, cy + 2, clip(status, cols - 8), mPal.accent);
-
-        // queue
-        List<SongSearch.Track> q = MusicEngine.queue();
-        if (!q.isEmpty()) {
-            int qy = cy + 4;
-            v.put(4, qy, "+-- up next ", mPal.dim);
-            for (int i = 0; i < q.size() && i < 3; i++) {
-                SongSearch.Track qt = q.get(i);
-                v.put(4, qy + 1 + i, "  " + (i + 1) + ". " + clip(qt.title + " - " + qt.artist, cols - 10), mPal.dim);
-            }
-        }
-    }
-
-    private Runnable musicBtn(final String tag) {
-        return new Runnable() { @Override public void run() {
-            if ("PREV".equals(tag)) MusicEngine.prev(HomeActivity.this);
-            else if ("TOGGLE".equals(tag)) MusicEngine.toggle(HomeActivity.this);
-            else if ("NEXT".equals(tag)) MusicEngine.next(HomeActivity.this);
-            else if ("STOP".equals(tag)) MusicEngine.stop(HomeActivity.this);
-            else openInput("song", "");
-        }};
-    }
-
-    private void drawLocalHint(AsciiView v, int cx, int y) {
-        v.putC(cx, y, "[ PLAY MY LOCAL MUSIC ]", mPal.dim);
-        v.hit(cx - 11, y, 22, 2, new Runnable() { @Override public void run() { playLocalMusic(); }});
-    }
-
-    /** ASCII-art render of the cover bitmap, or a placeholder frame. */
-    private void drawAsciiCover(AsciiView v, int x, int y, int s, long frame) {
-        if (mCoverArt == null) {
-            v.box(x, y, s, s, mPal.dim, "ART");
-            if (MusicEngine.isPlaying()) {
-                // tiny vinyl animation placeholder
-                int spin = (int) (frame / 3 % 3);
-                char disc = "oO@".charAt(spin);
-                v.putC(x + s / 2, y + s / 2, String.valueOf(disc), mPal.accent);
-            }
-            return;
-        }
-        String shade = " .:-=+*#%@";
-        int w = Math.min(s, mCoverArt.getWidth());
-        int h = Math.min(s, mCoverArt.getHeight());
-        Bitmap bmp = Bitmap.createScaledBitmap(mCoverArt, w, h, true);
-        for (int r = 0; r < s; r++) {
-            for (int c = 0; c < s; c++) {
-                int px = c * w / s, py = r * h / s;
-                int colr = bmp.getPixel(Math.min(w - 1, px), Math.min(h - 1, py));
-                double lum = (0.299 * Color.red(colr) + 0.587 * Color.green(colr)
-                        + 0.114 * Color.blue(colr)) / 255.0;
-                int idx = (int) (lum * (shade.length() - 1));
-                v.setCellChar(x + c, y + r, shade.charAt(idx),
-                        AsciiTheme.dimColor(mPal.fg, 0.35f + 0.6f * (float) lum, mPal.bg));
-            }
-        }
-        v.box(x - 1, y - 1, s + 2, s + 2, mPal.dim, null);
-    }
-
-    private void placeArtOverlay(int x, int y, int s) {
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                s * mAscii.cellW(), s * mAscii.cellH());
-        lp.leftMargin = (int) mAscii.offsetX() + x * mAscii.cellW();
-        lp.topMargin = (int) mAscii.offsetY() + y * mAscii.cellH();
-        mArt.setLayoutParams(lp);
-        mArt.setImageBitmap(mCoverArt);
-        mArt.setVisibility(View.VISIBLE);
-    }
-
     // ---------------------------------------------------------------- ASSIST
 
-    private void drawAssist(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
+    private void drawAssist(PixelUi ui, android.graphics.Canvas c, float w,
+                            float cy, float ch, long tms) {
+        float midX = w / 2f;
+        boolean listening = VoiceEngine.get().isListening();
+        boolean anims = AppSettings.animations(this);
 
-        // mic button with live waveform
-        String mic = VoiceEngine.get().isListening() ? "( LISTENING... )" : "(  TAP TO SPEAK  )";
-        v.putC(cx, 2, "   ___   ", mPal.accent);
-        v.putC(cx, 3, "  /   \\  ", mPal.fg);
-        v.putC(cx, 4, "  \\___/  ", mPal.fg);
-        v.putC(cx, 5, mic, VoiceEngine.get().isListening() ? mPal.accent : mPal.fg);
-        v.hit(cx - 12, 2, 24, 4, new Runnable() { @Override public void run() { startVoice(); }});
-
-        if (!mPartial.isEmpty()) {
-            v.putC(cx, 7, "> " + clip(mPartial, cols - 10), mPal.accent);
-        }
+        // mic orb
+        float orbY = cy + 42;
+        ui.micOrb(c, midX, orbY, 22, listening && anims, tms);
+        ui.hit(midX - 34, orbY - 34, midX + 34, orbY + 34, new Runnable() {
+            @Override public void run() { startVoice(); }
+        });
+        ui.textCentered(c, listening ? "listening..." : "tap to speak",
+                midX, orbY + 42, 12, listening ? mPal.accent : mPal.dim,
+                listening, false);
 
         // quick chips
-        int y = 9;
-        String[][] chips = {{"[ WEATHER ]", "weather"}, {"[ NEWS ]", "news"},
-                {"[ DATE ]", "date"}, {"[ TIME ]", "time"}, {"[ MUSIC ]", "music"}};
-        int cw = 0;
-        for (String[] c : chips) cw += c[0].length() + 2;
-        int cxx = cx - cw / 2;
-        for (String[] c : chips) {
-            v.put(cxx, y, c[0], mPal.dim);
-            v.hit(cxx, y, c[0].length(), 2, chipTap(c[1]));
-            cxx += c[0].length() + 2;
+        float chipY = orbY + 64;
+        String[][] chips = {{"WEATHER", "weather"}, {"NEWS", "news"},
+                {"DATE", "date"}, {"TIME", "time"}, {"MUSIC", "music"}};
+        float cw = 84, gap = 12;
+        float total = chips.length * cw + (chips.length - 1) * gap;
+        float x = midX - total / 2f;
+        for (String[] chip : chips) {
+            boolean hot = "weather".equals(chip[1]) && mWeather != null;
+            ui.pill(c, x, chipY, cw, 32, false, 9);
+            ui.textCentered(c, chip[0], x + cw / 2f, chipY + 21, 11,
+                    mPal.fg, true, true);
+            final String tag = chip[1];
+            ui.hit(x, chipY, cw, 32, new Runnable() {
+                @Override public void run() { chipTap(tag); }
+            });
+            x += cw + gap;
         }
 
-        // reply bubble with typewriter
-        int by = y + 2;
+        // reply card with typewriter + thinking spinner
+        float rcW = Math.min(w - 32, 640);
+        float rcX = midX - rcW / 2f;
+        float rcY = chipY + 44;
+        String thinking = "thinking...";
+        boolean isThinking = mReplyFull != null && mReplyFull.equals(thinking);
+
+        // reveal typewriter chars
         if (mReplyShown == 0 && mReplyFull != null && !mReplyFull.isEmpty()) {
             mReplyShown = 1; mReply = "";
         }
-        if (mReplyShown > 0 && mReplyFull != null && !mReplyFull.isEmpty()) {
-            int reveal = Math.min(mReplyFull.length(), mReplyShown);
-            if (reveal < mReplyFull.length() && frame % 2 == 0) mReplyShown += 1;
-            mReply = mReplyFull.substring(0, reveal);
-            String[] lines = wrap(mReply + (reveal < mReplyFull.length() ? "_" : ""), cols - 14);
-            int bw = cols - 10;
-            v.box(5, by, bw, lines.length + 2, mPal.accent, "ast");
-            for (int i = 0; i < lines.length; i++) v.put(7, by + 1 + i, lines[i], mPal.fg);
-            by += lines.length + 3;
+        if (mReplyShown > 0 && mReplyFull != null && !mReplyFull.isEmpty()
+                && mReplyShown < mReplyFull.length() && anims) {
+            mReplyShown += 1;
         }
+        String shown = (mReplyShown > 0 && mReplyFull != null && !mReplyFull.isEmpty())
+                ? mReplyFull.substring(0, Math.min(mReplyShown, mReplyFull.length()))
+                : "";
+        List<String> lines = ui.wrap(shown, 14, rcW - 44, 7);
+        float rcH = Math.max(56, 22 + lines.size() * 20 + 14);
+        ui.card(c, rcX, rcY, rcW, rcH, 12, true);
+        ui.icon(c, PixelIcon.CHAT, rcX + 22, rcY + 20, 14);
+        float ty = rcY + 26;
+        for (int i = 0; i < lines.size(); i++) {
+            ui.text(c, lines.get(i), rcX + 44, ty + i * 20, 14, mPal.fg, false, false);
+        }
+        if (isThinking) ui.spinner(c, rcX + rcW - 26, rcY + 22, 10, tms, mPal.accent);
 
-        // weather card
+        // weather + news digest under the reply
+        float dy = rcY + rcH + 18;
         if (mWeather != null) {
-            v.put(5, by, "weather: " + Math.round(mWeather.temp) + "C  "
-                    + WeatherProvider.describe(mWeather.code) + "  ("
-                    + Math.round(mWeather.tempMin) + " to " + Math.round(mWeather.tempMax) + ")  "
-                    + mWeather.city, mPal.fg);
-            by += 1;
+            ui.icon(c, weatherIcon(mWeather.code), rcX + 14, dy + 4, 14);
+            ui.text(c, Math.round(mWeather.temp) + "\u00B0 "
+                            + WeatherProvider.describe(mWeather.code)
+                            + "  (" + Math.round(mWeather.tempMin) + " to "
+                            + Math.round(mWeather.tempMax) + ")  ·  " + mWeather.city,
+                    rcX + 34, dy + 10, 12, mPal.dim, false, false);
+            dy += 24;
         }
-        // news card
         if (mNews != null && !mNews.isEmpty()) {
-            v.put(5, by, "latest news:", mPal.fg);
-            for (int i = 0; i < Math.min(5, mNews.size()) && by + 1 + i < rows - 4; i++) {
+            for (int i = 0; i < Math.min(4, mNews.size()); i++) {
                 NewsProvider.Headline h = mNews.get(i);
-                v.put(5, by + 1 + i, " " + clip("[" + h.source + "] " + h.title, cols - 10), mPal.dim);
+                ui.text(c, "· " + clip(h.title, 52), rcX + 14, dy + 12 + i * 16,
+                        11, mPal.dim, false, false);
             }
         }
     }
 
-    private Runnable chipTap(final String tag) {
-        return new Runnable() { @Override public void run() {
-            if ("weather".equals(tag)) weather();
-            else if ("news".equals(tag)) news();
-            else if ("date".equals(tag)) date();
-            else if ("time".equals(tag)) time();
-            else switchPage(PAGE_MUSIC);
-        }};
+    private void chipTap(String tag) {
+        if ("weather".equals(tag)) weather();
+        else if ("news".equals(tag)) news();
+        else if ("date".equals(tag)) date();
+        else if ("time".equals(tag)) time();
+        else switchPage(PAGE_MUSIC);
     }
 
     // ---------------------------------------------------------------- SETUP
 
-    private void drawSetup(AsciiView v, int cols, int rows, long frame) {
-        int x = 4, y = 2;
-        int w = Math.min(cols - 8, 96);
+    private void drawSetup(PixelUi ui, android.graphics.Canvas c, float w,
+                            float cy, float ch, long tms) {
+        float gap = 12;
+        float colW = (w - gap * 3) / 2f;
+        float lx = gap;
+        float rx = gap * 2 + colW;
+        float colH = ch - 66;
 
-        v.put(x, y, "BACKGROUND:", mPal.fg);
-        String mode = AppSettings.bgMode(this);
-        String bgLine = "< " + mode + " >";
-        v.put(x + 12, y, bgLine, mPal.accent);
-        v.hit(x + 10, y, 3, 2, bgShift(-1));
-        v.hit(x + 12 + bgLine.length() - 1, y, 3, 2, bgShift(1));
-        v.put(x + 12 + bgLine.length() + 2, y,
-                " " + joinNames(AsciiTheme.BG_MODES, mode), mPal.dim);
-        y += 2;
+        // ---- left card: look & feel ----
+        ui.card(c, lx, cy, colW, colH, 12, false);
+        ui.text(c, "LOOK & FEEL", lx + 18, cy + 26, 13, mPal.accent, true, true);
+        float y = cy + 44;
+        y = settingRow(ui, c, lx + 18, y, colW - 36, "BACKGROUND",
+                AppSettings.bgMode(this), "bg");
+        y = settingRow(ui, c, lx + 18, y, colW - 36, "THEME",
+                AppSettings.palette(this), "pal");
+        y = settingRow(ui, c, lx + 18, y, colW - 36, "TEXT SIZE",
+                fontLabel(), "font");
+        y = toggleRow(ui, c, lx + 18, y, colW - 36, "PIXEL COVERS",
+                AppSettings.asciiCover(this), "ascii_cover");
+        y = toggleRow(ui, c, lx + 18, y, colW - 36, "ANIMATIONS",
+                AppSettings.animations(this), "animations");
+        toggleRow(ui, c, lx + 18, y, colW - 36, "KEEP SCREEN ON",
+                AppSettings.keepScreenOn(this), "screen");
 
-        v.put(x, y, "THEME:", mPal.fg);
-        String pal = AppSettings.palette(this);
-        String palLine = "< " + pal + " >";
-        v.put(x + 12, y, palLine, mPal.accent);
-        v.hit(x + 10, y, 3, 2, palShift(-1));
-        v.hit(x + 12 + palLine.length() - 1, y, 3, 2, palShift(1));
-        y += 2;
-
-        v.put(x, y, "FONT:", mPal.fg);
-        String[] fonts = {"SMALL", "MED", "LARGE"};
-        int curF = AppSettings.fontPx(this) >= 24 ? 2 : (AppSettings.fontPx(this) <= 16 ? 0 : 1);
-        String fontLine = "< " + fonts[curF] + " >";
-        v.put(x + 12, y, fontLine, mPal.accent);
-        v.hit(x + 10, y, 3, 2, fontShift(-1));
-        v.hit(x + 12 + fontLine.length() - 1, y, 3, 2, fontShift(1));
-        y += 2;
-
-        // toggle rows
-        y = drawToggle(v, x, y, "ASCII ALBUM COVERS", AppSettings.asciiCover(this), "ascii_cover");
-        y = drawToggle(v, x, y, "ANIMATIONS", AppSettings.animations(this), "animations");
-        y = drawToggle(v, x, y, "SPOKEN REPLIES", AppSettings.speakEnabled(this), "speak");
-        y = drawToggle(v, x, y, "KIOSK MODE", AppSettings.kiosk(this), "kiosk");
-        y = drawToggle(v, x, y, "LAUNCH ON BOOT", AppSettings.bootLaunch(this), "boot");
-        y = drawToggle(v, x, y, "KEEP SCREEN ON", AppSettings.keepScreenOn(this), "screen");
-        y += 1;
-
-        v.put(x, y, "GROQ AI:", mPal.fg);
+        // ---- right card: services ----
+        ui.card(c, rx, cy, colW, colH, 12, false);
+        ui.text(c, "SERVICES", rx + 18, cy + 26, 13, mPal.accent, true, true);
+        y = cy + 44;
         String key = AppSettings.groqKey(this);
-        String keyTxt = key.isEmpty() ? "[ ADD FREE API KEY ]" : "[ gsk_...*** - CHANGE ]";
-        v.put(x + 12, y, keyTxt, mPal.accent);
-        v.hit(x + 12, y, keyTxt.length(), 2, new Runnable() { @Override public void run() {
-            openInput("groq", AppSettings.groqKey(HomeActivity.this));
-        }});
-        v.put(x + 12 + keyTxt.length() + 2, y, "console.groq.com - free", mPal.dim);
-        y += 2;
-
-        v.put(x, y, "WEATHER CITY:", mPal.fg);
+        y = actionRow(ui, c, rx + 18, y, colW - 36, "GROQ AI",
+                key.isEmpty() ? "add free API key" : "gsk_...*** saved", "groq");
         String city = AppSettings.resolvedCity(this);
-        String cityTxt = city.isEmpty() ? "[ SET CITY ]" : "[ " + city + " - CHANGE ]";
-        v.put(x + 15, y, cityTxt, mPal.accent);
-        v.hit(x + 15, y, cityTxt.length(), 2, new Runnable() { @Override public void run() {
-            openInput("city", AppSettings.city(HomeActivity.this));
-        }});
-        y += 2;
+        if (city.isEmpty()) city = AppSettings.city(this);
+        y = actionRow(ui, c, rx + 18, y, colW - 36, "WEATHER CITY",
+                city.isEmpty() ? "set city" : city, "city");
+        y = actionRow(ui, c, rx + 18, y, colW - 36, "HOME ASSISTANT",
+                AppSettings.haUrl(this).isEmpty() ? "connect server"
+                        : "server saved", "ha");
+        toggleRow(ui, c, rx + 18, y, colW - 36, "SPOKEN REPLIES",
+                AppSettings.speakEnabled(this), "speak");
 
-        v.put(x, y, "HOME ASSISTANT:", mPal.fg);
-        String haTxt = AppSettings.haUrl(this).isEmpty() ? "[ CONNECT ]" : "[ CHANGE SERVER ]";
-        v.put(x + 18, y, haTxt, mPal.accent);
-        v.hit(x + 18, y, haTxt.length(), 2, new Runnable() { @Override public void run() {
-            openInput("ha", AppSettings.haUrl(HomeActivity.this));
-        }});
-        y += 3;
+        // ---- bottom card: system ----
+        float sy = cy + colH + 12;
+        float syH = ch - colH - 12;
+        ui.card(c, lx, sy, w - gap * 2, syH, 12, false);
+        float bx = lx + 18;
+        float by = sy + 14;
+        float bh = syH - 28;
+        toggleRow(ui, c, bx, by, 150, "KIOSK", AppSettings.kiosk(this), "kiosk");
+        toggleRow(ui, c, bx + 170, by, 150, "ON BOOT", AppSettings.bootLaunch(this), "boot");
 
-        // system actions
         String[][] acts = {
-                {"[ RUN SETUP WIZARD ]", "wizard"},
-                {"[ ANDROID SETTINGS ]", "android"},
-                {"[ NOTIFICATION ACCESS ]", "notif"}};
-        int ax = x;
+                {"RUN SETUP WIZARD", "wizard", PixelIcon.PHONE},
+                {"ANDROID SETTINGS", "android", PixelIcon.SLIDERS},
+                {"NOTIFICATION ACCESS", "notif", PixelIcon.CHAT}};
+        float axx = lx + 360;
         for (String[] act : acts) {
-            v.put(ax, y, act[0], mPal.dim);
-            v.hit(ax, y, act[0].length(), 2, sysTap(act[1]));
-            ax += act[0].length() + 2;
+            float tw = ui.textWidth(act[0], 11, true) + 58;
+            ui.pill(c, axx, by, tw, bh, false, 8);
+            ui.icon(c, act[2], axx + 24, by + bh / 2f, 15);
+            ui.text(c, act[0], axx + 44, by + bh / 2f + 4, 11, mPal.fg, true, true);
+            final String tag = act[1];
+            ui.hit(axx, by, tw, bh, new Runnable() {
+                @Override public void run() { sysTap(tag); }
+            });
+            axx += tw + 10;
         }
-        y += 3;
 
-        v.put(x, y, "AstOs 2.3 - AstShell 2.3 - a real custom OS (LineageOS 14.1 core)", mPal.dim);
+        // footer
+        ui.textCentered(c, "AstOs 2.4 · AstShell 2.4 · LineageOS 14.1 core",
+                w / 2f, sy + syH - 6, 9, mPal.dim, false, false);
     }
 
-    private int drawToggle(AsciiView v, int x, int y, String label, boolean on, final String key) {
-        String t = "[" + (on ? "x" : " ") + "]";
-        v.put(x, y, t, on ? mPal.accent : mPal.dim);
-        v.put(x + 4, y, label, on ? mPal.fg : mPal.dim);
-        v.hit(x, y, 4 + label.length(), 1, new Runnable() { @Override public void run() {
-            boolean cur;
-            if ("ascii_cover".equals(key)) { cur = AppSettings.asciiCover(HomeActivity.this);
-                AppSettings.setAsciiCover(HomeActivity.this, !cur); }
-            else if ("animations".equals(key)) { cur = AppSettings.animations(HomeActivity.this);
-                AppSettings.setAnimations(HomeActivity.this, !cur);
-                mAscii.setFps(!cur ? 24 : 4); }
-            else if ("speak".equals(key)) { cur = AppSettings.speakEnabled(HomeActivity.this);
-                AppSettings.setSpeakEnabled(HomeActivity.this, !cur); }
-            else if ("kiosk".equals(key)) { cur = AppSettings.kiosk(HomeActivity.this);
-                AppSettings.setKiosk(HomeActivity.this, !cur); }
-            else if ("boot".equals(key)) { cur = AppSettings.bootLaunch(HomeActivity.this);
-                AppSettings.setBootLaunch(HomeActivity.this, !cur); }
-            else { cur = AppSettings.keepScreenOn(HomeActivity.this);
-                AppSettings.setKeepScreenOn(HomeActivity.this, !cur); }
-        }});
-        return y + 1;
+    private String fontLabel() {
+        int f = AppSettings.fontPx(this);
+        if (f >= 24) return "LARGE";
+        if (f <= 16) return "SMALL";
+        return "MEDIUM";
     }
 
-    private Runnable bgShift(final int d) {
-        return new Runnable() { @Override public void run() {
+    /** A "LABEL   < value >" row with arrow buttons on both sides. */
+    private float settingRow(PixelUi ui, android.graphics.Canvas c, float x, float y,
+                              float w, String label, String value, final String key) {
+        float h = 34;
+        ui.text(c, label, x, y + 22, 11, mPal.fg, true, true);
+        float vw = ui.textWidth(value, 11, true) + 18;
+        float vx = x + w - vw - 64;
+        ui.pill(c, vx, y + 4, vw, h - 8, false, 7);
+        ui.textCentered(c, value, vx + vw / 2f, y + 22, 11, mPal.accent, true, true);
+        // arrows
+        ui.icon(c, PixelIcon.LEFT, vx - 26, y + 15, 13);
+        ui.icon(c, PixelIcon.RIGHT, vx + vw + 26, y + 15, 13);
+        ui.hit(vx - 40, y, 40, h, new Runnable() {
+            @Override public void run() { shiftSetting(key, -1); }
+        });
+        ui.hit(vx + vw, y, 40, h, new Runnable() {
+            @Override public void run() { shiftSetting(key, 1); }
+        });
+        return y + h + 8;
+    }
+
+    /** A "LABEL   [toggle]" row with a chunky pixel switch. */
+    private float toggleRow(PixelUi ui, android.graphics.Canvas c, float x, float y,
+                             float w, String label, boolean on, final String key) {
+        float h = 34;
+        ui.text(c, label, x, y + 22, 11, on ? mPal.fg : mPal.dim, true, true);
+        float tw = 46, th = 22;
+        float tx = x + w - tw;
+        float ty = y + (h - th) / 2f;
+        // track
+        android.graphics.RectF tr = new android.graphics.RectF(tx, ty, tx + tw, ty + th);
+        android.graphics.Paint p = mPixelPaint;
+        p.setColor(on ? mPal.accent : AsciiTheme.dimColor(mPal.fg, 0.12f, mPal.bg));
+        c.drawRoundRect(tr, th / 2f, th / 2f, p);
+        // knob (pixel-ish rounded square)
+        float kx = on ? tx + tw - th + 3 : tx + 3;
+        p.setColor(on ? mPal.bg : mPal.fg);
+        c.drawRoundRect(new android.graphics.RectF(kx, ty + 3, kx + th - 6,
+                ty + th - 3), 4, 4, p);
+        ui.hit(x, y, w, h, new Runnable() {
+            @Override public void run() { toggleSetting(key); }
+        });
+        return y + h + 8;
+    }
+
+    /** A tappable "LABEL   value ..." row. */
+    private float actionRow(PixelUi ui, android.graphics.Canvas c, float x, float y,
+                            float w, String label, String value, final String key) {
+        float h = 34;
+        ui.text(c, label, x, y + 22, 11, mPal.fg, true, true);
+        String v = value.isEmpty() ? "tap to set" : value;
+        float vw = ui.textWidth(v, 11, true) + 30;
+        float vx = x + w - vw;
+        ui.pill(c, vx, y + 4, vw, h - 8, false, 7);
+        ui.icon(c, PixelIcon.RIGHT, vx + vw - 15, y + 15, 10);
+        ui.text(c, v, vx + 8, y + 22, 11, mPal.accent, true, true);
+        ui.hit(vx, y, vw, h, new Runnable() {
+            @Override public void run() { settingTap(key); }
+        });
+        return y + h + 8;
+    }
+
+    private void shiftSetting(String key, int dir) {
+        if ("bg".equals(key)) {
             List<String> modes = new ArrayList<String>();
             for (String m : AsciiTheme.BG_MODES) modes.add(m);
-            int i = Math.max(0, modes.indexOf(AppSettings.bgMode(HomeActivity.this)));
-            String next = modes.get((i + d + modes.size()) % modes.size());
-            AppSettings.setBgMode(HomeActivity.this, next);
-            mBgFx = new BackgroundFX(next);
-            mAscii.setBackgroundFx(mBgFx);
+            int i = Math.max(0, modes.indexOf(AppSettings.bgMode(this)));
+            String next = modes.get((i + dir + modes.size()) % modes.size());
+            AppSettings.setBgMode(this, next);
+            mUi.setBgMode(next);
             if ("IMAGE".equals(next)) promptBackgroundImage();
-        }};
-    }
-
-    private Runnable palShift(final int d) {
-        return new Runnable() { @Override public void run() {
+        } else if ("pal".equals(key)) {
             List<String> names = new ArrayList<String>();
             for (AsciiTheme.Palette p : AsciiTheme.PALETTES) names.add(p.name);
-            int i = Math.max(0, names.indexOf(AppSettings.palette(HomeActivity.this)));
-            AppSettings.setPalette(HomeActivity.this,
-                    names.get((i + d + names.size()) % names.size()));
-        }};
-    }
-
-    private Runnable fontShift(final int d) {
-        return new Runnable() { @Override public void run() {
-            int cur = AppSettings.fontPx(HomeActivity.this);
+            int i = Math.max(0, names.indexOf(AppSettings.palette(this)));
+            AppSettings.setPalette(this,
+                    names.get((i + dir + names.size()) % names.size()));
+        } else if ("font".equals(key)) {
+            int cur = AppSettings.fontPx(this);
             int[] sizes = {16, 20, 24};
             int idx = cur >= 24 ? 2 : (cur <= 16 ? 0 : 1);
-            int next = sizes[(idx + d + 3) % 3];
-            AppSettings.setFontPx(HomeActivity.this, next);
-            mAscii.setFontPx(next);
-        }};
+            AppSettings.setFontPx(this, sizes[(idx + dir + 3) % 3]);
+            mUi.setUiScale(uiScale());
+        }
     }
 
-    private Runnable sysTap(final String tag) {
-        return new Runnable() { @Override public void run() {
-            if ("wizard".equals(tag)) {
-                try {
-                    startActivity(new Intent().setClassName("com.astos.setup",
-                            "com.astos.setup.SetupActivity"));
-                } catch (Throwable e) { toast("Setup wizard not installed"); }
-            } else if ("android".equals(tag)) {
-                startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
-            } else if ("notif".equals(tag)) {
-                openNotificationAccess();
-            }
-        }};
+    private void toggleSetting(String key) {
+        boolean cur;
+        if ("ascii_cover".equals(key)) { cur = AppSettings.asciiCover(this);
+            AppSettings.setAsciiCover(this, !cur); }
+        else if ("animations".equals(key)) { cur = AppSettings.animations(this);
+            AppSettings.setAnimations(this, !cur); }
+        else if ("speak".equals(key)) { cur = AppSettings.speakEnabled(this);
+            AppSettings.setSpeakEnabled(this, !cur); }
+        else if ("kiosk".equals(key)) { cur = AppSettings.kiosk(this);
+            AppSettings.setKiosk(this, !cur); }
+        else if ("boot".equals(key)) { cur = AppSettings.bootLaunch(this);
+            AppSettings.setBootLaunch(this, !cur); }
+        else { cur = AppSettings.keepScreenOn(this);
+            AppSettings.setKeepScreenOn(this, !cur); }
+    }
+
+    private void settingTap(String key) {
+        if ("groq".equals(key)) openInput("groq", AppSettings.groqKey(this));
+        else if ("city".equals(key)) openInput("city", AppSettings.city(this));
+        else openInput("ha", AppSettings.haUrl(this));
+    }
+
+    private void sysTap(String tag) {
+        if ("wizard".equals(tag)) {
+            try {
+                startActivity(new Intent().setClassName("com.astos.setup",
+                        "com.astos.setup.SetupActivity"));
+            } catch (Throwable e) { toast("Setup wizard not installed"); }
+        } else if ("android".equals(tag)) {
+            startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
+        } else if ("notif".equals(tag)) {
+            openNotificationAccess();
+        }
     }
 
     // ---------------------------------------------------------------- transitions
 
     private void switchPage(int p) {
         if (p == mPage) return;
+        mPageAnimDir = p > mPage ? 1 : -1;
         mPage = p;
+        mPageAnimStart = System.currentTimeMillis()
+                - (mUi != null ? 0 : 0) + 0;
+        mPageAnimStart = android.os.SystemClock.elapsedRealtime();
         if (mInputMode != null && !mInputMode.isEmpty()) closeInput();
-        if (mArt != null && mPage != PAGE_MUSIC) mArt.setVisibility(View.GONE);
-        if (AppSettings.animations(this)) {
-            mTransition = "wipe";
-            mTransFrame = 0;
-        }
-        if (mPage == PAGE_MUSIC) refreshCoverArt();
-    }
-
-    private void drawTransition(AsciiView v, int cols, int rows, long frame) {
-        int t = mTransFrame++;
-        if (t > 5) { mTransition = null; return; }
-        String glitch = "#$%&@*+=~";
-        int w = (cols * (t + 1)) / 6;
-        for (int y = 1; y < rows - 2; y++)
-            for (int x = 0; x < w; x++)
-                v.setCellChar(x, y, glitch.charAt((x + y + t * 3) % glitch.length()), mPal.dim);
+        if (p == PAGE_MUSIC) refreshCoverArt();
     }
 
     // ---------------------------------------------------------------- input
@@ -886,16 +1012,34 @@ public class HomeActivity extends Activity
     private void openInput(String mode, String initial) {
         mInputMode = mode;
         mInput.setText(initial == null ? "" : initial);
-        mInput.setHint("song".equals(mode) ? "> type a song name..."
-                : "groq".equals(mode) ? "> paste gsk_ key from console.groq.com"
-                : "city".equals(mode) ? "> city name (e.g. Mumbai)"
-                : "> home assistant URL (http://IP:8123)");
+        mInput.setHint("song".equals(mode) ? "type a song name..."
+                : "groq".equals(mode) ? "paste gsk_ key from console.groq.com"
+                : "city".equals(mode) ? "city name (e.g. Mumbai)"
+                : "home assistant URL (http://IP:8123)");
         mInput.setVisibility(View.VISIBLE);
         mInput.requestFocus();
-        android.view.inputmethod.InputMethodManager imm =
+        showKeyboard(true);
+    }
+
+    /** Show the AstOs keyboard; retry shortly after (robust against the
+     *  focus churn that sometimes ate it in v2.3). */
+    private void showKeyboard(final boolean focus) {
+        final android.view.inputmethod.InputMethodManager imm =
                 (android.view.inputmethod.InputMethodManager)
                         getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null) imm.showSoftInput(mInput, 0);
+        if (imm == null) return;
+        if (focus) mInput.requestFocus();
+        mInput.post(new Runnable() {
+            @Override public void run() {
+                try { imm.showSoftInput(mInput, 0); } catch (Throwable ignored) {}
+            }
+        });
+        // second attempt: some IME focus transitions race the window
+        mInput.postDelayed(new Runnable() {
+            @Override public void run() {
+                try { imm.showSoftInput(mInput, 0); } catch (Throwable ignored) {}
+            }
+        }, 180);
     }
 
     private void closeInput() {
@@ -929,7 +1073,8 @@ public class HomeActivity extends Activity
                         WeatherProvider.refresh(HomeActivity.this, new WeatherProvider.Callback() {
                             @Override public void onWeather(WeatherProvider.WeatherInfo w, String e) {
                                 if (w != null) mWeather = w;
-                            }});
+                            }
+                        });
                     } else toast("Couldn't find that city");
                 }
             });
@@ -1063,7 +1208,7 @@ public class HomeActivity extends Activity
     @Override public void news() {
         switchPage(PAGE_ASSIST);
         mReplyFull = "Fetching the latest headlines...";
-        mReplyShown = 0;
+        mReplyShown = 1;
         NewsProvider.fetch(false, new NewsProvider.Callback() {
             @Override public void onNews(List<NewsProvider.Headline> headlines, String error) {
                 if (headlines != null) {
@@ -1201,7 +1346,8 @@ public class HomeActivity extends Activity
         switchPage(PAGE_ASSIST);
         if (AppSettings.groqKey(this).isEmpty()) {
             mReplyFull = "I can answer anything once you add a free Groq API key "
-                    + "(setup page -> GROQ AI). Meanwhile: weather, news, music, timers all work.";
+                    + "(SETUP -> SERVICES -> GROQ AI). Meanwhile: weather, news, music, "
+                    + "timers all work.";
             mReplyShown = 0;
             Speak.say(this, mReplyFull);
             return;
@@ -1252,9 +1398,16 @@ public class HomeActivity extends Activity
 
     // ---------------------------------------------------------------- misc
 
-    private final BroadcastReceiver mBatRecv = new BroadcastReceiver() {
+    /** Time/battery/screen tick: re-assert kiosk shade disable (self-healing
+     *  against SystemUI restarts that silently clear the flags). */
+    private final BroadcastReceiver mTickRecv = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
-            // battery/time ticks redraw on next frame automatically
+            String a = i.getAction();
+            if (Intent.ACTION_SCREEN_ON.equals(a) || Intent.ACTION_TIME_TICK.equals(a)
+                    || Intent.ACTION_BATTERY_CHANGED.equals(a)) {
+                Kiosk.disableShadePublic(HomeActivity.this);
+                if (AppSettings.kiosk(HomeActivity.this)) applyFullscreen(true);
+            }
         }
     };
 
@@ -1279,7 +1432,7 @@ public class HomeActivity extends Activity
     private void promptBackgroundImage() {
         new AlertDialog.Builder(this)
                 .setTitle("Custom background")
-                .setMessage("Pick a photo from your gallery as the ASCII background "
+                .setMessage("Pick a photo from your gallery as the background "
                         + "(it will be dimmed).")
                 .setPositiveButton("Pick photo", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) {
@@ -1301,19 +1454,46 @@ public class HomeActivity extends Activity
                 InputStream in = getContentResolver().openInputStream(data.getData());
                 Bitmap bmp = BitmapFactory.decodeStream(in);
                 in.close();
-                if (bmp != null) mAscii.setBgImage(bmp);
+                if (bmp != null) mUi.setBgImage(bmp);
             } catch (Throwable e) { toast("Couldn't load image"); }
         }
     }
 
+    /** IMMERSIVE + IME coexistence fix: never re-assert immersive flags while
+     *  the keyboard is up — that hide/reshow churn is what made the v2.3
+     *  keyboard "just disappear" mid-typing. */
     private void applyFullscreen(boolean on) {
         View d = getWindow().getDecorView();
-        if (on) {
-            d.setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
-        } else {
+        if (!on) {
             d.setSystemUiVisibility(0);
+            return;
         }
+        android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager)
+                        getSystemService(INPUT_METHOD_SERVICE);
+        try {
+            boolean imeActive = imm != null && imm.isActive()
+                    && mInput != null && mInput.getVisibility() == View.VISIBLE;
+            if (imeActive) return; // let the keyboard live
+        } catch (Throwable ignored) {}
+        d.setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus) return;
+        // back in front: refresh lockdown + bring the keyboard back if the
+        // user was mid-typing (the disappearing-keyboard bug workaround)
+        Kiosk.disableShadePublic(this);
+        if (mInputMode != null && !mInputMode.isEmpty()
+                && mInput != null && mInput.getVisibility() == View.VISIBLE) {
+            mInput.postDelayed(new Runnable() {
+                @Override public void run() { showKeyboard(true); }
+            }, 120);
+        }
+        if (AppSettings.kiosk(this)) applyFullscreen(true);
     }
 
     private void toast(String s) {
@@ -1321,52 +1501,9 @@ public class HomeActivity extends Activity
         android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_SHORT).show();
     }
 
-    private String asciiWeatherIcon(int code) {
-        if (code == 0) return "\\|/";
-        if (code <= 2) return "(~)";
-        if (code == 3) return "((~))";
-        if (code <= 48) return "===";
-        if (code <= 57) return "./.";
-        if (code <= 67) return "/!/";
-        if (code <= 77) return "*snow*";
-        if (code <= 82) return "//!\\\\";
-        return " ** ";
-    }
-
-    private String joinNames(String[] arr, String active) {
-        StringBuilder sb = new StringBuilder();
-        for (String a : arr) {
-            if (!a.equals(active)) sb.append(a.toLowerCase()).append(" ");
-        }
-        return sb.toString().trim();
-    }
-
-    private static String repeat(char c, int n) {
-        if (n < 0) n = 0;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < n; i++) sb.append(c);
-        return sb.toString();
-    }
-
     private static String clip(String s, int w) {
         if (s == null) return "";
         return s.length() <= w ? s : s.substring(0, Math.max(0, w - 3)) + "...";
-    }
-
-    private static String[] wrap(String s, int w) {
-        List<String> lines = new ArrayList<String>();
-        if (s == null) return new String[]{""};
-        for (String para : s.split("\n")) {
-            String cur = para;
-            while (cur.length() > w) {
-                int cut = cur.lastIndexOf(' ', w);
-                if (cut <= 0) cut = w;
-                lines.add(cur.substring(0, cut).trim());
-                cur = cur.substring(cut).trim();
-            }
-            if (!cur.isEmpty()) lines.add(cur);
-        }
-        return lines.toArray(new String[0]);
     }
 
     private static String fmtMs(long ms) {
@@ -1380,6 +1517,10 @@ public class HomeActivity extends Activity
     @Override
     protected void onResume() {
         super.onResume();
+        Kiosk.apply(this);   // self-heal: shade disable + keyboard + rotation
+        if (AppSettings.kiosk(this)) applyFullscreen(true);
+        mUi.setUiScale(uiScale());
+        mUi.setBgMode(AppSettings.bgMode(this));
         WeatherProvider.refresh(this, new WeatherProvider.Callback() {
             @Override public void onWeather(WeatherProvider.WeatherInfo w, String e) {
                 if (w != null) mWeather = w;
@@ -1396,7 +1537,7 @@ public class HomeActivity extends Activity
     protected void onDestroy() {
         MusicEngine.unlisten(this);
         VoiceEngine.get().stopListening();
-        try { unregisterReceiver(mBatRecv); } catch (Throwable ignored) {}
+        try { unregisterReceiver(mTickRecv); } catch (Throwable ignored) {}
         super.onDestroy();
     }
 

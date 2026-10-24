@@ -37,8 +37,9 @@ an AstOs layer baked into `/system`.
 
 | | |
 |---|---|
-| 🧭 **First-boot setup wizard** | Always runs on a fresh flash: WiFi, city, Groq, **QR / localhost phone pairing**, then "Setup is almost finished, just downloading a few more things…" fetches the voice model on-device — never before setup. |
-| 🔒 **Pure kiosk** | Landscape-locked. No lock screen, no notification shade, no nav bar, no edge-swipe surprises — power-on goes straight to the ASCII dashboard. Nobody guesses it's Android. |
+| 🧭 **Phone-driven first-boot setup** | The tablet opens its own hotspot **`AstSetup_xxxx`** — connect your phone, scan the QR and push the WHOLE config (home WiFi credentials, city, Groq key, HA, theme) from the phone page. The tablet then joins your WiFi and finishes on its own. |
+| 🔒 **Pure kiosk** | Landscape-locked. No lock screen, no notification shade, no nav bar, no edge-swipe surprises — power-on goes straight to the dashboard, and a persistent foreground service holds the shade closed with a 20 s heartbeat. Nobody guesses it's Android. |
+| 🖥️ **Pixel-shell UI** | Big blocky pixel clock, warm cards, pixel-art icons and smooth sine-wave animations — everything laid out in dp so it always scales to the glass. ASCII art lives only in the boot animation. |
 | ⌨️ **AstOs keyboard** | Custom terminal IME — chunky monospace keys, digits row, [DEL]/[HIDE]/[GO], hold-DEL repeat, themed with the active palette. Selected automatically. |
 | 🎤 **Offline voice control** | Vosk speech recognition runs entirely on-device. No Google account, no cloud. Model downloads after setup over your WiFi. |
 | 🎵 **Discord-bot music** | "Play despacito" — on-device YouTube Music search + free streaming. Local SD music too. |
@@ -47,7 +48,7 @@ an AstOs layer baked into `/system`.
 | 🌤️ **Weather, news & timers** | Open-Meteo (no API key), headlines, voice timers. |
 | 🎨 **12 theme palettes + 7 background FX** | Phosphor, Amber CRT, Ember Gold, Ice Cavern, Vaporwave and more — all switchable live. |
 | 🔘 **Bigger touch targets** | 2-row tap areas + larger default font (16/20/24 px) — the whole UI is finger-friendly now. |
-| 🔌 **Redesigned power + volume** | SHUT DOWN / REBOOT only, terminal-styled rows; warm espresso volume panel with terracotta sliders. |
+| 🔌 **Redesigned power + volume** | SHUT DOWN / REBOOT only, chunky warm rows on an espresso dialog (no more white box); warm espresso volume panel with terracotta sliders. |
 | 🧠 **1 GB RAM tuning + CI caching** | zram swap + low-RAM profile; ccache-cached builds make rebuilds much faster. |
 | 🔏 **GApps-free by default** | Nothing phones home. Flash OpenGApps if you want Play. |
 

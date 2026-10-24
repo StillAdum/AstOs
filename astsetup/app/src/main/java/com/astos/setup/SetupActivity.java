@@ -23,7 +23,6 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 
 import org.json.JSONObject;
 
@@ -39,45 +38,51 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The AstOs setup wizard — a clean, custom first-boot experience.
- * No CyanogenMod screens, no Android look: animated ASCII logo, then
- *   welcome -> wifi -> city -> Groq -> PAIR (QR / localhost phone page)
- *   -> look -> downloads ("Setup is almost finished, just downloading a
- *   few more things…") -> done.
+ * The AstOs setup wizard v3 — fully phone-driven, pixel-canvas UI.
  *
- * Platform-signed: on completion it marks the device provisioned and
- * stores the user's choices in Settings.Global for AstShell.
+ * v2.3 problems this rewrites: the ASCII wizard rendered the QR as an
+ * ImageView floating over character-grid text (it overlapped and the text
+ * underneath was unreadable), setup steps were split between tablet pages
+ * and the phone page, and every animation was ASCII art. Now:
+ *
+ *   WELCOME  pixel-block AstOs logo typing itself in (canvas blocks)
+ *   PAIR     the tablet opens its own hotspot "AstSetup_xxxx" and shows a
+ *            clean 3-card layout: CONNECT -> SCAN (QR, never overlapping
+ *            anything) -> SEND. The phone page carries the WHOLE setup:
+ *            home wifi credentials (from the tablet's live scan), city,
+ *            Groq key, Home Assistant, theme.
+ *   LOCAL    tiny fallback for phone-less setups: pick wifi on the tablet
+ *   CONNECT  joining the home wifi received from the phone
+ *   DOWNLOADS  the offline voice model (smooth progress bar)
+ *   DONE     enter AstOs
+ *
+ * Everything is laid out in dp from the measured view size — no fixed
+ * pixel math, nothing out of frame. Animations are sine-wave graphics and
+ * pixel blocks; ASCII art now lives ONLY in the boot animation.
  */
 public class SetupActivity extends Activity implements PairServer.Callback {
 
     private static final int PAGE_WELCOME = 0;
-    private static final int PAGE_WIFI = 1;
-    private static final int PAGE_CITY = 2;
-    private static final int PAGE_GROQ = 3;
-    private static final int PAGE_PAIR = 4;
-    private static final int PAGE_LOOK = 5;
-    private static final int PAGE_DOWNLOADS = 6;
-    private static final int PAGE_DONE = 7;
+    private static final int PAGE_PAIR = 1;
+    private static final int PAGE_LOCAL = 2;
+    private static final int PAGE_CONNECT = 3;
+    private static final int PAGE_DOWNLOADS = 4;
+    private static final int PAGE_DONE = 5;
+    private static final String[] STAGES =
+            {"WELCOME", "PAIR", "CONNECT", "DOWNLOADS", "DONE"};
 
-    private static final String[] SPIN = {"|", "/", "-", "\\"};
-
-    private AsciiView mAscii;
-    private BackgroundFX mBgFx;
+    private PixelUi mUi;
     private AsciiTheme.Palette mPal;
     private FrameLayout mRoot;
-    private ImageView mQr;
+    private final android.graphics.Paint mPaint = new android.graphics.Paint();
 
     private int mPage = PAGE_WELCOME;
-    private int mLogoShown = 0;              // welcome typing animation
-    private String mWelcomeLine = "";
-    private int mWelcomeShown = 0;
 
-    // wifi state
-    private List<ScanResult> mNetworks = new ArrayList<ScanResult>();
-    private String mWifiStatus = "scanning...";
-    private int mWifiSel = 0;
+    // welcome animation
+    private int mLogoBlocks = 0;              // blocks revealed
+    private int mTagShown = 0;                // tagline chars revealed
 
-    // choices
+    // choices (defaults; the phone page overrides them)
     private String mPaletteName;
     private String mBgMode;
     private String mCity = "";
@@ -85,30 +90,44 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     private String mGroqKey = "";
     private String mHaUrl = "";
     private String mHaToken = "";
+    private String mWifiSsid = "";
+    private String mWifiPass = "";
 
-    // pairing state
+    // pair state
     private PairServer mPair;
-    private int mSpinT;
+    private List<ScanResult> mNetworks = new ArrayList<ScanResult>();
+    /** start | ready | lan | fail */
+    private String mPairStage = "start";
     private String mPairStatus = "";
-    private boolean mReceivedFromPhone;
+    private String mApSsid = "";
+    private String mUrl = "";
+    private Bitmap mQr;
+    private boolean mReceived = false;
+
+    // local wifi fallback
+    private int mLocalSel = -1;
+    private String mLocalStatus = "";
+
+    // connect state
+    /** joining | ok | fail */
+    private String mConnState = "joining";
+    private long mConnT0;
 
     // model download state
     private int mModelPct = -2;              // -2 idle, -1 indeterminate, 0..100
     private String mModelNote = "";
     private boolean mModelBusy = false;
     private boolean mModelDlFailed = false;
+    private boolean mModelAutoAdvanced = false;
 
     private String mErr = "";
 
     private final Handler mH = new Handler(Looper.getMainLooper());
-    private final Runnable mSpinTick = new Runnable() {
-        @Override public void run() {
-            if (mPage != PAGE_PAIR || mReceivedFromPhone) return;
-            mSpinT = (mSpinT + 1) % SPIN.length;
-            mPairStatus = "[" + SPIN[mSpinT] + "] waiting for your phone...";
-            mH.postDelayed(this, 160);
-        }
+    private final Runnable mConnPoll = new Runnable() {
+        @Override public void run() { pollConnect(); }
     };
+
+    // ------------------------------------------------------------------ create
 
     @Override
     protected void onCreate(Bundle b) {
@@ -118,6 +137,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         mPal = AsciiTheme.PALETTES[0];
         mPaletteName = mPal.name;
         mBgMode = mPal.mode;
+        mApSsid = SoftAp.ssid(this);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -126,45 +146,27 @@ public class SetupActivity extends Activity implements PairServer.Callback {
 
         mRoot = new FrameLayout(this);
         mRoot.setBackgroundColor(mPal.bg);
-        mAscii = new AsciiView(this);
-        mAscii.setBgColor(mPal.bg);
-        mAscii.setFontPx(20);
-        mAscii.setFps(24);
-        mRoot.addView(mAscii, new FrameLayout.LayoutParams(
+
+        mUi = new PixelUi(this);
+        mUi.setPalette(mPal);
+        mUi.setBgMode(mBgMode);
+        mRoot.addView(mUi, new FrameLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // QR code overlay (the ASCII grid cannot draw bitmaps)
-        mQr = new ImageView(this);
-        mQr.setVisibility(View.GONE);
-        mQr.setPadding(8, 8, 8, 8);
-        mRoot.addView(mQr);
         setContentView(mRoot);
 
-        mBgFx = new BackgroundFX(mBgMode);
-        mAscii.setBackgroundFx(mBgFx);
-        mAscii.setRenderer(new AsciiView.Renderer() {
-            @Override public void onFrame(AsciiView v, long frame) {
-                drawFrame(v, frame);
+        mUi.setRenderer(new PixelUi.Renderer() {
+            @Override public void onFrame(PixelUi ui, android.graphics.Canvas c, long tms) {
+                drawFrame(ui, c, tms);
             }
         });
-        mAscii.start();
+        mUi.start();
 
         // full-screen kiosk feel
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
-
-        // tap anywhere on welcome / done pages to advance
-        mAscii.setOnTouchListener(new View.OnTouchListener() {
-            @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
-                if (ev.getAction() == android.view.MotionEvent.ACTION_UP) {
-                    mAscii.dispatchTap(ev);
-                }
-                return true;
-            }
-        });
     }
 
     /** No shade / no lock screen / our keyboard — platform-signed powers. */
@@ -204,100 +206,290 @@ public class SetupActivity extends Activity implements PairServer.Callback {
 
     // ------------------------------------------------------------------ frame
 
-    private void drawFrame(AsciiView v, long frame) {
-        v.wipe();
-        mBgFx.render(v, frame, mPal);
-        int cols = v.cols(), rows = v.rows();
-        int cx = cols / 2;
+    private void drawFrame(PixelUi ui, android.graphics.Canvas c, long tms) {
+        float w = ui.widthDp(), h = ui.heightDp();
+        ui.drawBackground(c, tms);
+
+        // stage dots + wordmark
+        ui.text(c, "AstOs setup", 16, 24, 14, mPal.fg, true, true);
+        float dx = w - 16 - (STAGES.length * 16);
+        for (int i = 0; i < STAGES.length; i++) {
+            int stage = pageToStage(mPage);
+            boolean done = i < stage;
+            boolean cur = i == stage;
+            ui.pill(c, dx + i * 16, 14, 10, 10, cur || done, 2);
+            if (cur) {
+                ui.pill(c, dx + i * 16 + 3, 27, 4, 4, true, 1);
+            }
+        }
 
         switch (mPage) {
-            case PAGE_WELCOME:  drawWelcome(v, cols, rows, frame); break;
-            case PAGE_WIFI:      drawWifi(v, cols, rows, frame); break;
-            case PAGE_CITY:      drawCity(v, cols, rows, frame); break;
-            case PAGE_GROQ:      drawGroq(v, cols, rows, frame); break;
-            case PAGE_PAIR:      drawPair(v, cols, rows, frame); break;
-            case PAGE_LOOK:      drawLook(v, cols, rows, frame); break;
-            case PAGE_DOWNLOADS: drawDownloads(v, cols, rows, frame); break;
-            case PAGE_DONE:      drawDone(v, cols, rows, frame); break;
+            case PAGE_WELCOME:  drawWelcome(ui, c, w, h, tms); break;
+            case PAGE_PAIR:     drawPair(ui, c, w, h, tms); break;
+            case PAGE_LOCAL:    drawLocal(ui, c, w, h, tms); break;
+            case PAGE_CONNECT:  drawConnect(ui, c, w, h, tms); break;
+            case PAGE_DOWNLOADS: drawDownloads(ui, c, w, h, tms); break;
+            case PAGE_DONE:     drawDone(ui, c, w, h, tms); break;
         }
 
-        if (!mErr.isEmpty()) v.putC(cx, rows - 2, clip(mErr, cols - 8), 0xFFFF5A5A);
+        if (!mErr.isEmpty()) {
+            ui.textCentered(c, clip(mErr, 70), w / 2f, h - 10, 12, 0xFFFF5A5A, false, false);
+        }
     }
 
-    // ---- WELCOME: animated ASCII logo -------------------------------------
+    private static int pageToStage(int page) {
+        switch (page) {
+            case PAGE_WELCOME: return 0;
+            case PAGE_PAIR: return 1;
+            case PAGE_LOCAL: return 1;              // detour of PAIR
+            case PAGE_CONNECT: return 2;
+            case PAGE_DOWNLOADS: return 3;
+            default: return 4;
+        }
+    }
 
-    private void drawWelcome(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        String[] logo = Figlet.render("AstOs");
-        int lw = logo[0].length();
-        int lx = cx - lw / 2;
+    // ---- WELCOME --------------------------------------------------------
 
-        int totalCols = lw * 5;
-        if (mLogoShown < totalCols) {
-            if (frame % 2 == 0) mLogoShown += 3;
-            int showCols = Math.min(totalCols, mLogoShown);
-            for (int r = 0; r < 5; r++) {
-                for (int c = 0; c < lw; c++) {
-                    int idx = r * lw + c;
-                    if (idx * 2 < showCols) {
-                        char ch = logo[r].charAt(c);
-                        if (ch != ' ') v.setCellChar(lx + c, 3 + r, ch, mPal.accent);
-                    }
+    private void drawWelcome(PixelUi ui, android.graphics.Canvas c, float w,
+                             float h, long tms) {
+        float midX = w / 2f;
+        int total = PixelIcon.countBlocks("AstOs");
+        if (mLogoBlocks < total) {
+            if (tms / 40 != mLastTick) {           // reveal pace
+                mLogoBlocks += 3;
+            }
+            mLastTick = tms / 40;
+        }
+        mLogoBlocks = Math.min(mLogoBlocks, total);
+
+        float block = Math.min(w / 60f, h / 34f);
+        float lw = PixelIcon.measureBlockText("AstOs", block);
+        float lh = block * 5;
+        float ly = h * 0.30f;
+        PixelIcon.drawBlockText(c, "AstOs", midX - lw / 2f, ly, block,
+                mPal.accent, mPaint, mLogoBlocks);
+
+        String tag = "welcome to YOUR operating system";
+        if (mLogoBlocks >= total) {
+            if (mTagShown < tag.length() && tms / 70 != mLastTick2) mTagShown++;
+            mLastTick2 = tms / 70;
+            ui.textCentered(c, tag.substring(0, mTagShown)
+                            + (tms / 500 % 2 == 0 ? "_" : ""),
+                    midX, ly + lh + 44, 15, mPal.fg, false, false);
+            if (mTagShown >= tag.length()
+                    && tms % 1200 < 800) {
+                ui.textCentered(c, "[ tap anywhere to begin ]",
+                        midX, ly + lh + 96, 14, mPal.dim, true, true);
+            }
+        }
+
+        ui.hit(0, 0, w, h, new Runnable() {
+            @Override public void run() {
+                if (mTagShown >= "welcome to YOUR operating system".length()) {
+                    go(PAGE_PAIR);
                 }
             }
-            int cx2 = (showCols / 2) % lw;
-            v.setCellChar(lx + cx2, 3 + (showCols / 2 / lw) % 5, '<', mPal.fg);
+        });
+        ui.textCentered(c, "AstOs 2.4 first-boot setup", midX, h - 18, 11,
+                mPal.dim, false, true);
+    }
+
+    private long mLastTick = -1;
+    private long mLastTick2 = -1;
+
+    // ---- PAIR ------------------------------------------------------------
+
+    private void drawPair(PixelUi ui, android.graphics.Canvas c, float w,
+                          float h, long tms) {
+        float midX = w / 2f;
+        ui.textCentered(c, "SET UP FROM YOUR PHONE", midX, 62, 20, mPal.fg,
+                true, true);
+        ui.textCentered(c, "this tablet just opened its own setup network",
+                midX, 84, 12, mPal.dim, false, false);
+
+        float margin = 18, gap = 14;
+        float colW = (w - margin * 2 - gap * 2) / 3f;
+        float cardY = 100;
+        float statusRowY = h - 64;
+        float cardH = statusRowY - cardY - 14;
+
+        // ---- card 1: CONNECT ----
+        float x1 = margin;
+        ui.card(c, x1, cardY, colW, cardH, 12, "start".equals(mPairStage));
+        numChip(ui, c, x1 + 16, cardY + 14, 1);
+        ui.text(c, "CONNECT", x1 + 52, cardY + 30, 13, mPal.accent, true, true);
+        float c1midY = cardY + cardH * 0.42f;
+        ui.icon(c, PixelIcon.WIFI, x1 + colW / 2f, c1midY - 26, 44);
+        ui.textCentered(c, mApSsdForDisplay(), x1 + colW / 2f, c1midY + 30,
+                17, mPal.fg, true, true);
+        String sub1 = "lan".equals(mPairStage)
+                ? "hotspot unavailable - the tablet is on your wifi instead"
+                : "open network - no password needed";
+        List<String> l1 = ui.wrap(sub1, 11, colW - 28, 2);
+        for (int i = 0; i < l1.size(); i++) {
+            ui.textCentered(c, l1.get(i), x1 + colW / 2f, c1midY + 52 + i * 15,
+                    11, mPal.dim, false, false);
+        }
+
+        // ---- card 2: SCAN (the QR — inside its own card, overlaps nothing) ----
+        float x2 = margin + colW + gap;
+        ui.card(c, x2, cardY, colW, cardH, 12, true);
+        numChip(ui, c, x2 + 16, cardY + 14, 2);
+        ui.text(c, "SCAN", x2 + 52, cardY + 30, 13, mPal.accent, true, true);
+
+        float qrSize = Math.min(colW - 44, cardH - 110);
+        if (mQr != null) {
+            // cream plate + dark-module QR = instantly scannable
+            float qx = x2 + (colW - qrSize) / 2f;
+            float qy = cardY + 44;
+            android.graphics.RectF plate = new android.graphics.RectF(
+                    qx - 10, qy - 10, qx + qrSize + 10, qy + qrSize + 10);
+            android.graphics.Paint p = mPaint;
+            p.setAntiAlias(true);
+            p.setColor(0xFFF2EBDD);
+            c.drawRoundRect(plate, 12, 12, p);
+            ui.bitmap(c, mQr, qx, qy, qrSize, true);
+            // url under the code
+            ui.textCentered(c, mUrl, x2 + colW / 2f, qy + qrSize + 30, 12,
+                    mPal.accent, true, true);
+            ui.textCentered(c, "(or type it in your phone's browser)",
+                    x2 + colW / 2f, qy + qrSize + 48, 10, mPal.dim, false, false);
         } else {
-            for (int r = 0; r < 5; r++) {
-                for (int c = 0; c < lw; c++) {
-                    char ch = logo[r].charAt(c);
-                    if (ch == ' ') continue;
-                    int ph = (int) ((c + frame / 2) % 14);
-                    int col = ph < 3 ? mPal.accent : mPal.fg;
-                    v.setCellChar(lx + c, 3 + r, ch, col);
-                }
-            }
-            String tag = "welcome to YOUR operating system";
-            if (mWelcomeShown < tag.length() && frame % 2 == 0) mWelcomeShown++;
-            v.putC(cx, 10, tag.substring(0, mWelcomeShown)
-                    + (frame / 8 % 2 == 0 ? "_" : " "), mPal.fg);
-            if (mWelcomeShown >= tag.length()) {
-                if (frame % 24 < 16) v.putC(cx, 13, "[ tap anywhere to begin ]", mPal.dim);
-            }
+            // hotspot still spinning up
+            ui.spinner(c, x2 + colW / 2f, cardY + 44 + qrSize / 2f,
+                    Math.min(26, qrSize / 3f), tms, mPal.accent);
+            ui.textCentered(c, mPairStatus.isEmpty()
+                            ? "opening the setup network..." : clip(mPairStatus, 30),
+                    x2 + colW / 2f, cardY + cardH - 16, 11, mPal.dim, false, false);
         }
-        v.hit(0, 0, cols, rows, new Runnable() { @Override public void run() {
-            if (mWelcomeShown >= 31) nextPage();
-        }});
-        v.putC(cx, 2, "AstOs 2.3 setup", mPal.dim);
+
+        // ---- card 3: SEND ----
+        float x3 = margin + (colW + gap) * 2;
+        ui.card(c, x3, cardY, colW, cardH, 12, false);
+        numChip(ui, c, x3 + 16, cardY + 14, 3);
+        ui.text(c, "SEND", x3 + 52, cardY + 30, 13, mPal.accent, true, true);
+        float c3y = cardY + 56;
+        ui.icon(c, PixelIcon.PHONE, x3 + colW / 2f, c3y + 16, 34);
+        List<String> l3 = ui.wrap("the short form does the whole setup: your home "
+                        + "wifi, city, AI key and theme",
+                12, colW - 28, 4);
+        for (int i = 0; i < l3.size(); i++) {
+            ui.textCentered(c, l3.get(i), x3 + colW / 2f, c3y + 54 + i * 17,
+                    12, mPal.fg, false, false);
+        }
+        if (!mReceived) {
+            ui.spinner(c, x3 + colW / 2f, cardY + cardH - 34, 12, tms, mPal.accent);
+            ui.textCentered(c, "waiting for your phone...",
+                    x3 + colW / 2f, cardY + cardH - 12, 11, mPal.dim, false, false);
+        } else {
+            ui.icon(c, PixelIcon.CHECK, x3 + colW / 2f, cardY + cardH - 30, 18);
+            ui.textCentered(c, "RECEIVED - setting up...",
+                    x3 + colW / 2f, cardY + cardH - 12, 11, mPal.accent, true, false);
+        }
+
+        // ---- status row ----
+        String st = !mPairStatus.isEmpty() ? mPairStatus : " ";
+        ui.textCentered(c, clip(st, 64), midX, statusRowY + 16,
+                13, mReceived ? mPal.accent : mPal.dim, mReceived, false);
+
+        // "no phone" fallback pill
+        String noPhone = "no phone? set up wifi on the tablet";
+        float pw = ui.textWidth(noPhone, 11, true) + 24;
+        ui.pill(c, midX - pw / 2f, statusRowY + 26, pw, 30, false, 9);
+        ui.textCentered(c, noPhone, midX, statusRowY + 46, 11, mPal.fg, true, true);
+        ui.hit(midX - pw / 2f, statusRowY + 26, pw, 30, new Runnable() {
+            @Override public void run() { go(PAGE_LOCAL); }
+        });
     }
 
-    // ---- WIFI ---------------------------------------------------------------
+    private String mApSsdForDisplay() {
+        return "lan".equals(mPairStage) ? "(on your wifi)" : mApSsid;
+    }
 
-    private void drawWifi(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        Figlet.draw(v, cx, 1, "WIFI", mPal.fg);
-        v.putC(cx, 7, mWifiStatus, mPal.dim);
+    private void numChip(PixelUi ui, android.graphics.Canvas c, float x, float y, int n) {
+        ui.pill(c, x, y, 26, 26, true, 6);
+        ui.textCentered(c, String.valueOf(n), x + 13, y + 18, 13, mPal.bg, true, true);
+    }
 
-        int shown = Math.min(5, mNetworks.size());
-        v.box(6, 9, Math.min(cols - 12, 84), 2 + shown * 2 + 1, mPal.accent, "networks");
+    // ---- LOCAL (no-phone fallback) ---------------------------------------
+
+    private void drawLocal(PixelUi ui, android.graphics.Canvas c, float w,
+                           float h, long tms) {
+        float midX = w / 2f;
+        ui.textCentered(c, "PICK YOUR HOME WIFI", midX, 56, 18, mPal.fg, true, true);
+        ui.textCentered(c, "this is the phone-less fallback - everything else "
+                        + "can be set later in AstOs",
+                midX, 76, 11, mPal.dim, false, false);
+
+        float listW = Math.min(w - 60, 620);
+        float lx = midX - listW / 2f;
+        float ly = 92;
+        int shown = Math.min(6, mNetworks.size());
+        float rowH = 46;
+        ui.card(c, lx, ly, listW, 16 + shown * rowH, 12, false);
+        if (mNetworks.isEmpty()) {
+            ui.textCentered(c, mLocalStatus.isEmpty()
+                            ? "scanning for networks..." : mLocalStatus,
+                    midX, ly + 40, 13, mPal.dim, false, false);
+        }
         for (int i = 0; i < shown; i++) {
             ScanResult s = mNetworks.get(i);
-            String sig = s.level > -60 ? "****" : s.level > -75 ? "*** " : "**  ";
-            String sel = i == mWifiSel ? ">" : " ";
-            String line = sel + " [" + sig + "] " + clip(s.SSID, 38)
-                    + (isLocked(s) ? " (locked)" : "");
-            v.put(8, 10 + i * 2, line, i == mWifiSel ? mPal.accent : mPal.fg);
-            v.hit(8, 10 + i * 2, cols - 20, 2, wifiTap(i));
-        }
-        if (mNetworks.isEmpty()) {
-            v.put(8, 10, "  scanning for networks...", mPal.dim);
+            float ry = ly + 10 + i * rowH;
+            boolean sel = i == mLocalSel;
+            if (sel) ui.pill(c, lx + 8, ry + 2, listW - 16, rowH - 6, false, 8);
+            String sig = s.level > -60 ? "###" : s.level > -75 ? "## " : "#  ";
+            boolean locked = isLocked(s);
+            ui.text(c, clip(s.SSID, 30), lx + 24, ry + 20, 14,
+                    sel ? mPal.accent : mPal.fg, sel, false);
+            ui.text(c, sig + (locked ? "  locked" : "  open"),
+                    lx + listW - 24 - ui.textWidth(sig + (locked ? "  locked" : "  open"), 11, true),
+                    ry + 26, 11, mPal.dim, true, true);
+            final int idx = i;
+            ui.hit(lx + 8, ry + 2, listW - 16, rowH - 6, new Runnable() {
+                @Override public void run() { localTap(idx); }
+            });
         }
 
-        String hint = "tap a network to connect - [ N ] rescan - [ SKIP ]";
-        v.putC(cx, rows - 4, hint, mPal.dim);
-        int hx = cx - hint.length() / 2;
-        v.hit(hx + hint.indexOf("[ N ]"), rows - 4, 3, 2, new Runnable() { @Override public void run() { scanWifi(); }});
-        v.hit(hx + hint.indexOf("[ SKIP ]"), rows - 4, 7, 2, new Runnable() { @Override public void run() { nextPage(); }});
+        float by = ly + 16 + shown * rowH + 22;
+        float bw = 190;
+        ui.pill(c, midX - bw - 10, by, bw, 40, false, 10);
+        ui.textCentered(c, "RESCAN", midX - 10 - bw / 2f, by + 26, 13, mPal.fg, true, true);
+        ui.hit(midX - bw - 10, by, bw, 40, new Runnable() {
+            @Override public void run() { rescan(); }
+        });
+        ui.pill(c, midX + 10, by, bw, 40, false, 10);
+        ui.textCentered(c, "SKIP WIFI", midX + 10 + bw / 2f, by + 26, 13,
+                mPal.fg, true, true);
+        ui.hit(midX + 10, by, bw, 40, new Runnable() {
+            @Override public void run() { go(PAGE_DOWNLOADS); }
+        });
+    }
+
+    private void localTap(final int i) {
+        mLocalSel = i;
+        final ScanResult s = mNetworks.get(i);
+        if (!isLocked(s)) {
+            joinWifi(s.SSID, null);
+            go(PAGE_CONNECT);
+            return;
+        }
+        final EditText in = new EditText(this);
+        in.setTypeface(Typeface.MONOSPACE);
+        in.setTextSize(16f);
+        in.setTextColor(0xFFF2E7DA);
+        in.setHint("password for " + s.SSID);
+        in.setHintTextColor(0xFF8A6F4D);
+        in.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
+        new AlertDialog.Builder(this, R.style.AstSetupDialog)
+                .setTitle("Join " + s.SSID)
+                .setView(in)
+                .setPositiveButton("Connect", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        joinWifi(s.SSID, in.getText().toString());
+                        go(PAGE_CONNECT);
+                    }
+                })
+                .setNegativeButton("Cancel", null).show();
     }
 
     private static boolean isLocked(ScanResult s) {
@@ -305,66 +497,253 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 || s.capabilities.contains("WEP") || s.capabilities.contains("EAP"));
     }
 
-    private Runnable wifiTap(final int i) {
-        return new Runnable() { @Override public void run() {
-            mWifiSel = i;
-            final ScanResult s = mNetworks.get(i);
-            if (!isLocked(s)) {
-                connect(s.SSID, null);
-                return;
-            }
-            final EditText in = new EditText(SetupActivity.this);
-            in.setTypeface(Typeface.MONOSPACE);
-            in.setTextSize(18f);
-            in.setHint("password for " + s.SSID);
-            in.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
-            new AlertDialog.Builder(SetupActivity.this, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle("Join " + s.SSID)
-                    .setView(in)
-                    .setPositiveButton("Connect", new DialogInterface.OnClickListener() {
-                        @Override public void onClick(DialogInterface d, int w) {
-                            connect(s.SSID, in.getText().toString());
-                        }
-                    })
-                    .setNegativeButton("Cancel", null).show();
-        }};
-    }
+    // ---- CONNECT ----------------------------------------------------------
 
-    private void connect(String ssid, String pass) {
-        mWifiStatus = "connecting to " + ssid + "...";
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            WifiConfiguration c = new WifiConfiguration();
-            c.SSID = "\"" + ssid + "\"";
-            if (pass == null) {
-                c.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-            } else {
-                c.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                c.preSharedKey = "\"" + pass + "\"";
+    private void drawConnect(PixelUi ui, android.graphics.Canvas c, float w,
+                             float h, long tms) {
+        float midX = w / 2f;
+        float cy = h * 0.34f;
+        boolean ok = "ok".equals(mConnState);
+        boolean fail = "fail".equals(mConnState);
+
+        if (!fail) {
+            // concentric pulse rings (smooth graphics, not ascii)
+            for (int i = 0; i < 3; i++) {
+                float ph = ((tms / 1200.0f) + i / 3f) % 1f;
+                float r = 30 + ph * 60;
+                mPaint.reset();
+                mPaint.setAntiAlias(true);
+                mPaint.setStyle(android.graphics.Paint.Style.STROKE);
+                mPaint.setStrokeWidth(2);
+                mPaint.setColor(AsciiTheme.dimColor(mPal.accent,
+                        0.5f * (1f - ph), mPal.bg));
+                c.drawCircle(midX, cy, r, mPaint);
             }
-            int id = wm.addNetwork(c);
-            if (id != -1) {
-                wm.disconnect();
-                wm.enableNetwork(id, true);
-                wm.reconnect();
-                mWifiStatus = "connected - " + ssid;
-                nextPage();
-            } else {
-                mErr = "wifi join failed";
-            }
-        } catch (Throwable e) {
-            mErr = "wifi error: " + e.getMessage();
+        }
+        ui.icon(c, PixelIcon.WIFI, midX, cy, 52);
+        ui.textCentered(c, ok ? "CONNECTED" : fail ? "COULDN'T JOIN"
+                        : "JOINING " + clip(mWifiSsid, 24) + "...",
+                midX, cy + 84, 18, ok ? mPal.accent : mPal.fg, true, true);
+
+        if (!ok && !fail) {
+            ui.spinner(c, midX, cy + 124, 14, tms, mPal.accent);
+        }
+
+        String sub;
+        if (ok) {
+            sub = mCity.isEmpty() ? "moving on..." : "locating " + mCity + "...";
+        } else if (fail) {
+            sub = "check the password / move closer to the router";
+        } else {
+            sub = "the tablet left the setup hotspot and is joining your home wifi";
+        }
+        ui.textCentered(c, sub, midX, cy + 156, 12, mPal.dim, false, false);
+
+        if (fail) {
+            float bw = 210;
+            float by = cy + 186;
+            ui.pill(c, midX - bw - 10, by, bw, 42, true, 10);
+            ui.textCentered(c, "TRY AGAIN", midX - 10 - bw / 2f, by + 27, 13,
+                    mPal.bg, true, true);
+            ui.hit(midX - bw - 10, by, bw, 42, new Runnable() {
+                @Override public void run() {
+                    joinWifi(mWifiSsid, mWifiPass);
+                }
+            });
+            ui.pill(c, midX + 10, by, bw, 42, false, 10);
+            ui.textCentered(c, "PICK ANOTHER", midX + 10 + bw / 2f, by + 27, 13,
+                    mPal.fg, true, true);
+            ui.hit(midX + 10, by, bw, 42, new Runnable() {
+                @Override public void run() {
+                    rescan();
+                    go(PAGE_LOCAL);
+                }
+            });
         }
     }
 
-    private void scanWifi() {
-        mWifiStatus = "scanning...";
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION}, 7);
-            return;
+    // ---- DOWNLOADS --------------------------------------------------------
+
+    private void drawDownloads(PixelUi ui, android.graphics.Canvas c, float w,
+                               float h, long tms) {
+        float midX = w / 2f;
+        ui.textCentered(c, "Setup is almost finished,", midX, h * 0.30f, 18,
+                mPal.fg, true, false);
+        ui.textCentered(c, "just downloading a few more things...", midX,
+                h * 0.30f + 28, 18, mPal.fg, true, false);
+        ui.textCentered(c, "(the offline voice model - ~40 MB, one-time)",
+                midX, h * 0.30f + 54, 12, mPal.dim, false, false);
+
+        float barW = Math.min(w - 90, 420);
+        float barX = midX - barW / 2f;
+        float barY = h * 0.30f + 86;
+        if (mModelPct >= 0) {
+            ui.progressBar(c, barX, barY, barW, 8, mModelPct / 100f, true);
+            ui.textCentered(c, mModelPct + "%", midX, barY + 26, 14,
+                    mPal.accent, true, true);
+        } else if (mModelPct == -1) {
+            float frac = 0.5f + 0.45f * (float) Math.sin(tms / 400.0);
+            ui.progressBar(c, barX, barY, barW, 8, frac, true);
+            ui.textCentered(c, "starting...", midX, barY + 26, 12,
+                    mPal.dim, false, false);
+        }
+
+        if (!mModelNote.isEmpty()) {
+            List<String> ln = ui.wrap(mModelNote, 12, barW + 60, 2);
+            for (int i = 0; i < ln.size(); i++) {
+                ui.textCentered(c, ln.get(i), midX, barY + 52 + i * 17, 12,
+                        mPal.dim, false, false);
+            }
+        }
+
+        float by = barY + 100;
+        if (mModelDlFailed) {
+            float bw = 160;
+            ui.pill(c, midX - bw / 2f, by, bw, 40, true, 10);
+            ui.textCentered(c, "RETRY", midX, by + 26, 13, mPal.bg, true, true);
+            ui.hit(midX - bw / 2f, by, bw, 40, new Runnable() {
+                @Override public void run() { startModelDownload(); }
+            });
+            by += 52;
+        }
+        if (!mModelBusy && (mModelPct >= 100 || mModelPct == -2)) {
+            float bw = 200;
+            ui.pill(c, midX - bw / 2f, by, bw, 42, true, 10);
+            ui.textCentered(c, mModelPct >= 100 ? "CONTINUE" : "SKIP FOR NOW",
+                    midX, by + 27, 13, mPal.bg, true, true);
+            ui.hit(midX - bw / 2f, by, bw, 42, new Runnable() {
+                @Override public void run() { go(PAGE_DONE); }
+            });
+        }
+    }
+
+    // ---- DONE -------------------------------------------------------------
+
+    private void drawDone(PixelUi ui, android.graphics.Canvas c, float w,
+                          float h, long tms) {
+        float midX = w / 2f;
+        float block = Math.min(w / 60f, h / 34f);
+        float lw = PixelIcon.measureBlockText("AstOs", block);
+        float ly = h * 0.26f;
+        // gentle breathing pulse between accent and fg (pixel blocks)
+        boolean pulse = tms / 600 % 2 == 0;
+        PixelIcon.drawBlockText(c, "AstOs", midX - lw / 2f, ly, block,
+                pulse ? mPal.accent : mPal.fg, mPaint,
+                PixelIcon.countBlocks("AstOs"));
+
+        ui.textCentered(c, "AstOs is ready.", midX, ly + block * 5 + 52, 18,
+                mPal.fg, true, false);
+        String dateLine = new SimpleDateFormat("EEEE, MMMM d - HH:mm", Locale.US)
+                .format(new Date());
+        ui.textCentered(c, dateLine + "   your OS is set up", midX,
+                ly + block * 5 + 80, 12, mPal.dim, false, false);
+
+        float bw = 240;
+        float by = ly + block * 5 + 110;
+        boolean blink = tms / 500 % 2 == 0;
+        ui.pill(c, midX - bw / 2f, by, bw, 48, true, 12);
+        ui.textCentered(c, blink ? "[  ENTER ASTOS  ]" : "[ ENTER ASTOS ]",
+                midX, by + 30, 15, mPal.bg, true, true);
+        ui.hit(midX - bw / 2f, by, bw, 48, new Runnable() {
+            @Override public void run() { finishSetup(); }
+        });
+    }
+
+    // ------------------------------------------------------------------ flow
+
+    private void go(int page) {
+        mErr = "";
+        int old = mPage;
+        mPage = page;
+
+        if (old == PAGE_PAIR && page != PAGE_CONNECT && page != PAGE_DOWNLOADS) {
+            // leaving pair without a config: tear the hotspot + server down
+            if (!mReceived) onPairTeardown();
+        }
+        switch (page) {
+            case PAGE_PAIR:
+                onPairEnter();
+                break;
+            case PAGE_LOCAL:
+                if (mNetworks.isEmpty()) rescan();
+                break;
+            case PAGE_DOWNLOADS:
+                onDownloadsEnter();
+                break;
+        }
+        if (old == PAGE_PAIR && (page == PAGE_CONNECT || page == PAGE_DOWNLOADS)) {
+            onPairTeardown();
+        }
+    }
+
+    // ---- pair lifecycle ----------------------------------------------------
+
+    private void onPairEnter() {
+        mReceived = false;
+        mPairStage = "start";
+        mQr = null;
+        mUrl = "";
+        mPairStatus = "opening the setup network...";
+
+        // 1) live scan for the phone page (the wifi client is still up now)
+        rescanQuiet();
+
+        // 2) the http server (binds all interfaces: hotspot + lan)
+        if (mPair == null) mPair = new PairServer(this, this);
+        mPair.setNetworks(mNetworks);
+        mPair.start();
+
+        // 3) the AstSetup_xxxx hotspot
+        SoftAp.start(this, new SoftAp.Callback() {
+            @Override public void onApReady(String ssid, String ip) {
+                mPairStage = "ready";
+                mUrl = "http://" + ip + ":" + PairServer.PORT;
+                mQr = Qr.encode(mUrl, 480, 0xFF14100A, 0xFFF2EBDD);
+                mPairStatus = "waiting for your phone...";
+            }
+
+            @Override public void onApFailed(String reason) {
+                // dev / side-loaded build: LAN pairing fallback
+                mPairStage = "lan";
+                String ip = PairServer.lanIp();
+                if (ip != null) {
+                    mUrl = "http://" + ip + ":" + PairServer.PORT;
+                    mQr = Qr.encode(mUrl, 480, 0xFF14100A, 0xFFF2EBDD);
+                    mPairStatus = "hotspot unavailable - join the same wifi, then scan";
+                } else {
+                    mPairStatus = "no network - use the fallback below";
+                }
+            }
+        });
+    }
+
+    private void onPairTeardown() {
+        if (mPair != null) mPair.stop();
+        // NOTE: SoftAp.stop is called explicitly when we actually LEAVE for
+        // connect/downloads (after the config arrived); backing out to
+        // welcome/local keeps the hotspot up so the user can come right back.
+    }
+
+    // ---- wifi scanning / joining ------------------------------------------
+
+    private void rescan() {
+        rescanQuiet();
+        mLocalStatus = mNetworks.isEmpty() ? "no networks found - rescan"
+                : mNetworks.size() + " networks";
+    }
+
+    private void rescanQuiet() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION}, 7);
+                return;
+            }
+        } catch (Throwable ignored) {
+            // targetSdk 25 on a 7.1 ROM: runtime check exists but is granted
+            // by default; keep going on any failure
         }
         try {
             // Android 7 gates scan results behind the system location switch;
@@ -372,11 +751,14 @@ public class SetupActivity extends Activity implements PairServer.Callback {
             try {
                 if (Settings.Secure.getInt(getContentResolver(),
                         Settings.Secure.LOCATION_MODE, 0) == 0) {
-                    Settings.Secure.putInt(getContentResolver(), Settings.Secure.LOCATION_MODE, 3);
+                    Settings.Secure.putInt(getContentResolver(),
+                            Settings.Secure.LOCATION_MODE, 3);
                 }
             } catch (Throwable ignored) {}
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            boolean ok = wm.startScan();
+            WifiManager wm = (WifiManager) getApplicationContext()
+                    .getSystemService(WIFI_SERVICE);
+            if (wm == null) return;
+            wm.startScan();
             List<ScanResult> found = wm.getScanResults();
             if (found == null) found = new ArrayList<ScanResult>();
             List<ScanResult> out = new ArrayList<ScanResult>();
@@ -386,271 +768,131 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 seen.add(s.SSID);
                 out.add(s);
             }
+            java.util.Collections.sort(out, new java.util.Comparator<ScanResult>() {
+                @Override public int compare(ScanResult a, ScanResult b) {
+                    return Integer.compare(b.level, a.level);
+                }
+            });
             mNetworks = out;
-            mWifiStatus = mNetworks.isEmpty()
-                    ? (ok ? "no networks found - [ N ] rescan" : "scan failed - [ N ] retry")
-                    : mNetworks.size() + " networks - tap one to join";
-        } catch (Throwable e) {
-            mWifiStatus = "wifi unavailable - [ SKIP ]";
-        }
+            if (mPair != null) mPair.setNetworks(out);
+        } catch (Throwable ignored) {}
     }
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
         super.onRequestPermissionsResult(code, perms, res);
-        if (code == 7) scanWifi();
+        if (code == 7) rescanQuiet();
     }
 
-    // ---- CITY --------------------------------------------------------------
-
-    private void drawCity(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        Figlet.draw(v, cx, 1, "WEATHER", mPal.fg);
-        v.putC(cx, 7, "where do you live? (for weather + local answers)", mPal.dim);
-        String cityShown = mCityResolved.isEmpty() ? mCity : mCityResolved;
-        String line = "[ " + (cityShown.isEmpty() ? "SET CITY" : cityShown.toUpperCase()) + " ]";
-        v.putC(cx, 10, line, mPal.accent);
-        v.hit(cx - line.length() / 2, 10, line.length(), 2, new Runnable() {
-            @Override public void run() { askCity(); }
-        });
-        v.putC(cx, 13, "[ SKIP ]  [ NEXT > ]", mPal.dim);
-        int bx = cx - 9;
-        v.hit(bx, 13, 7, 2, new Runnable() { @Override public void run() { nextPage(); }});
-        v.hit(bx + 10, 13, 8, 2, new Runnable() { @Override public void run() { nextPage(); }});
+    private void joinWifi(String ssid, String pass) {
+        mWifiSsid = ssid;
+        mWifiPass = pass == null ? "" : pass;
+        mConnState = "joining";
+        mConnT0 = android.os.SystemClock.elapsedRealtime();
+        try {
+            WifiManager wm = (WifiManager) getApplicationContext()
+                    .getSystemService(WIFI_SERVICE);
+            WifiConfiguration cfg = new WifiConfiguration();
+            cfg.SSID = "\"" + ssid + "\"";
+            if (mWifiPass.isEmpty()) {
+                cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+            } else {
+                cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+                cfg.preSharedKey = "\"" + mWifiPass + "\"";
+            }
+            int id = wm.addNetwork(cfg);
+            if (id != -1) {
+                wm.disconnect();
+                wm.enableNetwork(id, true);
+                wm.reconnect();
+            } else {
+                mConnState = "fail";
+                mErr = "wifi join failed";
+                return;
+            }
+        } catch (Throwable e) {
+            mConnState = "fail";
+            mErr = "wifi error: " + e.getMessage();
+            return;
+        }
+        mH.removeCallbacks(mConnPoll);
+        mH.postDelayed(mConnPoll, 1200);
     }
 
-    private void askCity() {
-        final EditText in = new EditText(this);
-        in.setTypeface(Typeface.MONOSPACE);
-        in.setTextSize(18f);
-        in.setHint("e.g. Mumbai / London / Austin");
-        in.setText(mCity);
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Your city")
-                .setView(in)
-                .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        final String c = in.getText().toString().trim();
-                        if (c.isEmpty()) return;
-                        mCity = c;
-                        mCityResolved = "locating...";
-                        new Thread(new Runnable() { @Override public void run() {
-                            try {
-                                String json = get("https://geocoding-api.open-meteo.com/v1/search?count=1&name="
-                                        + URLEncoder.encode(c, "UTF-8"));
-                                JSONObject root = new JSONObject(json);
-                                if (root.getJSONArray("results").length() > 0) {
-                                    JSONObject r = root.getJSONArray("results").getJSONObject(0);
-                                    final float lat = (float) r.getDouble("latitude");
-                                    final float lon = (float) r.getDouble("longitude");
-                                    final String name = r.optString("name", c);
-                                    runOnUiThread(new Runnable() { @Override public void run() {
-                                        mCityResolved = name;
-                                        Settings.Global.putFloat(getContentResolver(), "astos_lat", lat);
-                                        Settings.Global.putFloat(getContentResolver(), "astos_lon", lon);
-                                    }});
-                                } else {
-                                    runOnUiThread(new Runnable() { @Override public void run() {
-                                        mCityResolved = ""; mErr = "city not found: " + c;
-                                    }});
-                                }
-                            } catch (Throwable t) {
-                                runOnUiThread(new Runnable() { @Override public void run() {
-                                    mCityResolved = "located later";
-                                }});
+    private void pollConnect() {
+        if (mPage != PAGE_CONNECT || !"joining".equals(mConnState)) return;
+        try {
+            WifiManager wm = (WifiManager) getApplicationContext()
+                    .getSystemService(WIFI_SERVICE);
+            String cur = wm.getConnectionInfo().getSSID();
+            boolean joined = cur != null
+                    && cur.replace("\"", "").equals(mWifiSsid)
+                    && networkConnected();
+            if (joined) {
+                mConnState = "ok";
+                onWifiJoined();
+                return;
+            }
+        } catch (Throwable ignored) {}
+        if (android.os.SystemClock.elapsedRealtime() - mConnT0 > 45_000) {
+            mConnState = "fail";
+            return;
+        }
+        mH.postDelayed(mConnPoll, 1200);
+    }
+
+    private void onWifiJoined() {
+        if (!mCity.isEmpty()) geocodeCity(mCity);
+        mH.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (mPage == PAGE_CONNECT) go(PAGE_DOWNLOADS);
+            }
+        }, 1400);
+    }
+
+    private boolean networkConnected() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            NetworkInfo n = cm.getActiveNetworkInfo();
+            return n != null && n.isConnected();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private void geocodeCity(final String city) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    String json = get("https://geocoding-api.open-meteo.com/v1/search?count=1&name="
+                            + URLEncoder.encode(city, "UTF-8"));
+                    JSONObject root = new JSONObject(json);
+                    if (root.getJSONArray("results").length() > 0) {
+                        JSONObject r = root.getJSONArray("results").getJSONObject(0);
+                        final float lat = (float) r.getDouble("latitude");
+                        final float lon = (float) r.getDouble("longitude");
+                        final String name = r.optString("name", city);
+                        runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                mCityResolved = name;
+                                try {
+                                    Settings.Global.putFloat(getContentResolver(),
+                                            "astos_lat", lat);
+                                    Settings.Global.putFloat(getContentResolver(),
+                                            "astos_lon", lon);
+                                } catch (Throwable ignored) {}
                             }
-                        }}, "geo").start();
+                        });
                     }
-                })
-                .setNegativeButton("Cancel", null).show();
+                } catch (Throwable ignored) {}
+            }
+        }, "geo").start();
     }
 
-    // ---- GROQ ---------------------------------------------------------------
-
-    private void drawGroq(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        Figlet.draw(v, cx, 1, "AI", mPal.fg);
-        v.putC(cx, 7, "AstOs thinks with Groq - a free, fast AI cloud", mPal.fg);
-        v.putC(cx, 9, "1. visit console.groq.com on any device", mPal.dim);
-        v.putC(cx, 10, "2. make a free API key (gsk_...)", mPal.dim);
-        v.putC(cx, 11, "3. paste it below - then ask me anything", mPal.dim);
-        String line = "[ " + (mGroqKey.isEmpty() ? "PASTE API KEY" : "gsk_...*** SAVED") + " ]";
-        v.putC(cx, 14, line, mPal.accent);
-        v.hit(cx - line.length() / 2, 14, line.length(), 2, new Runnable() {
-            @Override public void run() { askGroq(); }
-        });
-        v.putC(cx, 17, "[ SKIP ]  [ NEXT > ]", mPal.dim);
-        int bx = cx - 9;
-        v.hit(bx, 17, 7, 2, new Runnable() { @Override public void run() { nextPage(); }});
-        v.hit(bx + 10, 17, 8, 2, new Runnable() { @Override public void run() { nextPage(); }});
-    }
-
-    private void askGroq() {
-        final EditText in = new EditText(this);
-        in.setTypeface(Typeface.MONOSPACE);
-        in.setTextSize(18f);
-        in.setHint("gsk_...");
-        in.setText(mGroqKey);
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Groq API key")
-                .setView(in)
-                .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        mGroqKey = in.getText().toString().trim();
-                    }
-                })
-                .setNeutralButton("Skip", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int x) { nextPage(); }
-                })
-                .setNegativeButton("Cancel", null).show();
-    }
-
-    // ---- PAIR (QR code / localhost, finish setup from your phone) ----------
-
-    private void drawPair(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        Figlet.draw(v, cx, 0, "PAIR", mPal.fg);
-
-        v.putC(cx, 6, "finish setup from your phone:", mPal.fg);
-        v.putC(cx, 8, "scan the QR code  -  or open the address below in", mPal.dim);
-        v.putC(cx, 9, "your phone's browser:", mPal.dim);
-
-        String url = mPair != null && mPair.url() != null ? mPair.url() : "...";
-        String line = "[ " + url + " ]";
-        v.putC(cx, 11, line, mPal.accent);
-
-        if (!mPairStatus.isEmpty()) v.putC(cx, 13, clip(mPairStatus, cols - 8),
-                mReceivedFromPhone ? mPal.accent : mPal.dim);
-
-        v.putC(cx, rows - 4, "[ SKIP ]  [ NEXT > ]", mPal.dim);
-        int bx = cx - 9;
-        v.hit(bx, rows - 4, 7, 2, new Runnable() { @Override public void run() { nextPage(); }});
-        v.hit(bx + 10, rows - 4, 8, 2, new Runnable() { @Override public void run() { nextPage(); }});
-    }
-
-    private void onPairEnter() {
-        mReceivedFromPhone = false;
-        if (mPair == null) mPair = new PairServer(this, this);
-        if (!networkConnected()) {
-            mPairStatus = "no network - continue without pairing if you like";
-            mQr.setVisibility(View.GONE);
-            return;
-        }
-        mPair.start();
-        String url = mPair.url();
-        if (url == null) {
-            mPairStatus = "no network - continue without pairing if you like";
-            mQr.setVisibility(View.GONE);
-            return;
-        }
-        Bitmap bm = Qr.encode(url, 460, mPal.fg, 0xFF14100A);
-        mQr.setBackgroundColor(0xFF14100A);
-        int px = Math.round(getResources().getDisplayMetrics().density * 200);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(px, px, Gravity.CENTER);
-        lp.topMargin = Math.round(getResources().getDisplayMetrics().density * 26);
-        mQr.setLayoutParams(lp);
-        mQr.setImageBitmap(bm);
-        mQr.setVisibility(View.VISIBLE);
-        mPairStatus = "[" + SPIN[0] + "] waiting for your phone...";
-        mH.removeCallbacks(mSpinTick);
-        mSpinTick.run();
-    }
-
-    private void onPairExit() {
-        mH.removeCallbacks(mSpinTick);
-        mQr.setVisibility(View.GONE);
-        if (mPair != null) mPair.stop();
-    }
-
-    // ---- LOOK -----------------------------------------------------------------
-
-    private void drawLook(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        Figlet.draw(v, cx, 1, "LOOK", mPal.fg);
-        v.putC(cx, 7, "choose your vibe - live preview right now", mPal.dim);
-
-        v.putC(cx, 9, "THEME  <  " + mPaletteName + "  >", mPal.fg);
-        String tl = "THEME  <  " + mPaletteName + "  >";
-        int tx = cx - tl.length() / 2;
-        v.hit(tx + 5, 9, 3, 2, palShift(-1));
-        v.hit(tx + tl.length() - 7, 9, 3, 2, palShift(1));
-
-        v.putC(cx, 11, "BACKGROUND  <  " + mBgMode + "  >", mPal.fg);
-        String bl = "BACKGROUND  <  " + mBgMode + "  >";
-        int bx = cx - bl.length() / 2;
-        v.hit(bx + 11, 11, 3, 2, bgShift(-1));
-        v.hit(bx + bl.length() - 7, 11, 3, 2, bgShift(1));
-
-        v.putC(cx, 15, "[ CONTINUE ]", mPal.accent);
-        v.hit(cx - 6, 15, 12, 2, new Runnable() { @Override public void run() { nextPage(); }});
-    }
-
-    private Runnable palShift(final int d) {
-        return new Runnable() { @Override public void run() {
-            List<String> names = new ArrayList<String>();
-            for (AsciiTheme.Palette p : AsciiTheme.PALETTES) names.add(p.name);
-            int i = Math.max(0, names.indexOf(mPaletteName));
-            mPaletteName = names.get((i + d + names.size()) % names.size());
-            applyLook();
-        }};
-    }
-
-    private Runnable bgShift(final int d) {
-        return new Runnable() { @Override public void run() {
-            List<String> modes = new ArrayList<String>();
-            for (String m : AsciiTheme.BG_MODES) if (!"IMAGE".equals(m)) modes.add(m);
-            int i = Math.max(0, modes.indexOf(mBgMode));
-            mBgMode = modes.get((i + d + modes.size()) % modes.size());
-            applyLook();
-        }};
-    }
-
-    private void applyLook() {
-        mPal = AsciiTheme.byName(mPaletteName);
-        mBgFx = new BackgroundFX(mBgMode);
-        mAscii.setBackgroundFx(mBgFx);
-        mAscii.setBgColor(mPal.bg);
-        mRoot.setBackgroundColor(mPal.bg);
-    }
-
-    // ---- DOWNLOADS ---------------------------------------------------------------
-
-    private void drawDownloads(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        v.putC(cx, 3, "Setup is almost finished,", mPal.fg);
-        v.putC(cx, 4, "just downloading a few more things...", mPal.fg);
-        v.putC(cx, 6, "(the offline voice model - ~40 MB, one-time)", mPal.dim);
-
-        // ASCII progress bar
-        int barW = Math.min(44, cols - 16);
-        int barX = cx - barW / 2;
-        int filled = mModelPct >= 0 ? (barW * mModelPct) / 100 : 0;
-        StringBuilder bar = new StringBuilder();
-        for (int i = 0; i < barW; i++) bar.append(i < filled ? '=' : '-');
-        String spinner = mModelPct < 0 && mModelBusy ? " [" + SPIN[(int) (frame / 8 % 4)] + "]" : "";
-        v.put(barX - 1, 9, "|" + bar + "|" + spinner, mPal.accent);
-        if (mModelPct >= 0) {
-            String pct = mModelPct + "%";
-            v.putC(cx, 10, pct, mPal.accent);
-        }
-        if (!mModelNote.isEmpty()) {
-            v.putC(cx, 12, clip(mModelNote, cols - 8), mPal.dim);
-        }
-
-        int by = 14;
-        if (mModelDlFailed) {
-            v.putC(cx, by, "[ RETRY ]", mPal.accent);
-            v.hit(cx - 4, by, 8, 2, new Runnable() { @Override public void run() { startModelDownload(); }});
-            by += 2;
-        }
-        if (!mModelBusy) {
-            v.putC(cx, by, mModelPct >= 100 || !mModelDlFailed ? "[ CONTINUE > ]" : "[ SKIP ]", mPal.dim);
-            int w = mModelPct >= 100 ? 12 : 8;
-            v.hit(cx - w / 2, by, w, 2, new Runnable() { @Override public void run() { nextPage(); }});
-        }
-    }
+    // ---- downloads ---------------------------------------------------------
 
     private void onDownloadsEnter() {
+        mModelAutoAdvanced = false;
         if (mModelPct >= 100 || ModelZip.present()) {
             if (!ModelZip.present()) startModelDownload();
             return;
@@ -678,6 +920,14 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 mModelBusy = false;
                 mModelPct = 100;
                 mModelNote = "voice model downloaded - AstShell unpacks it on first start";
+                if (!mModelAutoAdvanced) {
+                    mModelAutoAdvanced = true;
+                    mH.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            if (mPage == PAGE_DOWNLOADS) go(PAGE_DONE);
+                        }
+                    }, 1600);
+                }
             }
             @Override public void onError(String msg) {
                 mModelBusy = false;
@@ -687,60 +937,55 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         });
     }
 
-    private boolean networkConnected() {
-        try {
-            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
-            NetworkInfo n = cm.getActiveNetworkInfo();
-            return n != null && n.isConnected();
-        } catch (Throwable t) { return false; }
-    }
+    // ---- PairServer.Callback -----------------------------------------------
 
-    // ---- DONE -------------------------------------------------------------------
-
-    private void drawDone(AsciiView v, int cols, int rows, long frame) {
-        int cx = cols / 2;
-        String[] logo = Figlet.render("AstOs");
-        int lw = logo[0].length();
-        int lx = cx - lw / 2;
-        boolean pulse = frame / 6 % 2 == 0;
-        for (int r = 0; r < 5; r++)
-            for (int c = 0; c < lw; c++) {
-                char ch = logo[r].charAt(c);
-                if (ch != ' ') v.setCellChar(lx + c, 3 + r, ch,
-                        pulse ? mPal.accent : mPal.fg);
-            }
-        v.putC(cx, 10, "AstOs is ready.", mPal.fg);
-        String dateLine = new SimpleDateFormat("EEEE, MMMM d - HH:mm", Locale.US)
-                .format(new Date());
-        v.putC(cx, 12, dateLine + "   your OS is set up", mPal.dim);
-        String next = frame / 10 % 2 == 0 ? "[ enter AstOs ]" : "[  enter AstOs  ]";
-        v.putC(cx, 15, next, mPal.accent);
-        v.hit(cx - 8, 15, 16, 2, new Runnable() { @Override public void run() {
-            finishSetup();
-        }});
-    }
-
-    // ------------------------------------------------------------------ flow
-
-    private void nextPage() {
-        mErr = "";
-        if (mPage == PAGE_PAIR) onPairExit();
-        mPage++;
-        switch (mPage) {
-            case PAGE_WIFI:
-                scanWifi();
-                break;
-            case PAGE_PAIR:
-                onPairEnter();
-                break;
-            case PAGE_DOWNLOADS:
-                onDownloadsEnter();
-                break;
-            default:
-                break;
+    @Override public void onPosted(final String wifiSsid, final String wifiPass,
+                                   final String haUrl, final String haToken,
+                                   final String city, final String groq,
+                                   final String theme, final String bg) {
+        mReceived = true;
+        mPairStatus = "RECEIVED - settings saved from your phone";
+        if (haUrl != null && !haUrl.trim().isEmpty()) mHaUrl = haUrl.trim();
+        if (haToken != null && !haToken.trim().isEmpty()) mHaToken = haToken.trim();
+        if (groq != null && !groq.trim().isEmpty()) mGroqKey = groq.trim();
+        if (city != null && !city.trim().isEmpty()) mCity = city.trim();
+        if (theme != null && !theme.trim().isEmpty()) {
+            mPaletteName = AsciiTheme.byName(theme.trim()).name; // validated
+            applyLook();
         }
-        if (mPage > PAGE_DONE) mPage = PAGE_DONE;
+        if (bg != null && !bg.trim().isEmpty()) {
+            for (String m : AsciiTheme.BG_MODES) {
+                if (m.equalsIgnoreCase(bg.trim())) { mBgMode = m; break; }
+            }
+            applyLook();
+        }
+
+        mH.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (!mReceived) return;
+                boolean hasWifi = wifiSsid != null && !wifiSsid.trim().isEmpty();
+                SoftAp.stop(SetupActivity.this);      // hotspot down, client up
+                if (hasWifi) {
+                    joinWifi(wifiSsid.trim(),
+                            wifiPass == null ? "" : wifiPass.trim());
+                    go(PAGE_CONNECT);
+                } else {
+                    go(PAGE_DOWNLOADS);
+                }
+            }
+        }, 1000);
     }
+
+    @Override public void onLog(String line) { /* quiet */ }
+
+    private void applyLook() {
+        mPal = AsciiTheme.byName(mPaletteName);
+        mUi.setPalette(mPal);
+        mUi.setBgMode(mBgMode);
+        mRoot.setBackgroundColor(mPal.bg);
+    }
+
+    // ---- finish -------------------------------------------------------------
 
     private void finishSetup() {
         ContentResolver cr = getContentResolver();
@@ -757,7 +1002,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
             // provision the device ourselves — no CM setup wizard exists in
             // this ROM, so we write the flags the framework expects after setup
             Settings.Global.putInt(cr, Settings.Global.DEVICE_PROVISIONED, 1);
-            Settings.Secure.putInt(cr, "user_setup_complete", 1); // USER_SETUP_COMPLETE
+            Settings.Secure.putInt(cr, "user_setup_complete", 1);
             Settings.Global.putInt(cr, "astos_setup_done", 1);
         } catch (Throwable e) {
             mErr = "could not save settings: " + e.getMessage();
@@ -771,58 +1016,6 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         startActivity(home);
         finish();
     }
-
-    // ------------------------------------------------------------------ PairServer.Callback
-
-    @Override public void onPosted(final String haUrl, final String haToken,
-                                   final String city, final String groq,
-                                   final String theme, final String bg) {
-        mReceivedFromPhone = true;
-        mH.removeCallbacks(mSpinTick);
-        if (haUrl != null && !haUrl.trim().isEmpty()) mHaUrl = haUrl.trim();
-        if (haToken != null && !haToken.trim().isEmpty()) mHaToken = haToken.trim();
-        if (groq != null && !groq.trim().isEmpty()) mGroqKey = groq.trim();
-        if (city != null && !city.trim().isEmpty() && mCity.isEmpty()) {
-            mCity = city.trim();
-            mCityResolved = "locating...";
-            new Thread(new Runnable() { @Override public void run() {
-                try {
-                    String json = get("https://geocoding-api.open-meteo.com/v1/search?count=1&name="
-                            + URLEncoder.encode(mCity, "UTF-8"));
-                    JSONObject root = new JSONObject(json);
-                    if (root.getJSONArray("results").length() > 0) {
-                        JSONObject r = root.getJSONArray("results").getJSONObject(0);
-                        final float lat = (float) r.getDouble("latitude");
-                        final float lon = (float) r.getDouble("longitude");
-                        final String name = r.optString("name", mCity);
-                        runOnUiThread(new Runnable() { @Override public void run() {
-                            mCityResolved = name;
-                            try {
-                                Settings.Global.putFloat(getContentResolver(), "astos_lat", lat);
-                                Settings.Global.putFloat(getContentResolver(), "astos_lon", lon);
-                            } catch (Throwable ignored) {}
-                        }});
-                    }
-                } catch (Throwable ignored) {}
-            }}, "geo2").start();
-        }
-        if (theme != null && !theme.trim().isEmpty()) {
-            mPaletteName = AsciiTheme.byName(theme).name; // validate against known palettes
-            applyLook();
-        }
-        if (bg != null && !bg.trim().isEmpty()) {
-            for (String m : AsciiTheme.BG_MODES) {
-                if (m.equalsIgnoreCase(bg.trim())) { mBgMode = m; break; }
-            }
-            applyLook();
-        }
-        mPairStatus = "[ RECEIVED ] settings saved from your phone";
-        mH.postDelayed(new Runnable() { @Override public void run() {
-            if (mPage == PAGE_PAIR) nextPage();
-        }}, 900);
-    }
-
-    @Override public void onLog(String line) { /* quiet */ }
 
     // ------------------------------------------------------------------ helpers
 
@@ -846,12 +1039,14 @@ public class SetupActivity extends Activity implements PairServer.Callback {
 
     @Override
     public void onBackPressed() {
-        if (mPage > PAGE_WELCOME && mPage < PAGE_DONE) {
-            if (mPage == PAGE_PAIR) onPairExit();
-            mPage--;
-            if (mPage == PAGE_WIFI) scanWifi();
+        if (mPage == PAGE_PAIR) {
+            if (!mReceived) onPairTeardown();
+            mPage = PAGE_WELCOME;
+            return;
         }
-        // welcome/done: no back out of setup
+        if (mPage == PAGE_LOCAL) { mPage = PAGE_PAIR; onPairEnter(); return; }
+        if (mPage == PAGE_DOWNLOADS) { mPage = PAGE_LOCAL; return; }
+        // welcome / connect / done: no back out of setup
     }
 
     @Override

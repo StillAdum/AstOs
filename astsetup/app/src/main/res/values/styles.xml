@@ -3,4 +3,15 @@
     <style name="AstSetupTheme" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">#14100A</item>
     </style>
+
+    <!-- Warm espresso dialog (wifi password prompt etc.) — matches the
+         ROM-wide power menu styling: no white dialogs anywhere. -->
+    <style name="AstSetupDialog" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog_warm</item>
+        <item name="android:colorAccent">#FFC96F4A</item>
+        <item name="android:textColorPrimary">#FFF2E7DA</item>
+        <item name="android:textColorSecondary">#FFC4B39D</item>
+        <item name="android:colorPrimary">#FF2A211B</item>
+        <item name="android:colorPrimaryDark">#FF2A211B</item>
+    </style>
 </resources>

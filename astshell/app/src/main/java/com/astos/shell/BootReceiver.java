@@ -17,6 +17,10 @@ public class BootReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
 
         Kiosk.apply(context);
+        // persistent shade-killer: holds StatusBarManager.disable() alive
+        // from a foreground process with a 20s heartbeat (v2.4 fix for the
+        // "notification center can still be opened" bug)
+        KioskService.ensureRunning(context);
 
         if (!AppSettings.bootLaunch(context)) return;
 
