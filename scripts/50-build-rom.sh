@@ -5,7 +5,7 @@ set -e
 
 ROMDIR="${ROMDIR:-/mnt/rom}"
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-ASTOS_VERSION="2.3"
+ASTOS_VERSION="2.4"
 
 # ---- JDK 8 -------------------------------------------------------------------
 if [ ! -d "$HOME/jdk8" ]; then
