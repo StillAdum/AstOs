@@ -26,7 +26,7 @@
         <!-- AstOs: warm espresso card, terracotta accent -->
         <item name="android:windowBackground">@drawable/ast_power_bg</item>
         <item name="android:colorControlActivated">#FFC96F4A</item>
-        <item name="android:listDivider">#26C96F4A</item>
+        <item name="android:listDivider">@drawable/ast_divider_warm</item>
     </style>
 
     <style name="Theme.DeviceDefault.Light.Dialog.Alert" parent="@*android:style/Theme.Material.Light.Dialog.Alert">
@@ -40,7 +40,7 @@
         <!-- AstOs: SAME warm espresso card — no white dialogs anywhere -->
         <item name="android:windowBackground">@drawable/ast_power_bg</item>
         <item name="android:colorControlActivated">#FFC96F4A</item>
-        <item name="android:listDivider">#26C96F4A</item>
+        <item name="android:listDivider">@drawable/ast_divider_warm</item>
     </style>
 
 </resources>

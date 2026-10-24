@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Warm translucent terracotta list divider (power menu rows). listDivider
+     is a drawable attribute — a raw color hex is rejected by aapt, hence
+     this 1dp shape. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#26C96F4A"/>
+    <size android:height="1dp"/>
+</shape>
