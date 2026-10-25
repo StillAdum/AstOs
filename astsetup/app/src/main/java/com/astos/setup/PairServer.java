@@ -367,6 +367,7 @@ public class PairServer {
         sb.append("var other=(fd.get('wifi_ssid_other')||'').trim();");
         sb.append("if(other){fd.set('wifi_ssid',other);}");
         sb.append("fd.delete('wifi_ssid_other');");
+        sb.append("fd.set('h24',(document.querySelector('input[name=h24]')||{checked:true}).checked?'1':'0');");
         sb.append("fetch('/api',{method:'POST',body:new URLSearchParams(fd).toString()})");
         sb.append(".then(function(){document.getElementById('ok').style.display='block';");
         sb.append("document.querySelector('button').disabled=true;});");
