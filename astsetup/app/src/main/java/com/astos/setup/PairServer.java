@@ -23,25 +23,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * PairServer v3 — the phone half of AstOs setup.
+ * PairServer v4 — the phone half of AstOs setup, in the pixel look.
  *
  * Setup is FULLY phone-driven: the tablet opens the AstSetup_xxxx hotspot,
  * the phone connects to it, opens the QR'd localhost URL and pushes the
  * ENTIRE configuration from this page: home WiFi credentials (picked from
- * the tablet's live scan list), city, Groq key, Home Assistant, theme.
- * When the hotspot cannot start (side-loaded dev build), the server also
- * answers on the LAN and the same page works over the shared network.
+ * the tablet's live scan list), city, Groq key, Home Assistant, theme,
+ * 24-hour clock. When the hotspot cannot start (side-loaded dev build),
+ * the server also answers on the LAN and the same page works over the
+ * shared network.
  *
  * Zero dependencies: ServerSocket + manual HTTP/1.1 parsing. The page is
  * fully self-contained (no external resources — the setup hotspot has no
- * internet).
+ * internet) and styled like the tablet: paper background, ink borders,
+ * hard shadows, segmented buttons.
  */
 public class PairServer {
 
     public interface Callback {
         void onPosted(String wifiSsid, String wifiPass, String haUrl,
                       String haToken, String city, String groq,
-                      String theme, String bg);
+                      String theme, String h24);
         void onLog(String line);
     }
 
@@ -148,7 +150,7 @@ public class PairServer {
                         mCb.onPosted(params.get("wifi_ssid"), params.get("wifi_pass"),
                                 params.get("ha_url"), params.get("ha_token"),
                                 params.get("city"), params.get("groq"),
-                                params.get("theme"), params.get("bg"));
+                                params.get("theme"), params.get("h24"));
                     }
                 });
             } else {
@@ -167,6 +169,7 @@ public class PairServer {
         w.print("HTTP/1.1 " + code + " OK\r\n");
         w.print("Content-Type: " + mime + "\r\n");
         w.print("Content-Length: " + b.length + "\r\n");
+        w.print("Cache-Control: no-store\r\n");
         w.print("Connection: close\r\n\r\n");
         w.flush();
         os.write(b);
@@ -245,31 +248,50 @@ public class PairServer {
         StringBuilder sb = new StringBuilder(8192);
         sb.append("<!DOCTYPE html><html><head><meta charset='utf-8'>");
         sb.append("<meta name='viewport' content='width=device-width, initial-scale=1'>");
-        sb.append("<title>AstOs Setup</title><style>");
-        sb.append("body{background:#14100A;color:#F2D9A0;font-family:Menlo,Consolas,monospace;");
-        sb.append("margin:0;padding:20px 18px 60px;max-width:640px;}");
-        sb.append("h1{color:#FFB84D;font-size:20px;letter-spacing:2px;margin:0 0 2px}");
-        sb.append(".sub{color:#8A6F4D;font-size:12px;margin-bottom:18px}");
-        sb.append("p{color:#8A6F4D;font-size:13px;line-height:1.5}");
-        sb.append("label{display:block;margin:14px 0 6px;font-size:12px;color:#C8A96A;letter-spacing:1px}");
-        sb.append("input,select{width:100%;box-sizing:border-box;padding:14px;font-size:15px;");
-        sb.append("background:#1E1810;color:#F2D9A0;border:1px solid #4A3B26;");
-        sb.append("border-radius:10px;font-family:inherit}");
-        sb.append("button{width:100%;margin-top:24px;padding:16px;font-size:16px;font-weight:bold;");
-        sb.append("background:#FFB84D;color:#14100A;border:0;border-radius:10px;font-family:inherit}");
-        sb.append(".ok{display:none;margin-top:16px;color:#FFB84D;font-size:15px;");
-        sb.append("border:1px solid #C96F4A;padding:14px;border-radius:10px;line-height:1.5}");
-        sb.append("fieldset{margin-top:14px;border:1px solid #4A3B26;border-radius:10px;padding:10px 14px}");
-        sb.append("legend{color:#C8A96A;font-size:11px;letter-spacing:1px}");
-        sb.append(".r{display:block;margin:10px 0;font-size:15px}");
-        sb.append(".r input{width:auto;display:inline-block;margin-right:10px}");
-        sb.append(".net{display:block;margin:8px 0;font-size:15px}");
-        sb.append(".net input{width:auto;display:inline-block;margin-right:10px}");
-        sb.append(".sig{color:#8A6F4D;font-size:12px}");
+        sb.append("<title>AstOS setup</title><style>");
+        // the tablet's pixel look: dune paper, ink lines, hard shadows
+        sb.append(":root{--bg:#efe7d8;--panel:#f8f2e4;--ink:#2a241c;--soft:#9a8d78;");
+        sb.append("--accent:#c4742a;--on:#cfdca6;--off:#dfd3bd;--shadow:#d9ccb2}");
+        sb.append("*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}");
+        sb.append("body{margin:0;font-family:ui-monospace,Menlo,Consolas,'Courier New',monospace;");
+        sb.append("background:var(--bg);color:var(--ink);padding:20px 18px 70px;");
+        sb.append("background-image:radial-gradient(var(--shadow) 1px,transparent 1.2px);");
+        sb.append("background-size:18px 18px}");
+        sb.append(".wrap{max-width:440px;margin:0 auto}");
+        sb.append("h1{font-size:38px;font-weight:400;letter-spacing:.04em;margin:4px 0;");
+        sb.append("font-family:'VT323',ui-monospace,monospace;color:var(--ink)}");
+        sb.append(".sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;");
+        sb.append("color:var(--soft);margin:0 0 20px}");
+        sb.append("p{color:var(--ink);font-size:12px;line-height:1.6}");
+        sb.append(".card{position:relative;background:var(--panel);border:2px solid var(--ink);");
+        sb.append("box-shadow:6px 6px 0 var(--shadow);padding:16px 16px 14px;margin-bottom:16px}");
+        sb.append(".tag{position:absolute;top:-11px;left:10px;background:var(--ink);color:var(--bg);");
+        sb.append("font-size:10px;font-weight:600;letter-spacing:.2em;padding:2px 9px}");
+        sb.append("label{display:block;margin:12px 0 5px;font-size:9px;letter-spacing:.18em;");
+        sb.append("text-transform:uppercase;color:var(--soft)}");
+        sb.append("input,select{width:100%;padding:12px 10px;font-size:14px;background:var(--bg);");
+        sb.append("color:var(--ink);border:2px solid var(--ink);border-radius:0;");
+        sb.append("font-family:inherit;-webkit-appearance:none}");
+        sb.append("button{width:100%;margin-top:6px;padding:15px;font-size:13px;font-weight:700;");
+        sb.append("letter-spacing:.14em;text-transform:uppercase;");
+        sb.append("background:var(--accent);color:#f8f2e4;border:2px solid var(--ink);");
+        sb.append("box-shadow:3px 3px 0 var(--ink);font-family:inherit}");
+        sb.append("button:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}");
+        sb.append(".ok{display:none;margin-top:14px;background:var(--on);border:2px solid var(--ink);");
+        sb.append("padding:13px;font-size:12px;line-height:1.5}");
+        sb.append(".r{display:block;margin:9px 0;font-size:13px}");
+        sb.append(".r input,.net input{width:auto;display:inline-block;margin-right:9px}");
+        sb.append(".net{display:block;margin:8px 0;font-size:13px}");
+        sb.append(".sig{color:var(--soft);font-size:11px}");
         sb.append("#pwrow{display:none}");
-        sb.append(".hint{font-size:11px;color:#8A6F4D;margin-top:4px}");
-        sb.append("</style></head><body>");
-        sb.append("<h1>AstOs SETUP</h1>");
+        sb.append(".hint{font-size:10px;color:var(--soft);margin-top:4px;line-height:1.5}");
+        sb.append(".chips{display:inline-block;margin-right:8px;vertical-align:middle}");
+        sb.append(".chips i{display:inline-block;width:10px;height:10px;margin-right:1px;");
+        sb.append("border:1px solid rgba(0,0,0,.25)}");
+        sb.append(".check{display:block;margin:10px 0;font-size:13px}");
+        sb.append(".check input{width:auto;display:inline-block;margin-right:9px}");
+        sb.append("</style></head><body><div class='wrap'>");
+        sb.append("<h1>AstOS setup</h1>");
         sb.append("<div class='sub'>").append(esc(Build.MANUFACTURER)).append(' ')
           .append(esc(Build.MODEL)).append(" &middot; pair by phone</div>");
         sb.append("<p>Everything you enter here is pushed straight to the tablet over its ");
@@ -278,9 +300,9 @@ public class PairServer {
         sb.append("<form id='f'>");
 
         // ---- home wifi (the reason setup is phone-driven) ----
-        sb.append("<fieldset><legend>YOUR HOME WIFI &middot; the tablet will join it</legend>");
+        sb.append("<div class='card'><span class='tag'>WIFI</span>");
         if (nets.isEmpty()) {
-            sb.append("<label>NETWORK NAME (SSID)</label>");
+            sb.append("<label>Network name (SSID)</label>");
             sb.append("<input name='wifi_ssid' placeholder='your wifi name' autocomplete='off'>");
         } else {
             int i = 0;
@@ -297,42 +319,44 @@ public class PairServer {
                   .append("</span></label>");
                 i++;
             }
-            sb.append("<label>OTHER NETWORK (optional)</label>");
+            sb.append("<label>Other network (optional)</label>");
             sb.append("<input name='wifi_ssid_other' placeholder='type a different name' autocomplete='off'>");
         }
-        sb.append("<div id='pwrow'><label>WIFI PASSWORD</label>");
+        sb.append("<div id='pwrow'><label>Wifi password</label>");
         sb.append("<input name='wifi_pass' placeholder='password' autocomplete='off'>");
         sb.append("<div class='hint'>left blank for open networks</div></div>");
-        sb.append("</fieldset>");
+        sb.append("</div>");
 
         // ---- services ----
-        sb.append("<label>WEATHER CITY</label>");
+        sb.append("<div class='card'><span class='tag'>SERVICES</span>");
+        sb.append("<label>Weather city</label>");
         sb.append("<input name='city' placeholder='e.g. Berlin' autocomplete='off'>");
-        sb.append("<label>GROQ API KEY &middot; free, console.groq.com</label>");
+        sb.append("<label>Groq API key &middot; free, console.groq.com</label>");
         sb.append("<input name='groq' placeholder='gsk_...' autocomplete='off'>");
-        sb.append("<label>HOME ASSISTANT URL (optional)</label>");
+        sb.append("<label>Home Assistant URL (optional)</label>");
         sb.append("<input name='ha_url' placeholder='http://homeassistant.local:8123' autocomplete='off'>");
-        sb.append("<label>HOME ASSISTANT TOKEN (optional)</label>");
+        sb.append("<label>Home Assistant token (optional)</label>");
         sb.append("<input name='ha_token' placeholder='long-lived access token' autocomplete='off'>");
+        sb.append("</div>");
 
-        // ---- theme ----
-        sb.append("<fieldset><legend>THEME</legend>");
+        // ---- theme (with pixel color chips) ----
+        sb.append("<div class='card'><span class='tag'>THEME</span>");
         for (AsciiTheme.Palette p : AsciiTheme.PALETTES) {
             sb.append("<label class='r'><input type='radio' name='theme' value='")
               .append(esc(p.name)).append('\'')
               .append(p == AsciiTheme.PALETTES[0] ? " checked" : "")
-              .append("> ").append(esc(p.name)).append("</label>");
+              .append("> <span class='chips'>")
+              .append("<i style='background:#").append(Integer.toHexString(p.bg & 0xFFFFFF)).append("'></i>")
+              .append("<i style='background:#").append(Integer.toHexString(p.on & 0xFFFFFF)).append("'></i>")
+              .append("<i style='background:#").append(Integer.toHexString(p.accent & 0xFFFFFF)).append("'></i>")
+              .append("<i style='background:#").append(Integer.toHexString(p.fg & 0xFFFFFF)).append("'></i></span>")
+              .append(esc(p.name)).append("</label>");
         }
-        sb.append("</fieldset><fieldset><legend>BACKGROUND FX</legend>");
-        for (String m : AsciiTheme.BG_MODES) {
-            if ("IMAGE".equals(m)) continue;
-            sb.append("<label class='r'><input type='radio' name='bg' value='").append(m)
-              .append('\'').append("RAIN".equals(m) ? " checked" : "")
-              .append("> ").append(m).append("</label>");
-        }
-        sb.append("</fieldset>");
+        sb.append("<label class='check'><input type='checkbox' name='h24' value='1' checked>");
+        sb.append("24-hour clock</label>");
+        sb.append("</div>");
 
-        sb.append("<button type='submit'>SEND TO TABLET</button></form>");
+        sb.append("<button type='submit'>Send to tablet</button></form>");
         sb.append("<div class='ok' id='ok'>&#10003; SENT &mdash; watch your tablet.<br>");
         sb.append("It will now leave the setup hotspot and join your home wifi.</div>");
 
@@ -346,7 +370,7 @@ public class PairServer {
         sb.append("fetch('/api',{method:'POST',body:new URLSearchParams(fd).toString()})");
         sb.append(".then(function(){document.getElementById('ok').style.display='block';");
         sb.append("document.querySelector('button').disabled=true;});");
-        sb.append("});</script></body></html>");
+        sb.append("});</script></div></body></html>");
         return sb.toString();
     }
 }

@@ -10,8 +10,8 @@ android {
         applicationId "com.astos.setup"
         minSdk 24
         targetSdk 25
-        versionCode 3
-        versionName "2.4"
+        versionCode 4
+        versionName "3.0"
     }
 
     buildTypes {
@@ -30,6 +30,11 @@ android {
     lint {
         abortOnError false
         checkReleaseBuilds false
+    }
+
+    // pixel fonts stay uncompressed
+    androidResources {
+        noCompress 'ttf'
     }
 }
 

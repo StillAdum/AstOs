@@ -1,51 +1,101 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:colorPrimary">@color/terra</item>
-        <item name="android:colorPrimaryDark">@color/terra_dark</item>
-        <item name="android:colorAccent">@color/terra</item>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/accent</item>
+        <item name="android:colorPrimaryDark">@color/ink</item>
+        <item name="android:colorAccent">@color/accent</item>
         <item name="android:statusBarColor">@color/bg</item>
         <item name="android:navigationBarColor">@color/bg</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:textColorPrimary">@color/ink</item>
-        <item name="android:textColorSecondary">@color/ink_soft</item>
-        <item name="android:colorControlActivated">@color/terra</item>
-        <item name="android:alertDialogTheme">@style/DialogTheme</item>
+        <item name="android:textColorSecondary">@color/soft</item>
+        <item name="android:colorControlActivated">@color/accent</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textColor">@color/ink</item>
     </style>
 
-    <style name="DialogTheme" parent="@android:style/Theme.Material.Dialog.Alert">
-        <item name="android:colorAccent">@color/terra</item>
-        <item name="android:windowBackground">@drawable/bg_dialog_warm</item>
-        <item name="android:textColorPrimary">@color/ink</item>
-        <item name="android:textColorSecondary">@color/ink_soft</item>
-        <item name="android:colorPrimary">@color/bg</item>
-        <item name="android:colorPrimaryDark">@color/bg</item>
+    <!-- pixel dialogs (app drawer) -->
+    <style name="DialogTheme" parent="@android:style/Theme.Material.Dialog.NoActionBar">
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:fontFamily">monospace</item>
     </style>
 
+    <!-- power menu: translucent ink scrim over the home -->
+    <style name="PowerTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/scrim</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:fontFamily">monospace</item>
+    </style>
+
+    <!-- setup: opaque full screen -->
+    <style name="SetupTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:fontFamily">monospace</item>
+    </style>
+
+    <!-- square media transport button -->
     <style name="MediaBtn">
-        <item name="android:layout_width">44dp</item>
-        <item name="android:layout_height">44dp</item>
-        <item name="android:background">@drawable/bg_btn_circle</item>
+        <item name="android:layout_width">46dp</item>
+        <item name="android:layout_height">46dp</item>
+        <item name="android:background">@drawable/bg_btn</item>
         <item name="android:scaleType">centerInside</item>
+        <item name="android:padding">9dp</item>
     </style>
 
-    <style name="SettingsLabel">
+    <!-- small uppercase pixel button (scenes, actions) -->
+    <style name="ChipBtn">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">34dp</item>
+        <item name="android:background">@drawable/bg_btn_flat</item>
+        <item name="android:paddingLeft">14dp</item>
+        <item name="android:paddingRight">14dp</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.12</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:minWidth">72dp</item>
+    </style>
+
+    <!-- card corner tag label -->
+    <style name="CardTag">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textSize">11sp</item>
-        <item name="android:letterSpacing">0.18</item>
+        <item name="android:background">@drawable/bg_tag</item>
+        <item name="android:paddingLeft">9dp</item>
+        <item name="android:paddingRight">9dp</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingBottom">2dp</item>
+        <item name="android:textSize">10sp</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:textColor">@color/sage</item>
-        <item name="android:layout_marginTop">22dp</item>
-        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:letterSpacing">0.2</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">@color/bg</item>
     </style>
 
-    <style name="SystemBtn">
+    <!-- settings row label -->
+    <style name="RowLabel">
         <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">44dp</item>
-        <item name="android:background">@drawable/bg_chip</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">13sp</item>
         <item name="android:textColor">@color/ink</item>
-        <item name="android:textSize">14sp</item>
-        <item name="android:layout_marginTop">8dp</item>
+    </style>
+
+    <!-- key-value line (system card) -->
+    <style name="KvLine">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/ink</item>
     </style>
 </resources>

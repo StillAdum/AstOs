@@ -1,19 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- AstOs warm palette — no blue by design -->
-    <color name="bg">#F6F1E9</color>
-    <color name="bg_deep">#EFE7DB</color>
-    <color name="surface">#FFFFFF</color>
-    <color name="cream">#F5EFE6</color>
-    <color name="cream_soft">#FAF6F0</color>
-    <color name="ink">#2E2A26</color>
-    <color name="ink_soft">#6B635B</color>
-    <color name="ink_faint">#9C928A</color>
-    <color name="terra">#C96F4A</color>
-    <color name="terra_dark">#A85636</color>
-    <color name="terra_light">#E5B29A</color>
-    <color name="sage">#8A9B7A</color>
-    <color name="sage_light">#B0BEA2</color>
+    <!-- AstOS pixel-retro palette — dune (default). Runtime themes swap these
+         via Ui.apply(); XML keeps dune so layouts preview correctly. -->
+    <color name="bg">#EFE7D8</color>
+    <color name="bg_deep">#E4D9C4</color>
+    <color name="panel">#F8F2E4</color>
+    <color name="panel_soft">#FDF9EF</color>
+    <color name="ink">#2A241C</color>
+    <color name="soft">#9A8D78</color>
+    <color name="soft_faint">#C2B49B</color>
+    <color name="accent">#C4742A</color>
+    <color name="on">#CFDCA6</color>
+    <color name="off">#DFD3BD</color>
+    <color name="shadow">#D9CCB2</color>
+    <color name="micink">#F8F2E4</color>
+
+    <!-- legacy names kept so untouched code paths still resolve -->
+    <color name="surface">#F8F2E4</color>
+    <color name="cream">#F8F2E4</color>
+    <color name="cream_soft">#EFE7D8</color>
+    <color name="ink_soft">#9A8D78</color>
+    <color name="ink_faint">#B5A88F</color>
+    <color name="terra">#C4742A</color>
+    <color name="terra_dark">#A35D1F</color>
+    <color name="terra_light">#E0A56A</color>
+    <color name="sage">#9A8D78</color>
+    <color name="sage_light">#CFDCA6</color>
     <color name="amber">#D9A441</color>
-    <color name="pill_bg">#3A2F29</color>
+    <color name="pill_bg">#2A241C</color>
+
+    <!-- overlays -->
+    <color name="scrim">#CC2A241C</color>
+    <color name="qr_dark">#2A241C</color>
+    <color name="qr_light">#EFE7D8</color>
 </resources>

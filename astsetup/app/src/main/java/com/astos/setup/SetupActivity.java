@@ -85,6 +85,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     // choices (defaults; the phone page overrides them)
     private String mPaletteName;
     private String mBgMode;
+    private boolean mH24 = true;
     private String mCity = "";
     private String mCityResolved = "";
     private String mGroqKey = "";
@@ -320,8 +321,9 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         ui.text(c, "CONNECT", x1 + 52, cardY + 30, 13, mPal.accent, true, true);
         float c1midY = cardY + cardH * 0.42f;
         ui.icon(c, PixelIcon.WIFI, x1 + colW / 2f, c1midY - 26, 44);
-        ui.textCentered(c, mApSsdForDisplay(), x1 + colW / 2f, c1midY + 30,
-                17, mPal.fg, true, true);
+        // the setup SSID gets the VT323 display face, accent colored
+        ui.textCenteredVt(c, mApSsdForDisplay(), x1 + colW / 2f, c1midY + 34,
+                26, mPal.accent);
         String sub1 = "lan".equals(mPairStage)
                 ? "hotspot unavailable - the tablet is on your wifi instead"
                 : "open network - no password needed";
@@ -698,7 +700,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
             @Override public void onApReady(String ssid, String ip) {
                 mPairStage = "ready";
                 mUrl = "http://" + ip + ":" + PairServer.PORT;
-                mQr = Qr.encode(mUrl, 480, 0xFF14100A, 0xFFF2EBDD);
+                mQr = Qr.encode(mUrl, 480, 0xFF2A241C, 0xFFF8F2E4); // ink on panel
                 mPairStatus = "waiting for your phone...";
             }
 
@@ -708,7 +710,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 String ip = PairServer.lanIp();
                 if (ip != null) {
                     mUrl = "http://" + ip + ":" + PairServer.PORT;
-                    mQr = Qr.encode(mUrl, 480, 0xFF14100A, 0xFFF2EBDD);
+                    mQr = Qr.encode(mUrl, 480, 0xFF2A241C, 0xFFF8F2E4);
                     mPairStatus = "hotspot unavailable - join the same wifi, then scan";
                 } else {
                     mPairStatus = "no network - use the fallback below";
@@ -942,21 +944,17 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     @Override public void onPosted(final String wifiSsid, final String wifiPass,
                                    final String haUrl, final String haToken,
                                    final String city, final String groq,
-                                   final String theme, final String bg) {
+                                   final String theme, final String h24) {
         mReceived = true;
         mPairStatus = "RECEIVED - settings saved from your phone";
         if (haUrl != null && !haUrl.trim().isEmpty()) mHaUrl = haUrl.trim();
         if (haToken != null && !haToken.trim().isEmpty()) mHaToken = haToken.trim();
         if (groq != null && !groq.trim().isEmpty()) mGroqKey = groq.trim();
         if (city != null && !city.trim().isEmpty()) mCity = city.trim();
+        if (h24 != null) mH24 = !("0".equals(h24.trim()) || "false".equalsIgnoreCase(h24.trim()));
         if (theme != null && !theme.trim().isEmpty()) {
             mPaletteName = AsciiTheme.byName(theme.trim()).name; // validated
-            applyLook();
-        }
-        if (bg != null && !bg.trim().isEmpty()) {
-            for (String m : AsciiTheme.BG_MODES) {
-                if (m.equalsIgnoreCase(bg.trim())) { mBgMode = m; break; }
-            }
+            mBgMode = "DOTS";                                  // the pixel backdrop
             applyLook();
         }
 
@@ -990,8 +988,11 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     private void finishSetup() {
         ContentResolver cr = getContentResolver();
         try {
-            Settings.Global.putString(cr, "astos_palette", mPaletteName);
-            Settings.Global.putString(cr, "astos_bg", mBgMode);
+            Settings.Global.putString(cr, "astos_theme", mPaletteName);
+            Settings.Global.putString(cr, "astos_palette", mPaletteName); // legacy 2.x readers
+            Settings.Global.putString(cr, "astos_bg", "DOTS");
+            Settings.Global.putString(cr, "astos_h24", mH24 ? "1" : "0");
+            Settings.Global.putString(cr, "astos_anim", "1");
             if (!mGroqKey.isEmpty()) Settings.Global.putString(cr, "astos_groq_key", mGroqKey);
             if (!mCity.isEmpty()) Settings.Global.putString(cr, "astos_city", mCity);
             if (!mCityResolved.isEmpty() && !"located later".equals(mCityResolved))

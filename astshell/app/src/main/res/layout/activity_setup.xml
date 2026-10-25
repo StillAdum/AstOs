@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.astos.shell.PixelBackdrop
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="48dp"
+            android:paddingRight="48dp"
+            android:paddingTop="26dp"
+            android:paddingBottom="30dp">
+
+            <TextView
+                android:id="@+id/setupTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="64sp"
+                android:fontFamily="monospace"
+                android:textColor="@color/ink"
+                android:tag="f:vt t:ink"
+                android:includeFontPadding="false"
+                android:text="AstOS"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textSize="11sp"
+                android:letterSpacing="0.22"
+                android:textAllCaps="true"
+                android:textColor="@color/soft"
+                android:tag="t:soft"
+                android:text="First boot setup"/>
+
+            <!-- ===== step 1: hotspot ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="22dp"
+                android:background="@drawable/bg_card"
+                android:tag="d:card"
+                android:paddingLeft="@dimen/card_pad_h"
+                android:paddingRight="@dimen/card_pad_h"
+                android:paddingTop="@dimen/card_pad_top"
+                android:paddingBottom="@dimen/card_pad_bottom">
+
+                <TextView
+                    style="@style/CardTag"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="-4dp"
+                    android:tag="d:tag t:bg f:monoB"
+                    android:text="Step 1 · Connect"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="12dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:textColor="@color/ink"
+                            android:tag="t:ink"
+                            android:lineSpacingExtra="4dp"
+                            android:text="On your phone, join the tablet's setup wifi. It is open — no password needed. The name is unique to this tablet:"/>
+
+                        <TextView
+                            android:id="@+id/apName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textSize="30sp"
+                            android:fontFamily="monospace"
+                            android:textColor="@color/accent"
+                            android:tag="f:vt t:accent"
+                            android:includeFontPadding="false"
+                            android:text="AstSetup_----"/>
+
+                        <TextView
+                            android:id="@+id/apStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textSize="9sp"
+                            android:letterSpacing="0.16"
+                            android:textAllCaps="true"
+                            android:textColor="@color/soft"
+                            android:tag="t:soft"
+                            android:text="starting hotspot…"/>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ===== step 2: QR ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_card"
+                android:tag="d:card"
+                android:paddingLeft="@dimen/card_pad_h"
+                android:paddingRight="@dimen/card_pad_h"
+                android:paddingTop="@dimen/card_pad_top"
+                android:paddingBottom="@dimen/card_pad_bottom">
+
+                <TextView
+                    style="@style/CardTag"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="-4dp"
+                    android:tag="d:tag t:bg f:monoB"
+                    android:text="Step 2 · Scan"/>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:textSize="12sp"
+                    android:textColor="@color/ink"
+                    android:tag="t:ink"
+                    android:lineSpacingExtra="4dp"
+                    android:text="Left code joins the setup wifi. Right code opens the setup page — or type the address below in any browser on this wifi."/>
+
+                <!-- two QR panels, captions BELOW each: no overlap -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="14dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal">
+
+                        <FrameLayout
+                            android:layout_width="132dp"
+                            android:layout_height="132dp"
+                            android:background="@drawable/bg_card_flat"
+                            android:tag="d:cardFlat"
+                            android:padding="4dp">
+
+                            <com.astos.shell.QrView
+                                android:id="@+id/qrWifi"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"/>
+                        </FrameLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.14"
+                            android:textAllCaps="true"
+                            android:textColor="@color/ink"
+                            android:tag="t:ink f:monoB"
+                            android:text="join wifi"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:gravity="center_horizontal">
+
+                        <FrameLayout
+                            android:layout_width="132dp"
+                            android:layout_height="132dp"
+                            android:background="@drawable/bg_card_flat"
+                            android:tag="d:cardFlat"
+                            android:padding="4dp">
+
+                            <com.astos.shell.QrView
+                                android:id="@+id/qrUrl"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"/>
+                        </FrameLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.14"
+                            android:textAllCaps="true"
+                            android:textColor="@color/ink"
+                            android:tag="t:ink f:monoB"
+                            android:text="open setup"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/urlText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center"
+                    android:textSize="13sp"
+                    android:textColor="@color/ink"
+                    android:tag="t:ink"
+                    android:text="http://192.168.43.1:8080"/>
+            </LinearLayout>
+
+            <!-- ===== step 3: waiting ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_card"
+                android:tag="d:card"
+                android:paddingLeft="@dimen/card_pad_h"
+                android:paddingRight="@dimen/card_pad_h"
+                android:paddingTop="@dimen/card_pad_top"
+                android:paddingBottom="@dimen/card_pad_bottom">
+
+                <TextView
+                    style="@style/CardTag"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="-4dp"
+                    android:tag="d:tag t:bg f:monoB"
+                    android:text="Step 3 · Configure"/>
+
+                <TextView
+                    android:id="@+id/waitText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:textSize="12sp"
+                    android:textColor="@color/ink"
+                    android:tag="t:ink"
+                    android:lineSpacingExtra="4dp"
+                    android:text="The setup page walks you through wifi, Home Assistant and weather. This screen updates itself when your phone sends the config."/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="18dp">
+
+                <Button
+                    android:id="@+id/skipBtn"
+                    style="@style/ChipBtn"
+                    android:tag="d:btnFlat f:monoB"
+                    android:text="Skip for now"/>
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1"/>
+            </LinearLayout>
+
+            <!-- ===== done panel (hidden until config received) ===== -->
+            <LinearLayout
+                android:id="@+id/donePanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/bg_card"
+                android:tag="d:card"
+                android:paddingLeft="@dimen/card_pad_h"
+                android:paddingRight="@dimen/card_pad_h"
+                android:paddingTop="26dp"
+                android:paddingBottom="20dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:textSize="40sp"
+                    android:fontFamily="monospace"
+                    android:textColor="@color/accent"
+                    android:tag="f:vt t:accent"
+                    android:includeFontPadding="false"
+                    android:text="✓"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="8dp"
+                    android:textSize="30sp"
+                    android:fontFamily="monospace"
+                    android:textColor="@color/ink"
+                    android:tag="f:vt t:ink"
+                    android:includeFontPadding="false"
+                    android:text="Setup complete"/>
+
+                <TextView
+                    android:id="@+id/doneDetail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:textSize="11sp"
+                    android:textColor="@color/soft"
+                    android:tag="t:soft"
+                    android:lineSpacingExtra="4dp"
+                    android:text=""/>
+
+                <Button
+                    android:id="@+id/homeBtn"
+                    style="@style/ChipBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="16dp"
+                    android:tag="d:btnMain t:mic f:monoB"
+                    android:background="@drawable/bg_btn_main"
+                    android:text="Open home"/>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</FrameLayout>

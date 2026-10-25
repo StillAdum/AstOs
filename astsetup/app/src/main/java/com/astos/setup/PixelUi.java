@@ -3,10 +3,8 @@ package com.astos.setup;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -21,23 +19,15 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * PixelUi — the AstOs 2.4 shell canvas.
+ * PixelUi — the AstSetup canvas, restyled to the approved pixel mock:
+ * square corner-tagged cards with 2dp ink borders and hard offset
+ * shadows, VT323 display type + IBM Plex Mono body, dotted-paper
+ * backdrop with drifting motes, chunky segmented progress bars.
  *
- * Replaces the old character-cell AsciiView home renderer. The user asked
- * for a UI that is "pixel kinda" (not ASCII), animations that are NOT
- * ASCII art (except the boot animation), and layouts that actually scale
- * to the screen. This view:
- *
- *   - lays everything out in dp (density-aware) from the measured view
- *     size, so nothing is ever out of frame
- *   - draws chunky pixel-art icons (see PixelIcon) — crisp, unfiltered
- *   - animates smoothly with sine math (pulses, slides, spinners,
- *     equalizer bars) — proper graphics, not character art
- *   - keeps the warm no-blue identity from AsciiTheme
- *
- * Rendering model: a Renderer callback is invoked every frame (~30fps);
- * it re-registers hit regions each frame, exactly like the old AsciiView,
- * so tap routing stays trivial.
+ * Rendering model (unchanged from v2.4): a Renderer callback is invoked
+ * every frame; it re-registers hit regions each frame, so tap routing
+ * stays trivial. The old rounded-warm look is gone — this is the pixel
+ * language of the AstShell 3.0 home.
  */
 public class PixelUi extends View {
 
@@ -64,7 +54,7 @@ public class PixelUi extends View {
     private boolean mRunning;
     private long mT0 = SystemClock.elapsedRealtime();
     private float mDensity;
-    private float mUiScale = 1f;          // SMALL/LARGE user preference
+    private float mUiScale = 1f;
     private AsciiTheme.Palette mPal = AsciiTheme.PALETTES[0];
 
     // gesture bookkeeping
@@ -76,14 +66,18 @@ public class PixelUi extends View {
     private final RectF mTmp = new RectF();
 
     // background FX
-    private String mBgMode = "SOLID";
+    private String mBgMode = "DOTS";
     private Bitmap mBgImage;
     private final Random mRand = new Random(41);
     private final float[] mStar = new float[64 * 4];    // x, y, phase, size
     private final float[] mDrop = new float[40 * 3];   // x, y, speed
+    private final float[] mMote = new float[22 * 4];   // x, y, speed, phase
 
     // icon bitmap cache: name|size|palette-key -> bitmap
     private final HashMap<String, Bitmap> mIconCache = new HashMap<String, Bitmap>();
+
+    // pixel fonts
+    private Typeface mVt, mMono, mMonoB;
 
     public PixelUi(Context ctx) {
         super(ctx);
@@ -99,6 +93,21 @@ public class PixelUi extends View {
             mDrop[i] = mRand.nextFloat();
             mDrop[i + 1] = mRand.nextFloat();
             mDrop[i + 2] = 0.55f + mRand.nextFloat() * 0.7f;
+        }
+        for (int i = 0; i < mMote.length; i += 4) {
+            mMote[i] = mRand.nextFloat();
+            mMote[i + 1] = mRand.nextFloat();
+            mMote[i + 2] = 0.25f + mRand.nextFloat() * 0.8f;
+            mMote[i + 3] = mRand.nextFloat() * 9000f;
+        }
+        try {
+            mVt = Typeface.createFromAsset(ctx.getAssets(), "fonts/vt323.ttf");
+            mMono = Typeface.createFromAsset(ctx.getAssets(), "fonts/plexmono.ttf");
+            mMonoB = Typeface.createFromAsset(ctx.getAssets(), "fonts/plexmono-sb.ttf");
+        } catch (Throwable t) {
+            mVt = Typeface.MONOSPACE;
+            mMono = Typeface.MONOSPACE;
+            mMonoB = Typeface.DEFAULT_BOLD;
         }
     }
 
@@ -117,7 +126,7 @@ public class PixelUi extends View {
 
     public void setUiScale(float s) { mUiScale = s; }
 
-    public void setBgMode(String mode) { this.mBgMode = mode == null ? "SOLID" : mode; }
+    public void setBgMode(String mode) { this.mBgMode = mode == null ? "DOTS" : mode; }
 
     public void setBgImage(Bitmap b) { mBgImage = b; }
 
@@ -141,6 +150,7 @@ public class PixelUi extends View {
     public float ts(float sp) { return sp * mDensity * mUiScale; }
 
     public float widthDp() { return getWidth() / mDensity; }
+
     public float heightDp() { return getHeight() / mDensity; }
 
     // ---------------------------------------------------------------- frame
@@ -155,9 +165,10 @@ public class PixelUi extends View {
         try {
             mRenderer.onFrame(this, c, t);
         } catch (Throwable t2) {
-            // one bad frame must never kill the shell: paint the error faintly
+            // one bad frame must never kill the wizard: paint the error faintly
             mText.setColor(0x66FF5A5A);
             mText.setTextSize(ts(12));
+            mText.setTypeface(mMono);
             c.drawText("ui frame error: " + t2, dp(8), dp(16), mText);
         }
         if (mRunning) postInvalidateOnAnimation();
@@ -212,39 +223,50 @@ public class PixelUi extends View {
 
     // ---------------------------------------------------------------- shapes
 
-    /** Warm card: rounded rect + pixel-ish double border. */
+    /**
+     * Pixel card: panel fill, 2dp ink border, hard shadow offset
+     * bottom-right. The radius/accentBorder params are kept for API
+     * compatibility and interpreted in the pixel language.
+     */
     public void card(Canvas c, float l, float t, float w, float h, float radius,
                      boolean accentBorder) {
-        mTmp.set(l, t, l + w, t + h);
-        mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.05f, mPal.bg));
+        float sh = Math.min(dp(6), h * 0.3f);
+        float b = Math.max(2f, dp(1f));
+        // hard shadow
         mRect.setStyle(Paint.Style.FILL);
-        c.drawRoundRect(mTmp, radius, radius, mRect);
+        mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.16f, mPal.bg));
+        c.drawRect(l + sh, t + sh, l + w, t + h, mRect);
+        // panel
+        mRect.setColor(mPal.panel);
+        c.drawRect(l, t, l + w - sh, t + h - sh, mRect);
+        // ink border (accent when highlighted)
         mRect.setStyle(Paint.Style.STROKE);
-        mRect.setStrokeWidth(Math.max(2f, dp(0.7f)));
-        mRect.setColor(accentBorder ? mPal.accent
-                : AsciiTheme.dimColor(mPal.fg, 0.22f, mPal.bg));
-        c.drawRoundRect(mTmp, radius, radius, mRect);
+        mRect.setStrokeWidth(b);
+        mRect.setColor(accentBorder ? mPal.accent : mPal.fg);
+        c.drawRect(l + b / 2f, t + b / 2f, l + w - sh - b / 2f, t + h - sh - b / 2f, mRect);
         mRect.setStyle(Paint.Style.FILL);
     }
 
-    /** Filled rounded button/pill. */
+    /**
+     * Pixel pill (button): filled = accent with ink border + shadow,
+     * hollow = panel with soft border. Radius ignored (square corners).
+     */
     public void pill(Canvas c, float l, float t, float w, float h,
                      boolean filled, float radius) {
-        mTmp.set(l, t, l + w, t + h);
+        float b = Math.max(2f, dp(1f));
+        float sh = filled ? dp(3) : 0f;
         if (filled) {
-            mRect.setColor(mPal.accent);
             mRect.setStyle(Paint.Style.FILL);
-            c.drawRoundRect(mTmp, radius, radius, mRect);
-        } else {
-            mRect.setStyle(Paint.Style.FILL);
-            mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.08f, mPal.bg));
-            c.drawRoundRect(mTmp, radius, radius, mRect);
-            mRect.setStyle(Paint.Style.STROKE);
-            mRect.setStrokeWidth(Math.max(2f, dp(0.7f)));
-            mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.3f, mPal.bg));
-            c.drawRoundRect(mTmp, radius, radius, mRect);
-            mRect.setStyle(Paint.Style.FILL);
+            mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.16f, mPal.bg));
+            c.drawRect(l + sh, t + sh, l + w, t + h, mRect);
         }
+        mRect.setColor(filled ? mPal.accent : mPal.panel);
+        c.drawRect(l, t, l + w - sh, t + h - sh, mRect);
+        mRect.setStyle(Paint.Style.STROKE);
+        mRect.setStrokeWidth(b);
+        mRect.setColor(filled ? mPal.fg : AsciiTheme.dimColor(mPal.fg, 0.35f, mPal.bg));
+        c.drawRect(l + b / 2f, t + b / 2f, l + w - sh - b / 2f, t + h - sh - b / 2f, mRect);
+        mRect.setStyle(Paint.Style.FILL);
     }
 
     // ---------------------------------------------------------------- icons
@@ -290,12 +312,30 @@ public class PixelUi extends View {
 
     // ---------------------------------------------------------------- text
 
+    /** VT323 display text (big numbers, wordmarks — the mock's display face). */
+    public float textVt(Canvas c, String s, float x, float y, float sizeSp, int color) {
+        mText.setColor(color);
+        mText.setTextSize(ts(sizeSp));
+        mText.setTypeface(mVt);
+        c.drawText(s, x, y, mText);
+        return mText.measureText(s);
+    }
+
+    public float textCenteredVt(Canvas c, String s, float cx, float y, float sizeSp, int color) {
+        mText.setColor(color);
+        mText.setTextSize(ts(sizeSp));
+        mText.setTypeface(mVt);
+        float w = mText.measureText(s);
+        c.drawText(s, cx - w / 2f, y, mText);
+        return w;
+    }
+
+    /** Body text — IBM Plex Mono / SemiBold, tiny tracking when bold. */
     public float text(Canvas c, String s, float x, float y, float sizeSp,
                       int color, boolean bold, boolean mono) {
         mText.setColor(color);
         mText.setTextSize(ts(sizeSp));
-        mText.setTypeface(mono ? Typeface.MONOSPACE
-                : (bold ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT));
+        mText.setTypeface(bold ? mMonoB : mMono);
         c.drawText(s, x, y, mText);
         return mText.measureText(s);
     }
@@ -304,8 +344,7 @@ public class PixelUi extends View {
                                int color, boolean bold, boolean mono) {
         mText.setColor(color);
         mText.setTextSize(ts(sizeSp));
-        mText.setTypeface(mono ? Typeface.MONOSPACE
-                : (bold ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT));
+        mText.setTypeface(bold ? mMonoB : mMono);
         float w = mText.measureText(s);
         c.drawText(s, cx - w / 2f, y, mText);
         return w;
@@ -313,12 +352,11 @@ public class PixelUi extends View {
 
     public float textWidth(String s, float sizeSp, boolean mono) {
         mText.setTextSize(ts(sizeSp));
-        mText.setTypeface(mono ? Typeface.MONOSPACE : Typeface.DEFAULT_BOLD);
+        mText.setTypeface(mMonoB);
         return mText.measureText(s == null ? "" : s);
     }
 
-    /** Wrap to a width given in dp; returns at most {@code maxLines}.
-     *  (Callers pass dp; converted to px here so it is density-correct.) */
+    /** Wrap to a width given in dp; returns at most {@code maxLines}. */
     public List<String> wrap(String s, float sizeSp, float maxWidthDp, int maxLines) {
         float maxWidthPx = dp(maxWidthDp);
         List<String> out = new ArrayList<String>();
@@ -345,7 +383,7 @@ public class PixelUi extends View {
 
     // ---------------------------------------------------------------- bg FX
 
-    /** Smooth (non-ASCII) background FX, drawn behind everything each frame. */
+    /** Background FX; the pixel default is the dotted paper + motes. */
     public void drawBackground(Canvas c, long tms) {
         String mode = mBgMode;
         int w = getWidth(), h = getHeight();
@@ -355,13 +393,34 @@ public class PixelUi extends View {
             float iw = mBgImage.getWidth(), ih = mBgImage.getHeight();
             float scale = Math.max(w / iw, h / ih);
             c.drawBitmap(mBgImage, (w - iw * scale) / 2f, (h - ih * scale) / 2f, p);
-            mRect.setColor(Color.argb(150, Color.red(mPal.bg), Color.green(mPal.bg),
-                    Color.blue(mPal.bg)));
+            mRect.setColor((150 << 24) | (mPal.bg & 0xFFFFFF));
             c.drawRect(0, 0, w, h, mRect);
             return;
         }
+        if ("DOTS".equals(mode)) {
+            c.drawColor(mPal.bg);
+            // paper dots
+            float g = raw(20);
+            mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.20f, mPal.bg));
+            for (float y = g / 2f; y < h; y += g)
+                for (float x = g / 2f; x < w; x += g)
+                    c.drawRect(x - 1, y - 1, x + 1, y + 1, mRect);
+            // drifting motes
+            for (int i = 0; i < mMote.length; i += 4) {
+                float speed = mMote[i + 2];
+                float ph = mMote[i + 3];
+                float x = (float) ((mMote[i] + Math.sin((tms + ph) / 4200f) * 0.02) * w);
+                float y = (float) ((((mMote[i + 1] + tms / 30000f * speed) % 1.1f) * h) - h * 0.05f);
+                boolean big = (ph % 7) < 1;
+                int s = big ? (int) raw(6) : (int) raw(3);
+                mRect.setColor((ph % 3) < 1
+                        ? AsciiTheme.dimColor(mPal.accent, 0.45f, mPal.bg)
+                        : AsciiTheme.dimColor(mPal.fg, 0.25f, mPal.bg));
+                c.drawRect(x, y, x + s, y + s, mRect);
+            }
+            return;
+        }
         if ("SOLID".equals(mode)) {
-            // gentle vertical warm gradient — barely-there depth
             int top = AsciiTheme.dimColor(mPal.fg, 0.03f, mPal.bg);
             LinearGradient lg = new LinearGradient(0, 0, 0, h, top, mPal.bg,
                     Shader.TileMode.CLAMP);
@@ -370,7 +429,7 @@ public class PixelUi extends View {
             mRect.setShader(null);
             return;
         }
-        // base for all FX modes
+        // base for all legacy FX modes
         c.drawColor(mPal.bg);
         if ("STARS".equals(mode)) {
             for (int i = 0; i < mStar.length; i += 4) {
@@ -383,11 +442,6 @@ public class PixelUi extends View {
                 int col = AsciiTheme.dimColor(mPal.fg, 0.16f * tw, mPal.bg);
                 mRect.setColor(col);
                 c.drawRect(x, y, x + s, y + s, mRect);
-                if (s > 1.5f) { // little cross sparkle on the big ones
-                    mRect.setColor(AsciiTheme.dimColor(mPal.accent, 0.10f * tw, mPal.bg));
-                    c.drawRect(x - s, y, x + 2 * s, y + s * 0.35f, mRect);
-                    c.drawRect(x, y - s, x + s * 0.35f, y + 2 * s, mRect);
-                }
             }
         } else if ("RAIN".equals(mode)) {
             for (int i = 0; i < mDrop.length; i += 3) {
@@ -397,115 +451,50 @@ public class PixelUi extends View {
                 mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.08f, mPal.bg));
                 c.drawRect(x, y, x + raw(1), y + raw(16) * speed, mRect);
             }
-        } else if ("WAVES".equals(mode)) {
-            for (int band = 0; band < 3; band++) {
-                float baseY = h * (0.55f + band * 0.16f);
-                int col = AsciiTheme.dimColor(mPal.fg, 0.045f - band * 0.012f, mPal.bg);
-                mRect.setColor(col);
-                Path path = new Path();
-                path.moveTo(0, h);
-                for (int x = 0; x <= w; x += raw(16)) {
-                    float y = baseY + (float) Math.sin(x / (170f + band * 60f)
-                            + tms / 1600.0 + band * 1.7f) * raw(14);
-                    path.lineTo(x, y);
-                }
-                path.lineTo(w, h);
-                path.close();
-                c.drawPath(path, mRect);
-            }
-        } else if ("PLASMA".equals(mode)) {
-            for (int blob = 0; blob < 3; blob++) {
-                float ph = tms / 2600f + blob * 2.1f;
-                float x = w * (0.5f + 0.32f * (float) Math.sin(ph));
-                float y = h * (0.5f + 0.34f * (float) Math.cos(ph * 0.8f + blob));
-                float r = Math.max(w, h) * 0.5f;
-                int edge = AsciiTheme.dimColor(mPal.fg, 0.0f, mPal.bg);
-                int core = AsciiTheme.dimColor(mPal.accent, blob == 1 ? 0.10f : 0.06f, mPal.bg);
-                RadialGradient rg = new RadialGradient(x, y, r, core, edge,
-                        Shader.TileMode.CLAMP);
-                mRect.setShader(rg);
-                c.drawRect(0, 0, w, h, mRect);
-                mRect.setShader(null);
-            }
         } else if ("SCANLINES".equals(mode)) {
             float roll = (tms / 40f) % raw(6);
             for (float y = -raw(6) + roll; y < h; y += raw(6)) {
                 mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.035f, mPal.bg));
                 c.drawRect(0, y, w, y + raw(2), mRect);
             }
-            float bandY = (tms / 24f) % (h + 220) - 110;
-            LinearGradient lg = new LinearGradient(0, bandY - 100, 0, bandY + 100,
-                    AsciiTheme.dimColor(mPal.fg, 0.0f, mPal.bg),
-                    AsciiTheme.dimColor(mPal.fg, 0.05f, mPal.bg),
-                    Shader.TileMode.CLAMP);
-            mRect.setShader(lg);
-            c.drawRect(0, bandY - 100, w, bandY + 100, mRect);
-            mRect.setShader(null);
         }
+        // WAVES / PLASMA legacy modes render as DOTS-style calm paper now
     }
 
     // ---------------------------------------------------------------- widgets
 
-    /** Smooth rounded progress bar. frac in 0..1. */
+    /** Chunky segmented progress bar (the mock's .seg). frac in 0..1. */
     public void progressBar(Canvas c, float l, float t, float w, float h, float frac,
                              boolean accent) {
-        mTmp.set(l, t, l + w, t + h);
-        mRect.setColor(AsciiTheme.dimColor(mPal.fg, 0.10f, mPal.bg));
-        c.drawRoundRect(mTmp, h / 2f, h / 2f, mRect);
-        float fw = Math.min(1f, Math.max(0f, frac)) * w;
-        if (fw > h) {
-            mTmp.set(l, t, l + fw, t + h);
-            mRect.setColor(accent ? mPal.accent : mPal.fg);
-            c.drawRoundRect(mTmp, h / 2f, h / 2f, mRect);
+        int n = 24;
+        float gap = Math.max(2f, raw(2));
+        float bw = (w - gap * (n - 1)) / n;
+        int fill = Math.round(Math.max(0f, Math.min(1f, frac)) * n);
+        for (int i = 0; i < n; i++) {
+            mRect.setColor(i < fill
+                    ? (accent ? mPal.accent : mPal.fg)
+                    : AsciiTheme.dimColor(mPal.fg, 0.10f, mPal.bg));
+            float x = l + i * (bw + gap);
+            c.drawRect(x, t, x + bw, t + h, mRect);
         }
     }
 
-    /** Smooth spinner arc (NOT ascii art). */
+    /** Spinner (rotating square outline — pixel take on a spinner). */
     public void spinner(Canvas c, float cx, float cy, float radius, long tms,
                          int color) {
-        mRect.setStyle(Paint.Style.STROKE);
-        mRect.setStrokeWidth(Math.max(3f, dp(1.4f)));
-        mRect.setColor(AsciiTheme.dimColor(color, 0.18f, mPal.bg));
-        c.drawArc(new RectF(cx - radius, cy - radius, cx + radius, cy + radius),
-                0, 360, false, mRect);
-        float sweep = 90 + 40 * (float) Math.sin(tms / 300.0);
-        float start = (tms / 5.0f) % 360;
-        mRect.setColor(color);
-        c.drawArc(new RectF(cx - radius, cy - radius, cx + radius, cy + radius),
-                start, sweep, false, mRect);
-        mRect.setStyle(Paint.Style.FILL);
-    }
-
-    /** Big mic orb with pulse rings while listening — smooth sine animation. */
-    public void micOrb(Canvas c, float cx, float cy, float radius, boolean listening,
-                        long tms) {
-        if (listening) {
-            for (int i = 0; i < 3; i++) {
-                float ph = ((tms / 1100.0f) + i / 3f) % 1f;
-                float r = radius * (1f + ph * 0.85f);
-                int col = AsciiTheme.dimColor(mPal.accent,
-                        0.35f * (1f - ph), mPal.bg);
-                mRect.setColor(col);
-                mRect.setStyle(Paint.Style.STROKE);
-                mRect.setStrokeWidth(Math.max(2f, dp(0.8f)));
-                c.drawCircle(cx, cy, r, mRect);
-                mRect.setStyle(Paint.Style.FILL);
-            }
+        int steps = 8;
+        for (int i = 0; i < steps; i++) {
+            float ang = (tms / 90f) + i * (6.2832f / steps);
+            float x = cx + (float) Math.cos(ang) * radius;
+            float y = cy + (float) Math.sin(ang) * radius;
+            int s = (int) raw(3);
+            mRect.setColor(i == 0 ? color
+                    : AsciiTheme.dimColor(color, 0.15f + 0.06f * (steps - i), mPal.bg));
+            c.drawRect(x - s, y - s, x + s, y + s, mRect);
         }
-        // orb body: soft radial warm glow + solid accent disc
-        RadialGradient rg = new RadialGradient(cx, cy - radius * 0.25f, radius * 1.6f,
-                AsciiTheme.dimColor(mPal.accent, 0.5f, mPal.bg),
-                AsciiTheme.dimColor(mPal.accent, 0.0f, mPal.bg),
-                Shader.TileMode.CLAMP);
-        mRect.setShader(rg);
-        c.drawCircle(cx, cy, radius * 1.6f, mRect);
-        mRect.setShader(null);
-        mRect.setColor(mPal.accent);
-        c.drawCircle(cx, cy, radius, mRect);
-        icon(c, PixelIcon.MIC, cx, cy, radius * 0.66f);
     }
 
-    /** Smooth equalizer bars (music playing). Pure eye candy, not ascii. */
+    /** Equalizer bars (music playing). */
     public void equalizer(Canvas c, float l, float bottom, float w, float h,
                            boolean playing, long tms, int[] state) {
         int n = state.length;
@@ -518,8 +507,7 @@ public class PixelUi extends View {
             cur += (target - cur) * 0.25f;
             state[i] = Math.round(cur * 100);
             float bh = Math.max(raw(2), cur * h);
-            mRect.setColor(i % 3 == 2
-                    ? AsciiTheme.dimColor(mPal.accent, 0.8f, mPal.bg) : mPal.accent);
+            mRect.setColor(mPal.accent);
             c.drawRect(l + i * bw + bw * 0.12f, bottom - bh,
                     l + (i + 1) * bw - bw * 0.12f, bottom, mRect);
         }

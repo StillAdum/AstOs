@@ -20,8 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The AstOs keyboard — a chunky warm landscape IME, drawn in the active
- * AsciiTheme palette.
+ * The AstOs keyboard — the pixel IME, drawn in the active Ui theme.
  *
  * v2.4 "the keyboard just disappears" fix: the old version rebuilt the whole
  * input view with setInputView(onCreateInputView()) on every shift / layer
@@ -32,6 +31,9 @@ import java.util.List;
  * place; setInputView() is never called again for the lifetime of the
  * service. onEvaluateInputViewShown() is forced true so a hiccup in the
  * shown-state heuristic can never eat the keyboard either.
+ *
+ * Pixel styling: square panel keys with 2dp ink borders and hard shadows,
+ * accent GO key, IBM Plex Mono labels — matches the mock exactly.
  */
 public class AstKeyboardService extends InputMethodService {
 
@@ -53,7 +55,6 @@ public class AstKeyboardService extends InputMethodService {
     private final Handler mRepeat = new Handler(Looper.getMainLooper());
     private int mKeyHeight;
     private int mGap;
-    private AsciiTheme.Palette mPal;
 
     /** Every label-bearing key that changes with shift / layer, in place. */
     private final List<TextView> mDynamicKeys = new ArrayList<TextView>();
@@ -70,7 +71,10 @@ public class AstKeyboardService extends InputMethodService {
         mLayerKey = null;
 
         Context c = getBaseContext();
-        mPal = AsciiTheme.byName(AppSettings.palette(c));
+        // pixel theme (the IME may run before any activity applied it)
+        Ui.Th th = Ui.THEMES.get(AppSettings.themeKey(c));
+        if (th == null) th = Ui.THEMES.get("dune");
+        Ui.cur = th;
 
         // 5 rows of ~46dp keys fits the landscape IME budget
         mKeyHeight = Math.round(getResources().getDisplayMetrics().density * 46);
@@ -78,6 +82,7 @@ public class AstKeyboardService extends InputMethodService {
 
         LinearLayout root = new LinearLayout(c);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Ui.cur.bg);
         int pad = Math.round(getResources().getDisplayMetrics().density * 8);
         root.setPadding(pad, pad, pad, pad);
 
@@ -208,14 +213,15 @@ public class AstKeyboardService extends InputMethodService {
         TextView k = new TextView(c);
         k.setText(label);
         k.setGravity(Gravity.CENTER);
-        k.setTypeface(Typeface.MONOSPACE, special ? Typeface.BOLD : Typeface.NORMAL);
-        k.setTextSize(special ? 16f : 20f);
-        k.setTextColor(special ? mPal.dim : mPal.fg);
-        k.setBackground(makeKeyBg(false));
+        k.setTypeface(Ui.monoB(c));
+        k.setTextSize(special ? 13f : 15f);
+        k.setTextColor(special ? Ui.cur.ink : Ui.cur.ink);
+        k.setBackgroundDrawable(Ui.d(c, special ? "keyMod" : "key"));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.MATCH_PARENT, weight);
         lp.setMargins(mGap, 0, mGap, 0);
         k.setLayoutParams(lp);
+        Ui.press(k, 2);
         return k;
     }
 
@@ -242,24 +248,14 @@ public class AstKeyboardService extends InputMethodService {
         if (mShiftKey == null) return;
         if (mShifted) styleAccent(mShiftKey);
         else {
-            mShiftKey.setTextColor(mPal.dim);
-            mShiftKey.setBackground(makeKeyBg(false));
+            mShiftKey.setTextColor(Ui.cur.ink);
+            mShiftKey.setBackgroundDrawable(Ui.d(this, "keyMod"));
         }
     }
 
     private void styleAccent(TextView k) {
-        k.setTextColor(mPal.bg);
-        k.setBackground(makeKeyBg(true));
-    }
-
-    private GradientDrawable makeKeyBg(boolean accent) {
-        GradientDrawable shape = new GradientDrawable();
-        shape.setShape(GradientDrawable.RECTANGLE);
-        shape.setCornerRadius(Math.round(getResources().getDisplayMetrics().density * 10));
-        shape.setColor(accent ? mPal.accent
-                : AsciiTheme.dimColor(mPal.fg, 0.10f, mPal.bg));
-        shape.setStroke(1, AsciiTheme.dimColor(mPal.fg, 0.25f, mPal.bg));
-        return shape;
+        k.setTextColor(Ui.cur.micink);
+        k.setBackgroundDrawable(Ui.d(this, "keyAccent"));
     }
 
     // ------------------------------------------------------------- actions

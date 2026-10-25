@@ -1,0 +1,566 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.astos.shell.PixelBackdrop
+        android:id="@+id/backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingLeft="@dimen/screen_pad_h"
+        android:paddingRight="@dimen/screen_pad_h"
+        android:paddingTop="@dimen/screen_pad_top"
+        android:paddingBottom="@dimen/screen_pad_bottom">
+
+        <!-- ================= header: clock + weather ================= -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="bottom">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/clockText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="80sp"
+                    android:fontFamily="monospace"
+                    android:textColor="@color/ink"
+                    android:tag="f:vt t:ink"
+                    android:includeFontPadding="false"
+                    android:text="00:00"/>
+
+                <TextView
+                    android:id="@+id/timerText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.14"
+                    android:textColor="@color/accent"
+                    android:tag="t:accent f:monoB"
+                    android:visibility="gone"
+                    android:text=""/>
+
+                <TextView
+                    android:id="@+id/dateText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.18"
+                    android:textAllCaps="true"
+                    android:textColor="@color/soft"
+                    android:tag="t:soft"
+                    android:text=""/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom|end">
+
+                <ImageView
+                    android:id="@+id/weatherIcon"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_marginRight="10dp"
+                    android:layout_marginBottom="6dp"
+                    android:tag="i:accent"
+                    android:src="@drawable/ic_weather_partly"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="end">
+
+                    <TextView
+                        android:id="@+id/tempText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="44sp"
+                        android:fontFamily="monospace"
+                        android:textColor="@color/ink"
+                        android:tag="f:vt t:ink"
+                        android:includeFontPadding="false"
+                        android:text="--°"/>
+
+                    <TextView
+                        android:id="@+id/condText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.06"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="weather unset"/>
+
+                    <TextView
+                        android:id="@+id/cityText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.06"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text=""/>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= main cards ================= -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="12dp"
+            android:scrollbars="none"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:id="@+id/homeCols"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <!-- media card -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.12"
+                    android:layout_marginRight="14dp"
+                    android:orientation="vertical"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <TextView
+                        style="@style/CardTag"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="-4dp"
+                        android:tag="d:tag t:bg f:monoB"
+                        android:text="Now playing"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="10dp">
+
+                        <FrameLayout
+                            android:layout_width="92dp"
+                            android:layout_height="92dp"
+                            android:background="@drawable/bg_card_flat"
+                            android:tag="d:cardFlat"
+                            android:padding="2dp">
+
+                            <com.astos.shell.PixelAlbumArt
+                                android:id="@+id/albumArt"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"/>
+                        </FrameLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingLeft="12dp"
+                            android:paddingRight="2dp">
+
+                            <TextView
+                                android:id="@+id/trackText"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textSize="27sp"
+                                android:fontFamily="monospace"
+                                android:textColor="@color/ink"
+                                android:tag="f:vt t:ink"
+                                android:includeFontPadding="false"
+                                android:singleLine="true"
+                                android:ellipsize="end"
+                                android:text="Nothing playing"/>
+
+                            <TextView
+                                android:id="@+id/artistText"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:textSize="10sp"
+                                android:textColor="@color/soft"
+                                android:tag="t:soft"
+                                android:singleLine="true"
+                                android:ellipsize="end"
+                                android:text=""/>
+
+                            <com.astos.shell.EqBars
+                                android:id="@+id/eq"
+                                android:layout_width="96dp"
+                                android:layout_height="20dp"
+                                android:layout_marginTop="6dp"/>
+
+                            <TextView
+                                android:id="@+id/srcText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:textSize="9sp"
+                                android:letterSpacing="0.12"
+                                android:textAllCaps="true"
+                                android:textColor="@color/soft"
+                                android:tag="t:soft"
+                                android:text="media session"/>
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="12dp">
+
+                        <TextView
+                            android:id="@+id/t0Text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="10sp"
+                            android:textColor="@color/soft"
+                            android:tag="t:soft"
+                            android:text="--:--"/>
+
+                        <com.astos.shell.SegBar
+                            android:id="@+id/progBar"
+                            android:layout_width="0dp"
+                            android:layout_height="12dp"
+                            android:layout_weight="1"
+                            android:layout_marginLeft="8dp"
+                            android:layout_marginRight="8dp"/>
+
+                        <TextView
+                            android:id="@+id/t1Text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="10sp"
+                            android:textColor="@color/soft"
+                            android:tag="t:soft"
+                            android:text="--:--"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="14dp">
+
+                        <ImageButton
+                            android:id="@+id/prevBtn"
+                            style="@style/MediaBtn"
+                            android:tag="d:btn i:ink"
+                            android:src="@drawable/ic_prev"/>
+
+                        <ImageButton
+                            android:id="@+id/playPauseBtn"
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:layout_marginLeft="10dp"
+                            android:layout_marginRight="10dp"
+                            android:padding="11dp"
+                            android:tag="d:btnMain i:mic"
+                            android:background="@drawable/bg_btn_main"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_play"/>
+
+                        <ImageButton
+                            android:id="@+id/nextBtn"
+                            style="@style/MediaBtn"
+                            android:tag="d:btn i:ink"
+                            android:src="@drawable/ic_next"/>
+
+                        <Space
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1"/>
+
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:layout_marginRight="8dp"
+                            android:tag="i:ink"
+                            android:src="@drawable/ic_vol"/>
+
+                        <com.astos.shell.SegBar
+                            android:id="@+id/volBar"
+                            android:layout_width="110dp"
+                            android:layout_height="14dp"/>
+
+                        <TextView
+                            android:id="@+id/volText"
+                            android:layout_width="32dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="8dp"
+                            android:gravity="end"
+                            android:textSize="10sp"
+                            android:textColor="@color/soft"
+                            android:tag="t:soft"
+                            android:text="0%"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- home control card -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/homeTag"
+                            style="@style/CardTag"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="-4dp"
+                            android:tag="d:tag t:bg f:monoB"
+                            android:text="Home"/>
+
+                        <Space
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1"/>
+
+                        <ImageButton
+                            android:id="@+id/appsBtn"
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:background="@drawable/bg_icon_box"
+                            android:tag="d:iconBox i:ink"
+                            android:padding="7dp"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_apps"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/haGrid"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="12dp"/>
+
+                    <TextView
+                        android:id="@+id/haHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textSize="10sp"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="Connect Home Assistant in settings — or scan the setup QR on first boot."/>
+
+                    <LinearLayout
+                        android:id="@+id/sceneRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="12dp">
+
+                        <Button
+                            android:id="@+id/sceneNight"
+                            style="@style/ChipBtn"
+                            android:tag="d:btnFlat f:monoB"
+                            android:text="night"/>
+
+                        <Button
+                            android:id="@+id/sceneMovie"
+                            style="@style/ChipBtn"
+                            android:layout_marginLeft="8dp"
+                            android:tag="d:btnFlat f:monoB"
+                            android:text="movie"/>
+
+                        <Button
+                            android:id="@+id/sceneOff"
+                            style="@style/ChipBtn"
+                            android:layout_marginLeft="8dp"
+                            android:tag="d:btnFlat f:monoB"
+                            android:text="all off"/>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ================= dock ================= -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingTop="8dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <com.astos.shell.EqBars
+                    android:id="@+id/wave"
+                    android:layout_width="34dp"
+                    android:layout_height="14dp"
+                    android:layout_marginRight="10dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="@color/soft"
+                    android:tag="t:soft"
+                    android:text="&gt; "/>
+
+                <TextView
+                    android:id="@+id/voiceStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxWidth="420dp"
+                    android:textSize="12sp"
+                    android:textColor="@color/soft"
+                    android:tag="t:soft"
+                    android:text="say something or tap the mic"/>
+
+                <TextView
+                    android:id="@+id/cursor"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="@color/soft"
+                    android:tag="t:soft"
+                    android:text="_"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="8dp">
+
+                <LinearLayout
+                    android:id="@+id/navHome"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingBottom="6dp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <ImageView
+                            android:layout_width="15dp"
+                            android:layout_height="15dp"
+                            android:layout_marginRight="7dp"
+                            android:tag="i:accent"
+                            android:src="@drawable/ic_home"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.16"
+                            android:textAllCaps="true"
+                            android:textColor="@color/ink"
+                            android:tag="t:ink f:monoB"
+                            android:text="Home"/>
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/navHomeBar"
+                        android:layout_width="56dp"
+                        android:layout_height="3dp"
+                        android:layout_marginTop="5dp"/>
+                </LinearLayout>
+
+                <com.astos.shell.MicButtonView
+                    android:id="@+id/micBtn"
+                    android:layout_width="66dp"
+                    android:layout_height="66dp"/>
+
+                <LinearLayout
+                    android:id="@+id/navSettings"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingBottom="6dp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <ImageView
+                            android:layout_width="15dp"
+                            android:layout_height="15dp"
+                            android:layout_marginRight="7dp"
+                            android:tag="i:soft"
+                            android:src="@drawable/ic_gear"/>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:letterSpacing="0.16"
+                            android:textAllCaps="true"
+                            android:textColor="@color/soft"
+                            android:tag="t:soft f:monoB"
+                            android:text="Settings"/>
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/navSettingsBar"
+                        android:layout_width="56dp"
+                        android:layout_height="3dp"
+                        android:layout_marginTop="5dp"
+                        android:visibility="invisible"/>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

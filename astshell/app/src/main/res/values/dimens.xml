@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared pixel-UI sizes (1024x600 mdpi reference device) -->
+    <dimen name="screen_pad_h">22dp</dimen>
+    <dimen name="screen_pad_top">14dp</dimen>
+    <dimen name="screen_pad_bottom">10dp</dimen>
+    <dimen name="card_pad_h">16dp</dimen>
+    <dimen name="card_pad_top">18dp</dimen>
+    <dimen name="card_pad_bottom">12dp</dimen>
+    <dimen name="row_gap">14dp</dimen>
+    <dimen name="border">2dp</dimen>
+    <dimen name="shadow_card">6dp</dimen>
+    <dimen name="shadow_btn">3dp</dimen>
+    <dimen name="btn_sq">46dp</dimen>
+    <dimen name="btn_sq_lg">56dp</dimen>
+    <dimen name="mic_size">72dp</dimen>
+</resources>

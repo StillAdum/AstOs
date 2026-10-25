@@ -1,0 +1,559 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.astos.shell.PixelBackdrop
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/setCols"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingLeft="@dimen/screen_pad_h"
+            android:paddingRight="@dimen/screen_pad_h"
+            android:paddingTop="@dimen/screen_pad_top"
+            android:paddingBottom="22dp">
+
+            <!-- ============ left column ============ -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginRight="14dp"
+                android:orientation="vertical">
+
+                <!-- DISPLAY -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <TextView
+                        style="@style/CardTag"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="-4dp"
+                        android:tag="d:tag t:bg f:monoB"
+                        android:text="Display"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.18"
+                        android:textAllCaps="true"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="Theme"/>
+
+                    <LinearLayout
+                        android:id="@+id/themeRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="8dp"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="14dp">
+
+                        <TextView
+                            style="@style/RowLabel"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:text="24-hour clock"/>
+
+                        <com.astos.shell.PixelSwitch
+                            android:id="@+id/h24Switch"
+                            android:layout_width="46dp"
+                            android:layout_height="24dp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="10dp">
+
+                        <TextView
+                            style="@style/RowLabel"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:text="Animate backdrop"/>
+
+                        <com.astos.shell.PixelSwitch
+                            android:id="@+id/animSwitch"
+                            android:layout_width="46dp"
+                            android:layout_height="24dp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- SOUND + VOICE -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <TextView
+                        style="@style/CardTag"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="-4dp"
+                        android:tag="d:tag t:bg f:monoB"
+                        android:text="Sound + Voice"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="12dp">
+
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:layout_marginRight="10dp"
+                            android:tag="i:ink"
+                            android:src="@drawable/ic_vol"/>
+
+                        <com.astos.shell.SegBar
+                            android:id="@+id/volRow"
+                            android:layout_width="0dp"
+                            android:layout_height="14dp"
+                            android:layout_weight="1"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="12dp">
+
+                        <TextView
+                            style="@style/RowLabel"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:text="Spoken replies"/>
+
+                        <com.astos.shell.PixelSwitch
+                            android:id="@+id/speakSwitch"
+                            android:layout_width="46dp"
+                            android:layout_height="24dp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="10dp">
+
+                        <TextView
+                            style="@style/RowLabel"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:text="Open on boot"/>
+
+                        <com.astos.shell.PixelSwitch
+                            android:id="@+id/bootSwitch"
+                            android:layout_width="46dp"
+                            android:layout_height="24dp"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- SYSTEM -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <TextView
+                        style="@style/CardTag"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="-4dp"
+                        android:tag="d:tag t:bg f:monoB"
+                        android:text="System"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="12dp">
+
+                        <TextView
+                            style="@style/RowLabel"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:text="Fullscreen kiosk"/>
+
+                        <com.astos.shell.PixelSwitch
+                            android:id="@+id/kioskSwitch"
+                            android:layout_width="46dp"
+                            android:layout_height="24dp"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="10dp">
+
+                        <TextView
+                            style="@style/RowLabel"
+                            android:layout_width="0dp"
+                            android:layout_weight="1"
+                            android:text="Keep screen on"/>
+
+                        <com.astos.shell.PixelSwitch
+                            android:id="@+id/keepScreenSwitch"
+                            android:layout_width="46dp"
+                            android:layout_height="24dp"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/kvWifi"
+                        style="@style/KvLine"
+                        android:layout_marginTop="14dp"
+                        android:text="wifi · —"/>
+
+                    <Button
+                        android:id="@+id/powerBtn"
+                        style="@style/ChipBtn"
+                        android:layout_marginTop="12dp"
+                        android:tag="d:btn f:monoB"
+                        android:text="Power options"/>
+
+                    <Button
+                        android:id="@+id/wizardBtn"
+                        style="@style/ChipBtn"
+                        android:layout_marginTop="8dp"
+                        android:tag="d:btnFlat f:monoB"
+                        android:text="Run setup wizard"/>
+
+                    <Button
+                        android:id="@+id/notifAccessBtn"
+                        style="@style/ChipBtn"
+                        android:layout_marginTop="8dp"
+                        android:tag="d:btnFlat f:monoB"
+                        android:text="Media control access"/>
+
+                    <Button
+                        android:id="@+id/homeChooserBtn"
+                        style="@style/ChipBtn"
+                        android:layout_marginTop="8dp"
+                        android:tag="d:btnFlat f:monoB"
+                        android:text="Choose default home"/>
+
+                    <Button
+                        android:id="@+id/androidSettingsBtn"
+                        style="@style/ChipBtn"
+                        android:layout_marginTop="8dp"
+                        android:tag="d:btnFlat f:monoB"
+                        android:text="Android settings"/>
+
+                    <TextView
+                        android:id="@+id/aboutText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.08"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text=""/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ============ right column ============ -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- HOME ASSISTANT -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <TextView
+                        style="@style/CardTag"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="-4dp"
+                        android:tag="d:tag t:bg f:monoB"
+                        android:text="Home Assistant"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.18"
+                        android:textAllCaps="true"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="Server URL"/>
+
+                    <EditText
+                        android:id="@+id/haUrlInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="6dp"
+                        android:background="@drawable/bg_edit"
+                        android:tag="d:edit t:ink"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:textSize="12sp"
+                        android:singleLine="true"
+                        android:inputType="textUri"
+                        android:imeOptions="actionDone"
+                        android:hint="http://homeassistant.local:8123"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.18"
+                        android:textAllCaps="true"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="Access token"/>
+
+                    <EditText
+                        android:id="@+id/haTokenInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="6dp"
+                        android:background="@drawable/bg_edit"
+                        android:tag="d:edit t:ink"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:textSize="12sp"
+                        android:singleLine="true"
+                        android:inputType="textPassword"
+                        android:imeOptions="actionDone"
+                        android:hint="Profile → Security → long-lived token"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="12dp">
+
+                        <Button
+                            android:id="@+id/haTestBtn"
+                            style="@style/ChipBtn"
+                            android:tag="d:btnMain t:mic f:monoB"
+                            android:background="@drawable/bg_btn_main"
+                            android:text="Test + load"/>
+
+                        <TextView
+                            android:id="@+id/haStatus"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginLeft="12dp"
+                            android:textSize="10sp"
+                            android:textColor="@color/soft"
+                            android:tag="t:soft"
+                            android:text=""/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- WEATHER -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <TextView
+                        style="@style/CardTag"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="-4dp"
+                        android:tag="d:tag t:bg f:monoB"
+                        android:text="Weather"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.18"
+                        android:textAllCaps="true"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="City"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="6dp">
+
+                        <EditText
+                            android:id="@+id/cityInput"
+                            android:layout_width="0dp"
+                            android:layout_height="38dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_edit"
+                            android:tag="d:edit t:ink"
+                            android:paddingLeft="8dp"
+                            android:paddingRight="8dp"
+                            android:textSize="12sp"
+                            android:singleLine="true"
+                            android:inputType="textCapWords"
+                            android:imeOptions="actionDone"
+                            android:hint="Your city"/>
+
+                        <Button
+                            android:id="@+id/saveCityBtn"
+                            style="@style/ChipBtn"
+                            android:layout_marginLeft="10dp"
+                            android:tag="d:btnMain t:mic f:monoB"
+                            android:background="@drawable/bg_btn_main"
+                            android:text="Save"/>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/cityStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textSize="10sp"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="geocoding on save"/>
+                </LinearLayout>
+
+                <!-- GROQ AI -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_card"
+                    android:tag="d:card"
+                    android:paddingLeft="@dimen/card_pad_h"
+                    android:paddingRight="@dimen/card_pad_h"
+                    android:paddingTop="@dimen/card_pad_top"
+                    android:paddingBottom="@dimen/card_pad_bottom">
+
+                    <TextView
+                        style="@style/CardTag"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="-4dp"
+                        android:tag="d:tag t:bg f:monoB"
+                        android:text="Groq AI"/>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="10sp"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:lineSpacingExtra="3dp"
+                        android:text="A free key (console.groq.com) lets the mic answer anything."/>
+
+                    <EditText
+                        android:id="@+id/groqInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_edit"
+                        android:tag="d:edit t:ink"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp"
+                        android:textSize="12sp"
+                        android:singleLine="true"
+                        android:inputType="textPassword"
+                        android:imeOptions="actionDone"
+                        android:hint="gsk_…"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="10dp">
+
+                        <Button
+                            android:id="@+id/groqSaveBtn"
+                            style="@style/ChipBtn"
+                            android:tag="d:btnMain t:mic f:monoB"
+                            android:background="@drawable/bg_btn_main"
+                            android:text="Save"/>
+
+                        <TextView
+                            android:id="@+id/groqStatus"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginLeft="12dp"
+                            android:textSize="10sp"
+                            android:textColor="@color/soft"
+                            android:tag="t:soft"
+                            android:text=""/>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</FrameLayout>

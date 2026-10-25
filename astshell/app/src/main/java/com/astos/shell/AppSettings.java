@@ -3,7 +3,13 @@ package com.astos.shell;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-/** Tiny typed wrapper over SharedPreferences (AstShell settings). */
+/**
+ * Tiny typed settings wrapper (AstShell).
+ *
+ * Values the first-boot wizard (AstSetup, a separate platform-signed
+ * app) collects arrive through Settings.Global — the shared store both
+ * apps can see. Everything else lives in local SharedPreferences.
+ */
 public final class AppSettings {
 
     private static final String PREFS = "astos";
@@ -14,136 +20,122 @@ public final class AppSettings {
         return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    // ---- Music / AI providers -------------------------------------------------
-
-    /** Groq key: shared with the setup wizard via Settings.Global (both
-     *  apps are platform-signed; Global is the shared store). */
-    public static String groqKey(Context c) {
-        String g = "";
+    private static String global(Context c, String key) {
         try {
-            g = android.provider.Settings.Global.getString(
-                    c.getContentResolver(), "astos_groq_key");
+            String g = android.provider.Settings.Global.getString(
+                    c.getContentResolver(), key);
+            if (g != null && !g.isEmpty()) return g;
         } catch (Throwable ignored) {}
-        if (g == null) g = "";
-        if (!g.isEmpty()) return g;
-        String v = p(c).getString("groq_key", "");
-        if (!v.isEmpty()) return v;
-        return "";
+        return null;
+    }
+
+    private static void setGlobal(Context c, String key, String v) {
+        try {
+            android.provider.Settings.Global.putString(c.getContentResolver(), key, v);
+        } catch (Throwable ignored) {}
+    }
+
+    // ---- Music / AI providers ----------------------------------------------
+
+    public static String groqKey(Context c) {
+        String g = global(c, "astos_groq_key");
+        if (g != null) return g;
+        return p(c).getString("groq_key", "");
     }
 
     public static void setGroqKey(Context c, String v) {
         v = v == null ? "" : v.trim();
         p(c).edit().putString("groq_key", v).apply();
-        try {
-            android.provider.Settings.Global.putString(c.getContentResolver(),
-                    "astos_groq_key", v);
-        } catch (Throwable ignored) {}
+        setGlobal(c, "astos_groq_key", v);
     }
 
-    // ---- Home Assistant (shared with the setup wizard via Global) ------------
+    // ---- Home Assistant -----------------------------------------------------
 
     public static String haUrl(Context c) {
-        String g = "";
-        try {
-            g = android.provider.Settings.Global.getString(
-                    c.getContentResolver(), "astos_ha_url");
-        } catch (Throwable ignored) {}
-        if (g != null && !g.isEmpty()) return g;
+        String g = global(c, "astos_ha_url");
+        if (g != null) return g;
         return p(c).getString("ha_url", "");
     }
     public static void setHaUrl(Context c, String v) {
         v = v == null ? "" : v;
         p(c).edit().putString("ha_url", v).apply();
-        try {
-            android.provider.Settings.Global.putString(c.getContentResolver(), "astos_ha_url", v);
-        } catch (Throwable ignored) {}
+        setGlobal(c, "astos_ha_url", v);
     }
 
     public static String haToken(Context c) {
-        String g = "";
-        try {
-            g = android.provider.Settings.Global.getString(
-                    c.getContentResolver(), "astos_ha_token");
-        } catch (Throwable ignored) {}
-        if (g != null && !g.isEmpty()) return g;
+        String g = global(c, "astos_ha_token");
+        if (g != null) return g;
         return p(c).getString("ha_token", "");
     }
     public static void setHaToken(Context c, String v) {
         v = v == null ? "" : v;
         p(c).edit().putString("ha_token", v).apply();
-        try {
-            android.provider.Settings.Global.putString(c.getContentResolver(), "astos_ha_token", v);
-        } catch (Throwable ignored) {}
+        setGlobal(c, "astos_ha_token", v);
     }
 
-    // ---- Look & feel ------------------------------------------------------------
+    public static boolean haEnabled(Context c)             { return p(c).getBoolean("ha_enabled", true); }
+    public static void setHaEnabled(Context c, boolean v) { p(c).edit().putBoolean("ha_enabled", v).apply(); }
 
-    public static String palette(Context c) {
-        String g = null;
-        try {
-            g = android.provider.Settings.Global.getString(
-                    c.getContentResolver(), "astos_palette");
-        } catch (Throwable ignored) {}
-        if (g != null && !g.isEmpty()) return g;
-        return p(c).getString("palette", AsciiTheme.PALETTES[0].name);
+    // ---- Look & feel ----------------------------------------------------------
+
+    /** pixel UI theme: dune / forest / rust / mono / ember / pine */
+    public static String themeKey(Context c) {
+        String g = global(c, "astos_theme");
+        if (g != null && Ui.THEMES.containsKey(g)) return g;
+        // legacy wizard value: old palette names map onto the closest theme
+        String legacy = global(c, "astos_palette");
+        if (legacy != null) {
+            String l = legacy.toLowerCase(java.util.Locale.US);
+            if (l.contains("dark") || l.contains("ember") || l.contains("night")) return "ember";
+            if (l.contains("forest") || l.contains("green")) return "forest";
+            if (l.contains("rust") || l.contains("terra")) return "rust";
+            if (l.contains("mono")) return "mono";
+            if (l.contains("pine")) return "pine";
+        }
+        return p(c).getString("theme", "dune");
     }
 
-    public static void setPalette(Context c, String v) {
-        p(c).edit().putString("palette", v).apply();
-        try {
-            android.provider.Settings.Global.putString(c.getContentResolver(),
-                    "astos_palette", v);
-        } catch (Throwable ignored) {}
+    public static void setThemeKey(Context c, String v) {
+        p(c).edit().putString("theme", v).apply();
+        setGlobal(c, "astos_theme", v);
     }
 
-    public static String bgMode(Context c) {
-        String g = null;
+    public static boolean h24(Context c) {
         try {
-            g = android.provider.Settings.Global.getString(
-                    c.getContentResolver(), "astos_bg");
+            String g = global(c, "astos_h24");
+            if (g != null) return "1".equals(g) || "true".equals(g);
         } catch (Throwable ignored) {}
-        if (g != null && !g.isEmpty()) return g;
-        return p(c).getString("bg_mode", "RAIN");
+        return p(c).getBoolean("h24", true);
+    }
+    public static void setH24(Context c, boolean v) {
+        p(c).edit().putBoolean("h24", v).apply();
+        setGlobal(c, "astos_h24", v ? "1" : "0");
     }
 
-    public static void setBgMode(Context c, String v) {
-        p(c).edit().putString("bg_mode", v).apply();
+    /** drifting motes on the dotted-paper backdrop */
+    public static boolean backdropAnim(Context c) {
         try {
-            android.provider.Settings.Global.putString(c.getContentResolver(),
-                    "astos_bg", v);
+            String g = global(c, "astos_anim");
+            if (g != null) return "1".equals(g) || "true".equals(g);
         } catch (Throwable ignored) {}
+        return p(c).getBoolean("backdrop_anim", true);
+    }
+    public static void setBackdropAnim(Context c, boolean v) {
+        p(c).edit().putBoolean("backdrop_anim", v).apply();
+        setGlobal(c, "astos_anim", v ? "1" : "0");
     }
 
-    /** font px for the ASCII grid: 16 (small), 20 (medium), 24 (large) */
-    public static int fontPx(Context c)                  { return p(c).getInt("font_px", 20); }
-    public static void setFontPx(Context c, int v)       { p(c).edit().putInt("font_px", v).apply(); }
-
-    /** 0 = animations off (static screen), 1 = full animations */
-    public static boolean animations(Context c)          { return p(c).getBoolean("animations", true); }
-    public static void setAnimations(Context c, boolean v) { p(c).edit().putBoolean("animations", v).apply(); }
-
-    /** render album covers as ASCII art instead of bitmap */
-    public static boolean asciiCover(Context c)          { return p(c).getBoolean("ascii_cover", false); }
-    public static void setAsciiCover(Context c, boolean v) { p(c).edit().putBoolean("ascii_cover", v).apply(); }
-
-    // ---- Weather -----------------------------------------------------------------
+    // ---- Weather ----------------------------------------------------------------
 
     public static String city(Context c) {
-        String g = null;
-        try {
-            g = android.provider.Settings.Global.getString(
-                    c.getContentResolver(), "astos_city");
-        } catch (Throwable ignored) {}
-        if (g != null && !g.isEmpty()) return g;
+        String g = global(c, "astos_city");
+        if (g != null) return g;
         return p(c).getString("city", "");
     }
 
     public static void setCity(Context c, String v) {
         p(c).edit().putString("city", v).apply();
-        try {
-            android.provider.Settings.Global.putString(c.getContentResolver(),
-                    "astos_city", v);
-        } catch (Throwable ignored) {}
+        setGlobal(c, "astos_city", v);
     }
 
     public static float lat(Context c) {
@@ -173,24 +165,17 @@ public final class AppSettings {
     }
 
     public static String resolvedCity(Context c) {
-        String g = null;
-        try {
-            g = android.provider.Settings.Global.getString(
-                    c.getContentResolver(), "astos_city_resolved");
-        } catch (Throwable ignored) {}
-        if (g != null && !g.isEmpty()) return g;
+        String g = global(c, "astos_city_resolved");
+        if (g != null) return g;
         return p(c).getString("city_resolved", "");
     }
 
     public static void setResolvedCity(Context c, String v) {
         p(c).edit().putString("city_resolved", v).apply();
-        try {
-            android.provider.Settings.Global.putString(c.getContentResolver(),
-                    "astos_city_resolved", v);
-        } catch (Throwable ignored) {}
+        setGlobal(c, "astos_city_resolved", v);
     }
 
-    // ---- Behaviour -------------------------------------------------------------------
+    // ---- Behaviour -----------------------------------------------------------------
 
     public static boolean kiosk(Context c)             { return p(c).getBoolean("kiosk", true); }
     public static void setKiosk(Context c, boolean v)  { p(c).edit().putBoolean("kiosk", v).apply(); }
@@ -203,7 +188,4 @@ public final class AppSettings {
 
     public static boolean bootLaunch(Context c)             { return p(c).getBoolean("boot_launch", true); }
     public static void setBootLaunch(Context c, boolean v)  { p(c).edit().putBoolean("boot_launch", v).apply(); }
-
-    public static boolean haEnabled(Context c)             { return p(c).getBoolean("ha_enabled", true); }
-    public static void setHaEnabled(Context c, boolean v) { p(c).edit().putBoolean("ha_enabled", v).apply(); }
 }

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:background="@drawable/bg_card"
+        android:tag="d:card"
+        android:paddingLeft="@dimen/card_pad_h"
+        android:paddingRight="@dimen/card_pad_h"
+        android:paddingTop="26dp"
+        android:paddingBottom="@dimen/card_pad_bottom">
+
+        <TextView
+            style="@style/CardTag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="-4dp"
+            android:tag="d:tag t:bg f:monoB"
+            android:text="Power"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textSize="34sp"
+            android:fontFamily="monospace"
+            android:textColor="@color/ink"
+            android:tag="f:vt t:ink"
+            android:includeFontPadding="false"
+            android:text="Power options"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="18dp">
+
+            <LinearLayout
+                android:id="@+id/optRestart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:background="@drawable/bg_btn"
+                android:tag="d:btn"
+                android:padding="14dp">
+
+                <ImageView
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:tag="i:ink"
+                    android:src="@drawable/ic_restart"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.12"
+                    android:textAllCaps="true"
+                    android:textColor="@color/ink"
+                    android:tag="t:ink f:monoB"
+                    android:text="Restart"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/optPower"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginLeft="12dp"
+                android:background="@drawable/bg_btn_main"
+                android:tag="d:btnMain"
+                android:padding="14dp">
+
+                <ImageView
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:tag="i:mic"
+                    android:src="@drawable/ic_power"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.12"
+                    android:textAllCaps="true"
+                    android:textColor="@color/micink"
+                    android:tag="t:mic f:monoB"
+                    android:text="Power off"/>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/optCancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:layout_marginLeft="12dp"
+                android:background="@drawable/bg_btn_flat"
+                android:tag="d:btnFlat"
+                android:padding="14dp">
+
+                <ImageView
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:tag="i:ink"
+                    android:src="@drawable/ic_close"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.12"
+                    android:textAllCaps="true"
+                    android:textColor="@color/ink"
+                    android:tag="t:ink f:monoB"
+                    android:text="Cancel"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textSize="9sp"
+            android:letterSpacing="0.1"
+            android:textColor="@color/soft"
+            android:tag="t:soft"
+            android:text="hold the hardware power key for 10s to force off"/>
+    </LinearLayout>
+</FrameLayout>

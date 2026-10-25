@@ -10,8 +10,8 @@ android {
         applicationId "com.astos.shell"
         minSdk 24          // device runs Android 7.1 (API 25)
         targetSdk 25       // aligned with the ROM platform
-        versionCode 4
-        versionName "2.4"
+        versionCode 5
+        versionName "3.0"
     }
 
     buildTypes {
@@ -38,6 +38,11 @@ android {
     // The Vosk model is NOT bundled anymore: the device downloads it during
     // first-boot setup ("Setup is almost finished, just downloading a few
     // more things...") and on demand from the home screen.
+    // Pixel fonts (VT323, IBM Plex Mono) ship uncompressed so Typeface
+    // can mmap them directly.
+    androidResources {
+        noCompress 'ttf'
+    }
 }
 
 dependencies {

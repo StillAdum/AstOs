@@ -39,7 +39,7 @@ an AstOs layer baked into `/system`.
 |---|---|
 | 🧭 **Phone-driven first-boot setup** | The tablet opens its own hotspot **`AstSetup_xxxx`** — connect your phone, scan the QR and push the WHOLE config (home WiFi credentials, city, Groq key, HA, theme) from the phone page. The tablet then joins your WiFi and finishes on its own. |
 | 🔒 **Pure kiosk** | Landscape-locked. No lock screen, no notification shade, no nav bar, no edge-swipe surprises — power-on goes straight to the dashboard, and a persistent foreground service holds the shade closed with a 20 s heartbeat. Nobody guesses it's Android. |
-| 🖥️ **Pixel-shell UI** | Big blocky pixel clock, warm cards, pixel-art icons and smooth sine-wave animations — everything laid out in dp so it always scales to the glass. ASCII art lives only in the boot animation. |
+| 🖥️ **Pixel-shell UI** | The approved pixel design, 99% point-for-point: VT323 clock + IBM Plex Mono, corner-tagged cards with ink borders and hard shadows, dotted-paper backdrop with drifting motes, segmented bars, EQ visualizer, six themes (Dune/Forest/Rust/Mono/Ember/Pine). 100% native Views — no WebView. ASCII art lives only in the boot animation. |
 | ⌨️ **AstOs keyboard** | Custom terminal IME — chunky monospace keys, digits row, [DEL]/[HIDE]/[GO], hold-DEL repeat, themed with the active palette. Selected automatically. |
 | 🎤 **Offline voice control** | Vosk speech recognition runs entirely on-device. No Google account, no cloud. Model downloads after setup over your WiFi. |
 | 🎵 **Discord-bot music** | "Play despacito" — on-device YouTube Music search + free streaming. Local SD music too. |

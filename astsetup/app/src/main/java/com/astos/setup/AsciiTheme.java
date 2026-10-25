@@ -1,50 +1,53 @@
 package com.astos.setup;
 
-import android.graphics.Color;
-
 /**
- * AstOs ASCII-theme palettes. Every palette is warm by default (the no-blue
- * rule), but the user can switch any of them in Settings — including the
- * ones with blue, because the user chooses.
+ * AstSetup theme palettes — the six pixel themes shared with AstShell's
+ * Ui engine (same names/keys, so astos_theme round-trips between apps).
+ *
+ * Default is Dune: warm paper, ink text, terracotta accent — the approved
+ * mock palette. Mode "DOTS" is the dotted-paper backdrop.
  */
 public final class AsciiTheme {
 
     public static class Palette {
-        public final String name;
-        public final int fg;       // main text
-        public final int dim;      // secondary text
-        public final int accent;    // highlights / logo / buttons
-        public final int bg;       // screen background
-        public final String mode;   // default background FX for this palette
+        public final String name;    // == AstShell Ui theme key
+        public final int fg;        // ink
+        public final int dim;       // soft
+        public final int accent;
+        public final int bg;
+        public final int panel;      // card surface
+        public final int on;        // sage "active" tint
+        public final String mode;   // default background FX
 
-        Palette(String name, int fg, int dim, int accent, int bg, String mode) {
+        Palette(String name, int fg, int dim, int accent, int bg, int panel, int on, String mode) {
             this.name = name; this.fg = fg; this.dim = dim;
-            this.accent = accent; this.bg = bg; this.mode = mode;
+            this.accent = accent; this.bg = bg; this.panel = panel; this.on = on; this.mode = mode;
         }
     }
 
     public static final Palette[] PALETTES = {
-        new Palette("Amber CRT",   0xFFF2D9A0, 0xFF8A6F4D, 0xFFFFB84D, 0xFF14100A, "RAIN"),
-        new Palette("Cream Paper",  0xFF3B2F24, 0xFF9A8C7A, 0xFFB3541E, 0xFFF2EBDD, "SOLID"),
-        new Palette("Ember",        0xFFFFD8B8, 0xFF8C5B43, 0xFFFF6B35, 0xFF1A0E08, "WAVES"),
-        new Palette("Mint Terminal",0xFFB8F2D8, 0xFF5F8A78, 0xFF4DE8A8, 0xFF0A1210, "PLASMA"),
-        new Palette("Sunset",       0xFFFFE3D0, 0xFFC08A6A, 0xFFFF8A5C, 0xFF241016, "STARS"),
-        new Palette("Mono Slate",   0xFFE8E8E8, 0xFF7A7A7A, 0xFFB0B0B0, 0xFF101012, "SCANLINES"),
-        new Palette("Cyan Ghost",   0xFFCFF7FF, 0xFF5D8A93, 0xFF4DE0FC, 0xFF081114, "PLASMA"),
-        new Palette("Violet Dusk",  0xFFE6D8FF, 0xFF7A6494, 0xFFB279FF, 0xFF120E1C, "STARS"),
-        new Palette("Phosphor",    0xFF8AF59B, 0xFF3E8A54, 0xFF3DDC6C, 0xFF081108, "SCANLINES"),
-        new Palette("Ember Gold",  0xFFFFE9A8, 0xFF9B7E4E, 0xFFFFC93C, 0xFF171106, "RAIN"),
-        new Palette("Ice Cavern",  0xFFEAF6FF, 0xFF8FB0C0, 0xFFB7E3FF, 0xFF0D1418, "WAVES"),
-        new Palette("Vaporwave",   0xFFFFC7E8, 0xFFB06FA0, 0xFFFF7AC8, 0xFF160B18, "STARS"),
+            new Palette("dune",   0xFF2A241C, 0xFF9A8D78, 0xFFC4742A, 0xFFEFE7D8, 0xFFF8F2E4, 0xFFCFDCA6, "DOTS"),
+            new Palette("forest", 0xFF1F2819, 0xFF7C8C6A, 0xFF8A5A22, 0xFFE6EAD8, 0xFFF2F4E6, 0xFFBCD69A, "DOTS"),
+            new Palette("rust",   0xFF2B1C15, 0xFF957462, 0xFFB9481F, 0xFFF0E2D6, 0xFFF9EEE4, 0xFFF0C9A0, "DOTS"),
+            new Palette("mono",   0xFF1C1C1C, 0xFF8C8C88, 0xFF2E2E2E, 0xFFE9E8E3, 0xFFF6F5F0, 0xFFC9C9C2, "DOTS"),
+            new Palette("ember",  0xFFEFE2CB, 0xFF8A7B62, 0xFFE39A48, 0xFF15110D, 0xFF1E1812, 0xFF4A421F, "DOTS"),
+            new Palette("pine",   0xFFE3EAD6, 0xFF7D8D72, 0xFFD2A94F, 0xFF101510, 0xFF182118, 0xFF2F4A28, "DOTS"),
     };
 
+    /** legacy bg modes kept for compatibility; DOTS is the pixel default */
     public static final String[] BG_MODES = {
-        "SOLID", "STARS", "RAIN", "WAVES", "PLASMA", "SCANLINES", "IMAGE"
+            "DOTS", "SOLID", "STARS", "RAIN", "WAVES", "PLASMA", "SCANLINES", "IMAGE"
     };
 
     public static Palette byName(String name) {
         if (name != null) {
             for (Palette p : PALETTES) if (p.name.equals(name)) return p;
+            // legacy 2.x palette names -> nearest pixel theme
+            String l = name.toLowerCase();
+            if (l.contains("cream")) return PALETTES[0];
+            if (l.contains("ember") || l.contains("sunset")) return PALETTES[4];
+            if (l.contains("mint") || l.contains("phosphor")) return PALETTES[1];
+            if (l.contains("mono")) return PALETTES[3];
         }
         return PALETTES[0];
     }
@@ -56,7 +59,7 @@ public final class AsciiTheme {
         r = (int) (br + (r - br) * factor);
         g = (int) (bgG + (g - bgG) * factor);
         b = (int) (bb + (b - bb) * factor);
-        return Color.rgb(r, g, b);
+        return (r << 16) | (g << 8) | b | 0xFF000000;
     }
 
     private AsciiTheme() {}
