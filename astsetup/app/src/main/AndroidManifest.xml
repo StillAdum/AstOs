@@ -18,7 +18,7 @@
          stores the user's AstOs choices where AstShell can read them. -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
-    <!-- v3.1: the PC companion channel (AstLink) — Bluetooth SPP + USB */
+    <!-- v3.1: the PC companion channel (AstLink) — Bluetooth SPP + USB -->
     <uses-permission android:name="android.permission.BLUETOOTH"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
     <uses-permission android:name="android.permission.BLUETOOTH_PRIVILEGED"/>

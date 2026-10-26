@@ -11,7 +11,7 @@
     <!-- v3.1: the PC companion channel (AstLink) -->
     <uses-permission android:name="android.permission.BLUETOOTH"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
-    <!-- platform-signed privileged app inside the ROM: silent pairing */
+    <!-- platform-signed privileged app inside the ROM: silent pairing -->
     <uses-permission android:name="android.permission.BLUETOOTH_PRIVILEGED"/>
     <!-- staging TWRP openrecoveryscript in /cache for ROM updates -->
     <uses-permission android:name="android.permission.ACCESS_CACHE_FILESYSTEM"/>
