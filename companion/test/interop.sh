@@ -5,9 +5,16 @@ set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ASTLINK="$HERE/../../astlink/src/main/java"
-JDK="${JDK:-$HOME/jdk17}"
-JAVAC="$JDK/bin/javac"
-JAVA="$JDK/bin/java"
+
+# find a working JDK: $JDK > $JAVA_HOME (CI setup-java) > ~/jdk17 (local dev)
+JDK_BIN=""
+for c in "${JDK:-}" "${JAVA_HOME:-}" "$HOME/jdk17"; do
+    [ -n "$c" ] || continue
+    if "$c/bin/javac" -version >/dev/null 2>&1; then JDK_BIN="$c/bin"; break; fi
+done
+[ -n "$JDK_BIN" ] || { echo "interop: no javac found (set JDK or JAVA_HOME)"; exit 1; }
+JAVAC="$JDK_BIN/javac"
+JAVA="$JDK_BIN/java"
 WORK="$(mktemp -d)"
 
 # compile the REAL LinkJson + the driver
