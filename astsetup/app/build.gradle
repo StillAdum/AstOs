@@ -36,6 +36,16 @@ android {
     androidResources {
         noCompress 'ttf'
     }
+
+    // v3.1: the shared AstLink companion protocol (Bluetooth SPP + USB),
+    // compiled into both apps from one source tree.
+    sourceSets {
+        main {
+            java {
+                srcDir '../../astlink/src/main/java'
+            }
+        }
+    }
 }
 
 dependencies {

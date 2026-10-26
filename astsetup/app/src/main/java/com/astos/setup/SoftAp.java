@@ -41,6 +41,10 @@ public final class SoftAp {
     private static final long TIMEOUT_MS = 24_000;
     private static final String FALLBACK_IP = "192.168.43.1";
 
+    /** The SSID the AP is ACTUALLY broadcasting (read back after start;
+     *  falls back to ssid(ctx) until known). */
+    private static volatile String sApSsid;
+
     private SoftAp() {}
 
     /** xxxx — the unique id of this device (last 4 hex of ANDROID_ID). */
@@ -55,12 +59,30 @@ public final class SoftAp {
         return "1000";
     }
 
-    /** The setup hotspot SSID: AstSetup_xxxx. */
+    /** The setup hotspot SSID as the user must see it: AstSetup_xxxx,
+     *  NEVER with quote characters. */
     public static String ssid(Context c) {
-        return "AstSetup_" + deviceId(c);
+        String s = sApSsid;
+        return (s != null && !s.isEmpty()) ? s : "AstSetup_" + deviceId(c);
     }
 
-    /** Start the open setup hotspot; reports the AP ip asynchronously. */
+    /** True while the fallback (LAN) pairing mode is active — display hook. */
+    public static boolean isLanFallback() { return sLanFallback; }
+    private static volatile boolean sLanFallback;
+
+    // poll bookkeeping so stop() can cancel a running watcher
+    private static volatile Handler sPollHandler;
+    private static volatile Runnable sPollTask;
+
+    /**
+     * v3.1: the SSID for the ACCESS-POINT config must be UNQUOTED on
+     * Android 7.1. Client WifiConfigurations quote the SSID
+     * (\"AstSetup_xxxx\") because wpa_supplicant wants that on the wire —
+     * but the softap path passes the stored value to hostapd as-is, so a
+     * quoted value was broadcast LITERALLY: phones saw a network called
+     * \"AstSetup_xxxx\" with quote characters in the name (the reported
+     * bug). Only ever display ssid(); never cfg.SSID.
+     */
     public static void start(final Context ctx, final Callback cb) {
         final WifiManager wm = (WifiManager) ctx.getApplicationContext()
                 .getSystemService(Context.WIFI_SERVICE);
@@ -70,7 +92,7 @@ public final class SoftAp {
         }
 
         WifiConfiguration cfg = new WifiConfiguration();
-        cfg.SSID = "\"" + ssid(ctx) + "\"";
+        cfg.SSID = ssid(ctx);                     // UNQUOTED — see the v3.1 note
         cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
 
         // 1) persist our SSID as THE ap configuration (7.1 hidden api)
@@ -79,10 +101,21 @@ public final class SoftAp {
             Object r = WifiManager.class
                     .getMethod("setWifiApConfiguration", WifiConfiguration.class)
                     .invoke(wm, cfg);
-            cfgOk = (r instanceof Boolean) && (Boolean) r;
+            cfgOk = !(r instanceof Boolean) || (Boolean) r;   // some builds return void
+            // read back what was actually stored and unquote it for display
+            Object stored = WifiManager.class
+                    .getMethod("getWifiApConfiguration")
+                    .invoke(wm);
+            if (stored instanceof WifiConfiguration) {
+                String s = ((WifiConfiguration) stored).SSID;
+                if (s != null) {
+                    sApSsid = s.replace("\"", "");
+                }
+            }
         } catch (Throwable ignored) {}
 
-        // 2) bring the AP up (with our config when the persist was refused)
+        // 2) bring the AP up — with the STORED config when the persist worked
+        //    (cleanest path; a fresh quoted cfg here is what leaked quotes)
         boolean started = false;
         try {
             Object r = WifiManager.class
@@ -93,7 +126,7 @@ public final class SoftAp {
             started = false;
         }
         if (!started) {
-            // second chance: platform-signed + tether privileged path
+            // second chance: tether-control path with the stored/default config
             try {
                 Object r = WifiManager.class
                         .getMethod("setWifiApEnabled", WifiConfiguration.class, boolean.class)
@@ -111,6 +144,7 @@ public final class SoftAp {
         final long t0 = android.os.SystemClock.elapsedRealtime();
         final Runnable[] poll = new Runnable[1];
         poll[0] = new Runnable() {
+            boolean reported = false;
             @Override public void run() {
                 boolean up = false;
                 try {
@@ -123,22 +157,53 @@ public final class SoftAp {
                 long waited = android.os.SystemClock.elapsedRealtime() - t0;
 
                 if (up && ip != null) {
-                    cb.onApReady(ssid(ctx), ip);
+                    if (!ip.equals(sReportedIp)) {
+                        sReportedIp = ip;
+                        cb.onApReady(ssid(ctx), ip);  // re-fires with the real
+                                                      // address after a
+                                                      // fallback guess
+                    }
+                    // keep watching for 30 more seconds: some devices take
+                    // a moment to settle on their final softap address
+                    if (waited < 54_000) h.postDelayed(this, POLL_MS * 2);
                     return;
                 }
                 if (waited >= TIMEOUT_MS) {
-                    if (up) cb.onApReady(ssid(ctx), FALLBACK_IP); // up, slow dhcp
-                    else cb.onApFailed("hotspot did not come up");
+                    if (up) {
+                        if (!reported) {
+                            reported = true;
+                            sReportedIp = FALLBACK_IP;
+                            cb.onApReady(ssid(ctx), FALLBACK_IP); // slow dhcp —
+                            // the poller above refreshes the QR when the
+                            // true address shows up
+                        }
+                        h.postDelayed(this, POLL_MS * 2);
+                        return;
+                    }
+                    sLanFallback = true;
+                    cb.onApFailed("hotspot did not come up");
                     return;
                 }
                 h.postDelayed(this, POLL_MS);
             }
         };
+        sPollHandler = h;
+        sPollTask = poll[0];
         h.postDelayed(poll[0], POLL_MS);
     }
 
+    private static volatile String sReportedIp = null;
+
     /** Tear the hotspot down and bring the wifi client back. */
     public static void stop(Context ctx) {
+        sReportedIp = null;
+        sApSsid = null;
+        sLanFallback = false;
+        try {
+            Handler h = sPollHandler;
+            Runnable r = sPollTask;
+            if (h != null && r != null) h.removeCallbacks(r);
+        } catch (Throwable ignored) {}
         try {
             WifiManager wm = (WifiManager) ctx.getApplicationContext()
                     .getSystemService(Context.WIFI_SERVICE);

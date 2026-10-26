@@ -37,9 +37,12 @@ an AstOs layer baked into `/system`.
 
 | | |
 |---|---|
-| 🧭 **Phone-driven first-boot setup** | The tablet opens its own hotspot **`AstSetup_xxxx`** — connect your phone, scan the QR and push the WHOLE config (home WiFi credentials, city, Groq key, HA, theme) from the phone page. The tablet then joins your WiFi and finishes on its own. |
+| 🧭 **Phone-driven first-boot setup** | The tablet opens its own hotspot **`AstSetup_xxxx`** — connect your phone and the setup form usually opens BY ITSELF (v3.1 answers the OS captive-portal probes). Or scan the QR, or use the PC app. The tablet then joins your WiFi and finishes on its own. |
+| 🖥️ **AstOS Companion (PC app)** | **v3.1**: a Windows installer ships with every release — pair over **Bluetooth or USB** and run the whole setup from your PC, manage the tablet (battery, wifi, toggles, power), install mods, and apply **ROM updates from the TWRP-flashable zips** straight from the app (it stages the recovery flash for you). Styled like the OS, with the same pixel animations. |
+| 🧩 **.astpl mods — mod the WHOLE OS** | **v3.1**: JavaScript plugins with a permission system. `ui/ha/media/voice/network/files/settings` grants for normal mods, and the `system` grant for REAL whole-OS access: shell, system properties, secure settings, input injection — sandboxed, watchdogged, opt-in per mod. Ship in `/sdcard/AstOs/plugins` or install from the PC app. |
 | 🔒 **Pure kiosk** | Landscape-locked. No lock screen, no notification shade, no nav bar, no edge-swipe surprises — power-on goes straight to the dashboard, and a persistent foreground service holds the shade closed with a 20 s heartbeat. Nobody guesses it's Android. |
 | 🖥️ **Pixel-shell UI** | The approved pixel design, 99% point-for-point: VT323 clock + IBM Plex Mono, corner-tagged cards with ink borders and hard shadows, dotted-paper backdrop with drifting motes, segmented bars, EQ visualizer, six themes (Dune/Forest/Rust/Mono/Ember/Pine). 100% native Views — no WebView. ASCII art lives only in the boot animation. |
+| 🏷️ **Boot screen never lies again** | **v3.1**: the boot animation caption is stamped from `scripts/VERSION` at every ROM build — the boot screen always shows the version you actually flashed. |
 | ⌨️ **AstOs keyboard** | Custom terminal IME — chunky monospace keys, digits row, [DEL]/[HIDE]/[GO], hold-DEL repeat, themed with the active palette. Selected automatically. |
 | 🎤 **Offline voice control** | Vosk speech recognition runs entirely on-device. No Google account, no cloud. Model downloads after setup over your WiFi. |
 | 🎵 **Discord-bot music** | "Play despacito" — on-device YouTube Music search + free streaming. Local SD music too. |

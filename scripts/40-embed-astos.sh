@@ -6,6 +6,19 @@ set -e
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 ROMDIR="${ROMDIR:-/mnt/rom}"
 
+# ---- v3.1: regenerate the boot animation with the CURRENT version --------
+# The caption inside the frames used to be a hard-coded string, and the
+# repo zip drifted behind the release (2.4 frames inside a 3.0 ROM — the
+# "boot screen shows the wrong version" bug). Now the animation is
+# stamped fresh from scripts/VERSION on every ROM build, so it can never
+# drift again.
+python3 -c "import PIL" 2>/dev/null || pip3 install --quiet pillow || true
+if python3 "$REPO_ROOT/scripts/gen_bootanimation.py"; then
+    echo "bootanimation regenerated with version stamp"
+else
+    echo "WARNING: bootanimation regen failed — shipping the committed zip" >&2
+fi
+
 # vendor/astos -> $ROMDIR/vendor/astos  (products, bootanim, wallpaper, rc, mk)
 mkdir -p "$ROMDIR/vendor/astos"
 rsync -a --delete "$REPO_ROOT/vendor/astos/" "$ROMDIR/vendor/astos/"

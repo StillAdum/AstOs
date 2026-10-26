@@ -1,0 +1,10 @@
+{
+  "id": "battery_guard",
+  "name": "Battery Guard",
+  "version": "1.1",
+  "author": "astos",
+  "description": "A battery card that speaks up when the battery runs low.",
+  "permissions": ["ui", "voice", "files"],
+  "main": "plugin.js",
+  "tickSeconds": 60
+}

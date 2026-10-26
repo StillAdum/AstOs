@@ -47,13 +47,22 @@ public class PairServer {
         void onLog(String line);
     }
 
-    public static final int PORT = 8420;
+    /** v3.1: the phone must be able to just open http://<tablet-ip> — no
+     *  port suffix. Some phone browsers/browsers-in-use refused the odd
+     *  :8420 URL on a no-internet network (the reported "url doesnt work").
+     *  Port 80 is tried first; 8420 stays as the fallback and url() tells
+     *  the truth about which one is actually serving. */
+    public static final int PORT = 80;
+    public static final int PORT_ALT = 8420;
 
     private final Context mCtx;
     private final Callback mCb;
     private final Handler mMain = new Handler(Looper.getMainLooper());
     private ServerSocket mServer;
+    private ServerSocket mServerAlt;
     private volatile boolean mRunning = false;
+    private volatile boolean mReceived = false;
+    private int mBoundPort = -1;
 
     /** Live wifi scan (tablet side), shown on the phone page. */
     private volatile List<ScanResult> mNetworks = new ArrayList<ScanResult>();
@@ -67,47 +76,97 @@ public class PairServer {
         if (networks != null) mNetworks = networks;
     }
 
+    /** Mark config received — the status endpoint tells the companion. */
+    public void setReceived(boolean v) { mReceived = v; }
+
     public synchronized void start() {
         if (mRunning) return;
+        mRunning = true;
+        // primary: port 80 (clean URL, and captive-portal probes land here)
         try {
-            // 0.0.0.0: answers on the AstSetup hotspot (ap0) AND the LAN
             mServer = new ServerSocket(PORT);
-            mRunning = true;
-            Thread t = new Thread(new Runnable() {
-                @Override public void run() { acceptLoop(); }
-            }, "pair-server");
-            t.setDaemon(true);
-            t.start();
+            mBoundPort = PORT;
+            spawnAcceptLoop(mServer, "pair-80");
         } catch (Exception e) {
-            log("pair server: " + e.getMessage());
+            log("port 80 refused: " + e.getMessage());
         }
+        // fallback: the legacy 8420 port
+        try {
+            mServerAlt = new ServerSocket(PORT_ALT);
+            if (mBoundPort < 0) mBoundPort = PORT_ALT;
+            spawnAcceptLoop(mServerAlt, "pair-8420");
+        } catch (Exception e) {
+            log("port " + PORT_ALT + " refused: " + e.getMessage());
+        }
+        if (mBoundPort < 0) {
+            mRunning = false;
+            log("no port could be bound");
+        }
+    }
+
+    private void spawnAcceptLoop(final ServerSocket sock, String name) {
+        Thread t = new Thread(new Runnable() {
+            @Override public void run() {
+                while (mRunning) {
+                    try {
+                        Socket s = sock.accept();
+                        handle(s);
+                    } catch (Exception e) {
+                        if (mRunning) log("accept: " + e.getMessage());
+                        return;
+                    }
+                }
+            }
+        }, name);
+        t.setDaemon(true);
+        t.start();
     }
 
     public synchronized void stop() {
         mRunning = false;
         try { if (mServer != null) mServer.close(); } catch (Exception ignored) {}
+        try { if (mServerAlt != null) mServerAlt.close(); } catch (Exception ignored) {}
         mServer = null;
+        mServerAlt = null;
     }
 
     public boolean isRunning() { return mRunning; }
 
-    /** The URL baked into the QR: the hotspot ip while the AP is up. */
+    /** The URL baked into the QR — the REAL bound port, hotspot ip first. */
     public String url() {
+        if (mBoundPort <= 0) return null;
         String ip = SoftAp.hotspotIp();          // ap0 while hotspot is on
         if (ip == null) ip = lanIp();            // LAN fallback (dev builds)
         if (ip == null) return null;
-        return "http://" + ip + ":" + PORT;
+        return "http://" + ip + (mBoundPort == 80 ? "" : ":" + mBoundPort);
     }
 
-    private void acceptLoop() {
-        while (mRunning) {
-            try {
-                Socket s = mServer.accept();
-                handle(s);
-            } catch (Exception e) {
-                if (mRunning) log("accept: " + e.getMessage());
-            }
+    private static final String[] CAPTIVE_PROBES = {
+            "/generate_204", "/gen_204", "/hotspot-detect.html",
+            "/ncsi.txt", "/connecttest.txt", "/redirect",
+            "/library/test/success.html", "/kindle-wifi/wifi/status"
+    };
+
+    /** OS connectivity probes: Android, iOS/OSX, Windows, Fire TV, Kindle. */
+    private static boolean isCaptiveProbe(String path) {
+        for (String p : CAPTIVE_PROBES) {
+            if (path.startsWith(p)) return true;
         }
+        return false;
+    }
+
+    private String statusJson() {
+        String ip = SoftAp.hotspotIp();
+        if (ip == null) ip = lanIp();
+        StringBuilder sb = new StringBuilder("{\"ok\":true");
+        sb.append(",\"app\":\"astsetup\"");
+        try { sb.append(",\"model\":\"").append(esc(Build.MODEL)).append('"'); } catch (Throwable ignored) {}
+        sb.append(",\"ap\":\"").append(esc(SoftAp.ssid(mCtx))).append('"');
+        sb.append(",\"ip\":\"").append(ip == null ? "" : ip).append('"');
+        sb.append(",\"port\":").append(mBoundPort);
+        sb.append(",\"received\":").append(mReceived);
+        sb.append('}');
+        return sb.toString();
     }
 
     private void handle(Socket s) {
@@ -131,8 +190,16 @@ public class PairServer {
                 }
             }
 
-            if ("GET".equals(method)) {
-                if (path.startsWith("/favicon")) {
+            boolean getish = "GET".equals(method) || "HEAD".equals(method);
+            if (getish || isCaptiveProbe(path)) {
+                // v3.1: the OS connectivity probes (/generate_204 on
+                // Android, /hotspot-detect.html on iOS, /ncsi.txt on
+                // Windows) get the SETUP PAGE — a 200 for a 204 probe makes
+                // the OS pop its "sign in to network" sheet, which opens
+                // straight into this form. No URL typing at all.
+                if (path.startsWith("/api/")) {
+                    respond(s, 200, "application/json", statusJson());
+                } else if (path.startsWith("/favicon")) {
                     respond(s, 404, "image/png", "");
                 } else {
                     respond(s, 200, "text/html; charset=utf-8", page());
@@ -166,7 +233,14 @@ public class PairServer {
         OutputStream os = s.getOutputStream();
         PrintWriter w = new PrintWriter(os);
         byte[] b = body.getBytes("UTF-8");
-        w.print("HTTP/1.1 " + code + " OK\r\n");
+        String reason;
+        switch (code) {
+            case 200: reason = "OK"; break;
+            case 302: reason = "Found"; break;
+            case 404: reason = "Not Found"; break;
+            default:  reason = "OK"; break;
+        }
+        w.print("HTTP/1.1 " + code + " " + reason + "\r\n");
         w.print("Content-Type: " + mime + "\r\n");
         w.print("Content-Length: " + b.length + "\r\n");
         w.print("Cache-Control: no-store\r\n");
@@ -296,6 +370,10 @@ public class PairServer {
           .append(esc(Build.MODEL)).append(" &middot; pair by phone</div>");
         sb.append("<p>Everything you enter here is pushed straight to the tablet over its ");
         sb.append("setup network. Nothing leaves the room.</p>");
+        sb.append("<p class='hint' style='margin-top:-8px'>If this page loads but \"Send\" fails: ");
+        sb.append("turn OFF mobile data for a minute &mdash; the tablet has no internet, ");
+        sb.append("so your phone must talk to it over the <b>").append(esc(SoftAp.ssid(mCtx)));
+        sb.append("</b> wifi only.</p>");
 
         sb.append("<form id='f'>");
 
@@ -359,6 +437,9 @@ public class PairServer {
         sb.append("<button type='submit'>Send to tablet</button></form>");
         sb.append("<div class='ok' id='ok'>&#10003; SENT &mdash; watch your tablet.<br>");
         sb.append("It will now leave the setup hotspot and join your home wifi.</div>");
+        sb.append("<div class='ok' id='err' style='background:#f2b896'>");
+        sb.append("Couldn't reach the tablet.<br>Turn OFF mobile data (the tablet has no ");
+        sb.append("internet, so it must go over its wifi), then press the button again.</div>");
 
         sb.append("<script>");
         sb.append("document.getElementById('f').addEventListener('submit',function(ev){");
@@ -368,9 +449,13 @@ public class PairServer {
         sb.append("if(other){fd.set('wifi_ssid',other);}");
         sb.append("fd.delete('wifi_ssid_other');");
         sb.append("fd.set('h24',(document.querySelector('input[name=h24]')||{checked:true}).checked?'1':'0');");
+        sb.append("var btn=document.querySelector('button');");
+        sb.append("btn.disabled=true;btn.textContent='sending...';");
         sb.append("fetch('/api',{method:'POST',body:new URLSearchParams(fd).toString()})");
-        sb.append(".then(function(){document.getElementById('ok').style.display='block';");
-        sb.append("document.querySelector('button').disabled=true;});");
+        sb.append(".then(function(){document.getElementById('ok').style.display='block';})");
+        sb.append(".catch(function(){");
+        sb.append("btn.disabled=false;btn.textContent='RETRY - first turn off mobile data';");
+        sb.append("document.getElementById('err').style.display='block';});");
         sb.append("});</script></div></body></html>");
         return sb.toString();
     }

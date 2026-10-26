@@ -71,7 +71,21 @@ public class SettingsActivity extends Activity {
         updateWifiLine();
 
         ((TextView) findViewById(R.id.aboutText)).setText(
-                "AstOS · AstShell 3.0 pixel · LineageOS 14.1 base");
+                "AstOS " + com.astos.link.LinkServer.osVersion() + " · AstShell pixel · LineageOS 14.1 base");
+
+        // companion link status + the pairing code the PC app asks for
+        try {
+            com.astos.link.LinkServer lk = com.astos.link.LinkServer.peek();
+            String code = lk != null ? lk.displayCode() : "------";
+            String bt = "off";
+            try {
+                android.bluetooth.BluetoothAdapter ad =
+                        android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+                bt = (ad != null && ad.isEnabled()) ? "on" : "off";
+            } catch (Throwable ignored) {}
+            ((TextView) findViewById(R.id.companionText)).setText(
+                    "PC companion · bluetooth " + bt + " · usb · pairing code " + code);
+        } catch (Throwable ignored) {}
 
         pressAll();
     }
@@ -81,6 +95,7 @@ public class SettingsActivity extends Activity {
         Ui.press(findViewById(R.id.groqSaveBtn), 3);
         Ui.press(findViewById(R.id.saveCityBtn), 3);
         Ui.press(findViewById(R.id.powerBtn), 3);
+        Ui.press(findViewById(R.id.pluginsBtn), 3);
         Ui.press(findViewById(R.id.wizardBtn), 3);
         Ui.press(findViewById(R.id.notifAccessBtn), 2);
         Ui.press(findViewById(R.id.homeChooserBtn), 2);
@@ -192,6 +207,12 @@ public class SettingsActivity extends Activity {
         findViewById(R.id.powerBtn).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 startActivity(new Intent(SettingsActivity.this, PowerActivity.class));
+            }
+        });
+        // the .astpl mod manager
+        findViewById(R.id.pluginsBtn).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(SettingsActivity.this, PluginManagerActivity.class));
             }
         });
         // re-run the phone-driven setup wizard (AstSetup app)

@@ -30,6 +30,21 @@ DESIGN_W, DESIGN_H = 1024, 600      # what we draw (landscape, as on glass)
 ROT_SIGN = 90                       # CCW pre-rotation for hwrotation=270
 FPS = 20
 
+# v3.1: the version caption is SINGLE-SOURCED from scripts/VERSION — the
+# same file the ROM build and the release scripts read. The boot screen can
+# never show a stale version again (the 2.4-still-on-3.0 bug).
+HERE = os.path.dirname(os.path.abspath(__file__))
+VERSION_FILE = os.path.join(HERE, "VERSION")
+ASTOS_VERSION = os.environ.get("ASTOS_VERSION", "").strip()
+if not ASTOS_VERSION:
+    try:
+        with open(VERSION_FILE) as f:
+            ASTOS_VERSION = f.read().strip()
+    except Exception:
+        ASTOS_VERSION = "3.1"
+if not ASTOS_VERSION:
+    ASTOS_VERSION = "3.1"
+
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 
 BG = (20, 16, 10)
@@ -169,7 +184,7 @@ def frame_design(progress, tag_progress, cursor_on, pulse_on,
 
     # bottom micro-caption: version + "booting"
     f3 = ImageFont.truetype(FONT, 22)
-    cap = "AstOs 2.4  -  booting"
+    cap = f"AstOs {ASTOS_VERSION}  -  booting"
     tw = d.textlength(cap, font=f3)
     d.text(((DESIGN_W - tw) // 2, DESIGN_H - 64), cap, font=f3, fill=SHADE)
     return img

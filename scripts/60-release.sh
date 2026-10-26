@@ -5,6 +5,11 @@ set -e
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_ROOT"
 
+# v3.1: single-sourced version (scripts/VERSION) — same file the boot
+# animation, the ROM zip name and the release title read.
+ASTOS_VERSION="$(cat scripts/VERSION 2>/dev/null | tr -d '[:space:]')"
+[ -n "$ASTOS_VERSION" ] || ASTOS_VERSION="3.1"
+
 ZIP="$(ls AstOs-*.zip 2>/dev/null | head -1)"
 if [ -z "$ZIP" ]; then
     echo "FATAL: no ROM zip found" >&2
@@ -12,7 +17,7 @@ if [ -z "$ZIP" ]; then
 fi
 echo "Releasing: $ZIP ($(du -h "$ZIP" | cut -f1))"
 
-TAG="v3.0-$(date +%Y%m%d-%H%M)"
+TAG="v${ASTOS_VERSION}-$(date +%Y%m%d-%H%M)"
 
 SUM="$(sha256sum "$ZIP" | cut -d' ' -f1)"
 
@@ -27,44 +32,68 @@ if [ -n "$BOOT" ]; then
 fi
 
 NOTES="$(cat <<EOF
-AstOs 3.0 for the Lenovo Tab 3 Essential (TB3-710F)
+AstOs ${ASTOS_VERSION} for the Lenovo Tab 3 Essential (TB3-710F)
 
-v3.0 — THE MOCK-FIDELITY PIXEL RELEASE (99% the approved design):
+v3.1 - THE COMPANION + MODS RELEASE:
 
-* THE SHELL IS NOW THE MOCK: every screen rebuilt to match the approved
-  HTML mock point-for-point — VT323 display face + IBM Plex Mono body
-  (bundled), square cards with corner tags and 2dp ink borders + hard
-  offset shadows, chunky transport buttons that slide into their shadows,
-  dotted-paper backdrop with drifting motes, segmented progress + volume
-  bars, EQ visualizer, pixel album art, and the accent mic with square
-  listening rings. 100% native Views — no WebView anywhere.
-* SIX THEMES: Dune (paper default), Forest, Rust, Mono, Ember and Pine —
-  swatches in Settings, everything re-skins instantly (wizard included).
-* HOME IS TWO CLEAN CARDS under a big VT323 clock: media (art, track,
-  progress, transport, volume) + home control (pixel tiles with ON/OFF /
-  LOCKED states, night/movie/all-off scenes, app drawer) — decluttered,
-  everything in frame and dp-scaled.
-* SETUP WIZARD IN THE MOCK LOOK: CONNECT -> SCAN -> SEND cards, the
-  AstSetup_xxxx SSID set in VT323 accent, QR on its own cream plate
-  (overlaps nothing), segmented progress. The phone page got the same
-  pixel design and now also sets the theme + 24-hour clock.
-* KEYBOARD: the system IME restyled to the pixel keys, and every in-shell
-  text field (settings, app filter, song search) uses the built-in pixel
-  keyboard — the system IME is never invoked there, so it can't vanish.
-* POWER: new in-shell pixel power menu (restart / power off / cancel on
-  an ink scrim) alongside the restyled hardware long-press dialog.
-* KIOSK: persistent shade-killer service + immersive hold — the
-  notification center cannot be opened.
+SETUP BUGS FIXED (all reported ones):
+* Every setup button actually taps now - the hit-rect engine treated
+  (x, y, width, height) as (left, top, right, bottom), so every button
+  after the welcome screen ("no phone? set up wifi on the tablet", the
+  wifi list, RESCAN, SKIP, RETRY, CONTINUE, ENTER ASTOS) was an inverted
+  dead rectangle. Fixed + a 140ms tap-flash so taps feel acknowledged.
+* The hotspot SSID no longer broadcasts with quote characters: the AP
+  config now carries the SSID unquoted (Android 7.1 passes the stored
+  value to hostapd as-is) and the display always strips quotes.
+* The setup URL is now plain http://<tablet-ip> (port 80, with 8420 as
+  fallback) and the OS connectivity probes (Android /generate_204,
+  iOS /hotspot-detect.html, Windows /ncsi.txt) now return the setup page
+  itself - so the phone usually opens the setup form BY ITSELF the
+  moment it joins the hotspot ("sign in to network"), no URL typing.
+* The QR self-heals: if the tablet's softap address was slow to settle,
+  the code + QR now refresh to the real address instead of freezing on
+  the 192.168.43.1 guess.
+* The phone page now tells you WHY a send fails (turn off mobile data -
+  the tablet has no internet) with a retry button.
 
-Carried over from 2.4: phone-driven QR setup, Discord-bot-style music
-("play <song>"), Groq AI, offline Vosk voice, Home Assistant control,
-weather/news, voice-model on-device download, landscape boot animation,
-kernel/boot fixes.
+NEW - AstOS COMPANION (the Windows PC app):
+* Pair over Bluetooth or USB from the PC and run the WHOLE setup there:
+  wifi credentials, city, Groq key, Home Assistant, theme.
+* Manage the tablet afterwards: battery/storage/wifi dashboard, toggle
+  kiosk/screen/voice, reboot/recovery/power-off, wake the screen.
+* ROM updates from the app: pick the AstOs .zip (the TWRP-flashable
+  one), the app transfers it, stages the TWRP auto-flash script and
+  reboots the tablet into recovery to apply it. USB for speed, Bluetooth
+  with resume when no cable is around.
+* Built from the same dune/pixel design language as the OS, with the
+  same chunky buttons, dotted paper and animations.
+
+NEW - .astpl PLUGINS (mod the whole system):
+* Drop .astpl files in /sdcard/AstOs/plugins and scan in Settings ->
+  Mods, or install them from the PC companion.
+* JavaScript mods with a permission system (ui / settings / ha / media /
+  voice / network / files / system). The "system" grant gives REAL
+  whole-OS access: shell commands, system properties, secure settings
+  and input injection - gated behind a master switch + per-plugin opt-in.
+* Plugins add cards to the home dashboard, react to voice, tick on a
+  schedule, call Home Assistant, and store their own data. Sandboxed:
+  no Java access, watchdogged, crash-isolated from the shell.
+* Example mods ship in the release (uptime card, battery guard, and a
+  system-grant demo that shows the whole-OS access working).
+
+BOOT SCREEN: the animation caption is now stamped from scripts/VERSION
+on every ROM build - the boot screen can never show a stale version
+again (this release boots saying "AstOs 3.1 - booting").
+
+Carried over from 3.0: the mock-fidelity pixel shell (native Views, no
+WebView), six themes, two-card home, pixel keyboard + in-shell IME,
+pixel power menu, kiosk shade-killer, phone-driven QR setup, Discord-bot
+music, Groq AI, offline Vosk voice, Home Assistant, weather/news.
 
 sha256: ${SUM}
 Verify yours matches after downloading (see FLASH.md Troubleshooting).
 
-Read FLASH.md and SETUP.md before installing.
+Read FLASH.md, SETUP.md, COMPANION.md and PLUGINS.md before installing.
 Always take a TWRP backup first.
 EOF
 )"
@@ -78,14 +107,36 @@ Same boot.img as inside the ROM zip. Flash via TWRP Install Image ->
 Boot partition for quick testing or rescue (FLASH.md Troubleshooting)."
 fi
 
-ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md")
+ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md" "docs/COMPANION.md" "docs/PLUGINS.md")
 if [ -n "$BOOT" ]; then
     ASSETS=("$BOOT" "${ASSETS[@]}")
 fi
 
+# v3.1: the PC companion installer built by the windows CI job and
+# downloaded into this dir (any .exe files in it are attached).
+COMPANION_DIR="${COMPANION_DIR:-}"
+if [ -n "$COMPANION_DIR" ] && [ -d "$COMPANION_DIR" ]; then
+    for f in "$COMPANION_DIR"/*.exe; do
+        [ -f "$f" ] || continue
+        ASSETS=("${ASSETS[@]}" "$f")
+        echo "Attaching companion installer: $f"
+    done
+else
+    echo "NOTE: no companion dir provided — release without the PC app" >&2
+fi
+
+# v3.1: bundle the example .astpl mods as one release asset
+MODZIP="AstOs-example-mods-${ASTOS_VERSION}.zip"
+if ls examples/plugins/*.astpl >/dev/null 2>&1; then
+    rm -f "$MODZIP"
+    ( cd examples/plugins && zip -q -j "../../$MODZIP" *.astpl )
+    ASSETS=("${ASSETS[@]}" "$MODZIP")
+    echo "Attaching example mods: $MODZIP"
+fi
+
 gh release create "$TAG" \
     "${ASSETS[@]}" \
-    --title "AstOs 3.0 — THE MOCK-FIDELITY PIXEL SHELL — $TAG" \
+    --title "AstOs ${ASTOS_VERSION} — companion app + mods + setup fixes — $TAG" \
     --notes "$NOTES" \
     --target "${GITHUB_SHA:-HEAD}"
 

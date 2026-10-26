@@ -16,8 +16,65 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  companion:
+    name: AstOS Companion (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ''
+
+      - name: Set up Java 17 (codec interop test)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install + test
+        shell: bash
+        working-directory: companion
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+      # adb for the USB transport — bundled into resources/adb
+      - name: Fetch adb (platform-tools)
+        shell: bash
+        working-directory: companion
+        run: |
+          mkdir -p resources/adb
+          curl -sL -o /tmp/pt.zip https://dl.google.com/android/repository/platform-tools-latest-windows.zip
+          unzip -j -o /tmp/pt.zip 'platform-tools/adb.exe' 'platform-tools/AdbWinApi.dll' 'platform-tools/AdbWinUsbApi.dll' -d resources/adb
+          ls -la resources/adb
+
+      - name: Build installers (electron-builder)
+        shell: bash
+        working-directory: companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx electron-builder --win nsis portable --x64 --publish never
+          ls -la dist
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-win
+          path: |
+            companion/dist/AstOS-Companion-Setup-*.exe
+            companion/dist/AstOS-Companion-Portable-*.exe
+          if-no-files-found: error
+
   build:
     name: AstOs ROM (TB3-710F)
+    needs: companion
     runs-on: ubuntu-latest
     timeout-minutes: 340   # stay under the 6 h per-job cap
 
@@ -53,6 +110,14 @@ jobs:
           restore-keys: |
             astos-caches-v1-
 
+      # v3.1: the Windows installer built by the companion job — attached
+      # to the same release as the ROM zip.
+      - name: Fetch companion installer
+        uses: actions/download-artifact@v4
+        with:
+          name: companion-win
+          path: companion-win
+
       - name: Prepare host build deps
         run: bash scripts/05-prepare-host.sh
 
@@ -81,6 +146,7 @@ jobs:
         env:
           REPO_ROOT: ${{ github.workspace }}
           GH_TOKEN: ${{ github.token }}
+          COMPANION_DIR: ${{ github.workspace }}/companion-win
 
       - name: Save build caches
         if: always()

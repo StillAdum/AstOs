@@ -127,6 +127,48 @@ public final class HomeAssistantClient {
         else call(c, e.domain, "toggle", e.id, cb);
     }
 
+    /** Blocking listEntities for plugin scripts (they already run off-main). */
+    public static List<Entity> blockingEntities(Context c) {
+        try {
+            JSONArray arr = new JSONArray(request(c, "GET", "/api/states", null));
+            List<Entity> out = new ArrayList<Entity>();
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject st = arr.getJSONObject(i);
+                String eid = st.optString("entity_id", "");
+                String domain = eid.contains(".") ? eid.substring(0, eid.indexOf('.')) : "";
+                if (!(domain.equals("light") || domain.equals("switch")
+                        || domain.equals("fan") || domain.equals("input_boolean")
+                        || domain.equals("scene"))) continue;
+                Entity e = new Entity();
+                e.id = eid;
+                e.domain = domain;
+                e.isScene = domain.equals("scene");
+                String friendly = st.optString("name", "");
+                if (friendly == null || friendly.isEmpty() || friendly.equals("null")) {
+                    friendly = eid.substring(eid.indexOf('.') + 1).replace('_', ' ');
+                }
+                e.name = friendly;
+                e.on = "on".equals(st.optString("state", ""));
+                out.add(e);
+            }
+            return out;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Blocking call for plugin scripts: cb fires on THIS thread. */
+    public static void callBlocking(Context c, String domain, String service,
+                                    String entityId, final Callback<Boolean> cb) {
+        try {
+            String body = new JSONObject().put("entity_id", entityId).toString();
+            request(c, "POST", "/api/services/" + domain + "/" + service, body);
+            cb.onResult(Boolean.TRUE, null);
+        } catch (Exception e) {
+            cb.onResult(Boolean.FALSE, String.valueOf(e.getMessage()));
+        }
+    }
+
     public static void turn(final Context c, final Entity e, final boolean on, final Callback<Boolean> cb) {
         if (e.isScene) { if (on) call(c, "scene", "turn_on", e.id, cb); else cb.onResult(true, null); return; }
         call(c, e.domain, on ? "turn_on" : "turn_off", e.id, cb);

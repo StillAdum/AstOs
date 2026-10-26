@@ -62,6 +62,41 @@ import java.util.Locale;
  */
 public class SetupActivity extends Activity implements PairServer.Callback {
 
+    private static volatile SetupActivity sInst;
+
+    /** Companion (AstLink) events arrive on random threads — park them on
+     *  the activity if it is alive, or drop them quietly when not. */
+    static void notifyCompanionChanged() {
+        SetupActivity a = sInst;
+        if (a != null) a.mH.post(new Runnable() {
+            @Override public void run() {
+                if (sInst != null) sInst.mPairStatus =
+                        "PC companion connected - carry on from the app";
+            }
+        });
+    }
+
+    static void notifyCompanionSetup(final String ssid, final String pass) {
+        final SetupActivity a = sInst;
+        if (a != null) a.mH.post(new Runnable() {
+            @Override public void run() {
+                SetupActivity ax = sInst;
+                if (ax == null) return;
+                ax.companionFinished(ssid == null ? "" : ssid, pass == null ? "" : pass);
+            }
+        });
+    }
+
+    static void notifyCompanionWifi(final boolean joined, final String ssid, final String ip) {
+        final SetupActivity a = sInst;
+        if (a != null) a.mH.post(new Runnable() {
+            @Override public void run() {
+                SetupActivity ax = sInst;
+                if (ax != null && joined) ax.mPairStatus = "on " + ssid + " - setup can finish";
+            }
+        });
+    }
+
     private static final int PAGE_WELCOME = 0;
     private static final int PAGE_PAIR = 1;
     private static final int PAGE_LOCAL = 2;
@@ -104,6 +139,8 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     private String mUrl = "";
     private Bitmap mQr;
     private boolean mReceived = false;
+    /** The companion pairing code shown on screen (AstLink). */
+    private String mLinkCode = "------";
 
     // local wifi fallback
     private int mLocalSel = -1;
@@ -133,12 +170,19 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        sInst = this;
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
         mPal = AsciiTheme.PALETTES[0];
         mPaletteName = mPal.name;
         mBgMode = mPal.mode;
         mApSsid = SoftAp.ssid(this);
+        try {
+            mLinkCode = com.astos.link.LinkServer.get(this, LinkHostSetup.INSTANCE)
+                    .displayCode();
+        } catch (Throwable t) {
+            mLinkCode = "------";
+        }
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -291,7 +335,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 }
             }
         });
-        ui.textCentered(c, "AstOs 2.4 first-boot setup", midX, h - 18, 11,
+        ui.textCentered(c, "AstOs " + osVersion() + " first-boot setup", midX, h - 18, 11,
                 mPal.dim, false, true);
     }
 
@@ -394,14 +438,91 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         ui.textCentered(c, clip(st, 64), midX, statusRowY + 16,
                 13, mReceived ? mPal.accent : mPal.dim, mReceived, false);
 
-        // "no phone" fallback pill
-        String noPhone = "no phone? set up wifi on the tablet";
-        float pw = ui.textWidth(noPhone, 11, true) + 24;
-        ui.pill(c, midX - pw / 2f, statusRowY + 26, pw, 30, false, 9);
-        ui.textCentered(c, noPhone, midX, statusRowY + 46, 11, mPal.fg, true, true);
-        ui.hit(midX - pw / 2f, statusRowY + 26, pw, 30, new Runnable() {
+        // "no phone" fallback pill — v3.1: actually tappable now (the hit
+        // rects were rebuilt), and the PC-companion pill sits beside it
+        String noPhone = "no phone? set up wifi here";
+        float pw = ui.textWidth(noPhone, 11, true) + 20;
+        String pcLabel = "set up from a PC  [" + mLinkCode + "]";
+        float pcw = ui.textWidth(pcLabel, 11, true) + 20;
+        float both = pw + pcw + 12;
+        float pxl = midX - both / 2f;
+        ui.pill(c, pxl, statusRowY + 26, pw, 30, false, 9);
+        ui.textCentered(c, noPhone, pxl + pw / 2f, statusRowY + 46, 11, mPal.fg, true, true);
+        ui.hit(pxl, statusRowY + 26, pw, 30, new Runnable() {
             @Override public void run() { go(PAGE_LOCAL); }
         });
+        float pxr = pxl + pw + 12;
+        ui.pill(c, pxr, statusRowY + 26, pcw, 30, true, 9);
+        ui.textCentered(c, pcLabel, pxr + pcw / 2f, statusRowY + 46, 11, mPal.bg, true, true);
+        ui.hit(pxr, statusRowY + 26, pcw, 30, new Runnable() {
+            @Override public void run() { showPcHelp(); }
+        });
+
+        // one-line companion hint under the pills
+        ui.textCentered(c, "PC: install AstOS Companion, pair Bluetooth, code " + mLinkCode,
+                midX, statusRowY + 72, 10, mPal.dim, false, false);
+    }
+
+    /** The short version shown on the welcome footer + pair card. */
+    private static String osVersion() {
+        try {
+            Class<?> sp = Class.forName("android.os.SystemProperties");
+            Object v = sp.getMethod("get", String.class, String.class)
+                    .invoke(null, "ro.astos.version", "");
+            String s = v == null ? "" : v.toString();
+            if (s.matches("\\d+\\.\\d+(\\.\\d+)?")) {
+                int d = s.indexOf('.', s.indexOf('.') + 1);
+                return d > 0 ? s.substring(0, d) : s;
+            }
+        } catch (Throwable ignored) {}
+        return "3.1";   // keep in sync with scripts/VERSION
+    }
+
+    private void showPcHelp() {
+        // a pixel-styled dialog with the steps + the code (real dialog so the
+        // wizard underneath keeps animating)
+        android.app.AlertDialog.Builder b =
+                new android.app.AlertDialog.Builder(this, R.style.AstSetupDialog);
+        StringBuilder sb = new StringBuilder();
+        sb.append("On your Windows PC:\n\n");
+        sb.append("1. Install AstOS Companion\n");
+        sb.append("   (from the AstOs release page)\n\n");
+        sb.append("2. Enable Bluetooth on the tablet\n");
+        sb.append("   (it's already on during setup)\n\n");
+        sb.append("3. In the app: PAIR TABLET, choose this tablet,\n");
+        sb.append("   and type this code when asked:\n\n");
+        sb.append("        " + mLinkCode + "\n\n");
+        sb.append("USB cable also works: connect it, the app\n");
+        sb.append("finds the tablet with no code at all.");
+        b.setTitle("Set up from a PC");
+        b.setMessage(sb.toString());
+        b.setPositiveButton("Got it", null);
+        b.show();
+    }
+
+    /** Companion finished the whole setup remotely. */
+    private void companionFinished(String ssid, String pass) {
+        if (mReceived) return;
+        mReceived = true;
+        if (mPair != null) mPair.setReceived(true);
+        mPairStatus = "RECEIVED - settings saved from your PC";
+        if (ssid != null && !ssid.isEmpty()) {
+            mWifiSsid = ssid;
+            mWifiPass = pass == null ? "" : pass;
+        }
+        mH.postDelayed(new Runnable() {
+            @Override public void run() {
+                SetupActivity ax = SetupActivity.this;
+                boolean hasWifi = ax.mWifiSsid != null && !ax.mWifiSsid.isEmpty();
+                SoftAp.stop(SetupActivity.this);
+                if (hasWifi) {
+                    ax.joinWifi(ax.mWifiSsid, ax.mWifiPass);
+                    ax.go(PAGE_CONNECT);
+                } else {
+                    ax.go(PAGE_DOWNLOADS);
+                }
+            }
+        }, 800);
     }
 
     private String mApSsdForDisplay() {
@@ -695,6 +816,24 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         mPair.setNetworks(mNetworks);
         mPair.start();
 
+        // 2b) the companion channel: Bluetooth SPP + USB (adb forward),
+        //     with a fresh 6-digit code every run. Bluetooth is flipped on
+        //     silently — platform-signed — so the PC can see the tablet.
+        try {
+            android.bluetooth.BluetoothAdapter bt =
+                    android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (bt != null && !bt.isEnabled()) bt.enable();
+        } catch (Throwable ignored) {}
+        try {
+            com.astos.link.LinkServer lk =
+                    com.astos.link.LinkServer.get(this, LinkHostSetup.INSTANCE);
+            lk.ensureBluetooth();   // (re)open the SPP socket once BT is up
+            lk.start();
+            mLinkCode = lk.displayCode();
+        } catch (Throwable t) {
+            mPairStatus = "companion link failed: " + t.getMessage();
+        }
+
         // 3) the AstSetup_xxxx hotspot
         SoftAp.start(this, new SoftAp.Callback() {
             @Override public void onApReady(String ssid, String ip) {
@@ -946,6 +1085,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                                    final String city, final String groq,
                                    final String theme, final String h24) {
         mReceived = true;
+        if (mPair != null) mPair.setReceived(true);
         mPairStatus = "RECEIVED - settings saved from your phone";
         if (haUrl != null && !haUrl.trim().isEmpty()) mHaUrl = haUrl.trim();
         if (haToken != null && !haToken.trim().isEmpty()) mHaToken = haToken.trim();
@@ -1053,7 +1193,10 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (sInst == this) sInst = null;
         mH.removeCallbacksAndMessages(null);
         if (mPair != null) mPair.stop();
+        try { com.astos.link.LinkServer lk = com.astos.link.LinkServer.peek();
+              if (lk != null) lk.stop(); } catch (Throwable ignored) {}
     }
 }

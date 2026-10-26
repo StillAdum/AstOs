@@ -1,0 +1,10 @@
+{
+  "id": "sys_mod",
+  "name": "System Mod Demo",
+  "version": "0.9",
+  "author": "astos",
+  "description": "Proof the whole OS is moddable: shell, props, settings, input — via the system grant.",
+  "permissions": ["ui", "voice", "system"],
+  "main": "plugin.js",
+  "tickSeconds": 300
+}

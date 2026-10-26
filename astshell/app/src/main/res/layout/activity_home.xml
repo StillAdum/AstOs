@@ -414,6 +414,15 @@
                             android:tag="d:btnFlat f:monoB"
                             android:text="all off"/>
                     </LinearLayout>
+
+                    <!-- .astpl plugin cards (populated by PluginHost) -->
+                    <LinearLayout
+                        android:id="@+id/pluginsRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="12dp"
+                        android:visibility="gone"/>
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AstOS Companion</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src 'self'">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- ======================= backdrop ======================= -->
+<div class="paper"></div>
+<div class="motes" id="motes"></div>
+
+<!-- ======================= header ======================= -->
+<header class="top">
+  <div class="logo-blocks" id="logoBlocks"></div>
+  <div class="wordmark">AstOS<span> COMPANION</span></div>
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-view="welcome">welcome</button>
+    <button class="tab" data-view="connect">pair</button>
+    <button class="tab" data-view="dash" disabled>dashboard</button>
+    <button class="tab" data-view="setup" disabled>setup</button>
+    <button class="tab" data-view="mods" disabled>mods</button>
+    <button class="tab" data-view="update" disabled>update</button>
+    <button class="tab" data-view="tools" disabled>tools</button>
+  </nav>
+  <div class="link-pill" id="linkPill">no tablet</div>
+</header>
+
+<!-- ======================= views ======================= -->
+<main id="views">
+
+  <!-- WELCOME -->
+  <section class="view on" id="v-welcome">
+    <div class="hero">
+      <h1 class="vt reveal">your tablet.<br>your PC. one link.</h1>
+      <p class="sub reveal d1">AstOS Companion pairs your Windows PC with your AstOS tablet over
+        <b>Bluetooth</b> or <b>USB</b> — then everything is one click away:
+        first-boot setup, day-to-day management, <b>.astpl mods</b>, and full
+        ROM updates from the same TWRP-flashable zips.</p>
+      <div class="steps reveal d2">
+        <div class="stepcard"><span class="tag">1</span><b>PAIR</b><p>Bluetooth or USB — no accounts, no cloud, all local.</p></div>
+        <div class="stepcard"><span class="tag">2</span><b>SET UP</b><p>Wi-Fi, city, AI key, Home Assistant — straight from the PC.</p></div>
+        <div class="stepcard"><span class="tag">3</span><b>MOD + UPDATE</b><p>.astpl plugins and TWRP-flash ROM updates, applied from here.</p></div>
+      </div>
+      <button class="bigbtn reveal d3" data-goto="connect">pair a tablet &gt;</button>
+    </div>
+  </section>
+
+  <!-- CONNECT -->
+  <section class="view" id="v-connect">
+    <h2 class="vt">pair your tablet</h2>
+    <div class="pairgrid">
+      <div class="card" id="usbCard">
+        <div class="radar"><div class="outline"></div><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="core"></div></div>
+        <h3>USB CABLE <span class="vt accent">fastest</span></h3>
+        <p>Plug the tablet in. The app finds it through adb — a ROM update
+          (~340 MB) moves in about a minute. Best path for big files.</p>
+        <button class="bigbtn" id="btnUsb">scan usb</button>
+        <div class="scanline" id="usbProgress"></div>
+      </div>
+      <div class="card" id="btCard">
+        <div class="radar bt"><div class="outline"></div><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="core"></div></div>
+        <h3>BLUETOOTH <span class="vt accent">wireless</span></h3>
+        <p>Pair the tablet once in Windows Bluetooth settings (it appears as
+          <b>AstSetup_xxxx</b> during setup). The app probes every Bluetooth
+          serial port for AstOS. No cables on the couch.</p>
+        <button class="bigbtn" id="btnBt">scan bluetooth</button>
+        <div class="scanline" id="btProgress"></div>
+      </div>
+    </div>
+    <div class="pairnote" id="pairNote">tip: the tablet turns Bluetooth on by itself during
+      setup. After setup: Settings &gt; Bluetooth.</div>
+
+    <!-- code entry -->
+    <div class="overlay hidden" id="codeOverlay">
+      <div class="codecard">
+        <h3 class="vt">enter the pairing code</h3>
+        <p>The tablet screen shows a 6-digit code right on the pair step
+          (and in AstOs Settings &gt; Mods). Type it here:</p>
+        <div class="codewrap">
+          <input id="codeInput" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="off">
+          <button class="bigbtn" id="btnCode">pair &gt;</button>
+        </div>
+        <div class="codeerr" id="codeErr"></div>
+        <button class="ghost" id="btnCodeCancel">cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section class="view" id="v-dash">
+    <h2 class="vt" id="dashTitle">tablet</h2>
+    <div class="kvgrid">
+      <div class="card mini"><span class="tag">NAME</span><b id="kvName">—</b></div>
+      <div class="card mini"><span class="tag">VERSION</span><b id="kvVer">—</b></div>
+      <div class="card mini"><span class="tag">BATTERY</span><b id="kvBat">—</b></div>
+      <div class="card mini"><span class="tag">WIFI</span><b id="kvWifi">—</b></div>
+      <div class="card mini"><span class="tag">STORAGE</span><b id="kvStore">—</b></div>
+      <div class="card mini"><span class="tag">UPTIME</span><b id="kvUp">—</b></div>
+    </div>
+    <div class="rowbtns">
+      <button class="bigbtn" id="btnRefresh">refresh</button>
+      <button class="bigbtn" data-goto="setup">open setup</button>
+      <button class="bigbtn" data-goto="update">rom update</button>
+      <button class="bigbtn" data-goto="mods">mods</button>
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section class="view" id="v-setup">
+    <h2 class="vt">setup from the pc</h2>
+    <p class="sub">the same form the phone page shows — but typed here</p>
+    <div class="setupgrid">
+      <div class="card">
+        <span class="tag">WIFI</span>
+        <label>home network</label>
+        <div class="netlist" id="netList"><div class="dim">scanning…</div></div>
+        <label>password</label>
+        <input id="wifiPass" type="password" placeholder="password (empty for open networks)" autocomplete="off">
+      </div>
+      <div class="card">
+        <span class="tag">SERVICES</span>
+        <label>weather city</label>
+        <input id="city" placeholder="e.g. Berlin" autocomplete="off">
+        <label>groq api key · free, console.groq.com</label>
+        <input id="groq" placeholder="gsk_…" autocomplete="off">
+        <label>home assistant url (optional)</label>
+        <input id="haUrl" placeholder="http://homeassistant.local:8123" autocomplete="off">
+        <label>home assistant token (optional)</label>
+        <input id="haToken" placeholder="long-lived access token" autocomplete="off">
+      </div>
+      <div class="card">
+        <span class="tag">LOOK</span>
+        <div class="themegrid" id="themeGrid"></div>
+        <label class="checkline"><input type="checkbox" id="h24" checked> 24-hour clock</label>
+        <label class="checkline"><input type="checkbox" id="kiosk" checked> kiosk (no shade, fullscreen)</label>
+        <label class="checkline"><input type="checkbox" id="keepScreen" checked> keep screen on</label>
+      </div>
+    </div>
+    <div class="rowbtns">
+      <button class="bigbtn" id="btnJoin">send to tablet + join wifi</button>
+      <button class="bigbtn ghosty" id="btnFinishNoWifi">finish without wifi</button>
+      <span class="statusline" id="setupStatus"></span>
+    </div>
+  </section>
+
+  <!-- MODS -->
+  <section class="view" id="v-mods">
+    <h2 class="vt">mods <span class="dim">.astpl plugins</span></h2>
+    <div class="rowbtns">
+      <button class="bigbtn" id="btnInstallPlugin">install .astpl from pc…</button>
+      <button class="bigbtn ghosty" id="btnReloadPlugins">refresh</button>
+    </div>
+    <p class="sub">installed on the tablet · system-grant mods need the master switch on the tablet (AstOs Settings &gt; Mods)</p>
+    <div class="modlist" id="modList"><div class="dim">no mods installed yet</div></div>
+  </section>
+
+  <!-- UPDATE -->
+  <section class="view" id="v-update">
+    <h2 class="vt">rom update</h2>
+    <p class="sub">pick the AstOs TWRP zip — the same file you would flash by hand</p>
+    <div class="card">
+      <div class="rowbtns">
+        <button class="bigbtn" id="btnPickZip">pick rom zip…</button>
+        <b class="zipname" id="zipName">no file chosen</b>
+      </div>
+      <div class="progwrap"><div class="progbar" id="zipProg"></div></div>
+      <div class="progmeta" id="zipMeta">ready</div>
+      <div class="rowbtns">
+        <button class="bigbtn" id="btnStage" disabled>send + flash via recovery</button>
+      </div>
+      <p class="fineprint">USB: ~1–2 minutes for the full ROM · Bluetooth: expect hours for a full ROM
+        (it resumes if interrupted; use USB when you can). When the transfer finishes the tablet
+        reboots into TWRP and flashes itself, then boots the new AstOs. Takes a TWRP backup first!</p>
+    </div>
+  </section>
+
+  <!-- TOOLS -->
+  <section class="view" id="v-tools">
+    <h2 class="vt">tools</h2>
+    <div class="toolgrid">
+      <div class="card">
+        <span class="tag">POWER</span>
+        <div class="rowbtns">
+          <button class="bigbtn" data-power="reboot">reboot</button>
+          <button class="bigbtn" data-power="recovery">recovery</button>
+          <button class="bigbtn ghosty" data-power="shutdown">power off</button>
+          <button class="bigbtn ghosty" data-power="wakeup">wake screen</button>
+        </div>
+      </div>
+      <div class="card">
+        <span class="tag">TOGGLES</span>
+        <div class="tooltoggles" id="toolToggles"></div>
+      </div>
+      <div class="card wide">
+        <span class="tag">SYSTEM CONSOLE <span class="vt tiny">whole-os access</span></span>
+        <p class="sub">runs shell commands on the tablet (platform-signed powers:
+          getprop, pm list, input keyevent, am start …). Needs "system mods: ON"
+          on the tablet.</p>
+        <div class="console" id="consoleOut">— console ready —</div>
+        <div class="conrow">
+          <input id="consoleIn" placeholder="getprop ro.astos.version" autocomplete="off">
+          <button class="bigbtn" id="btnRun">run</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">AstOS Companion · made for the Lenovo Tab 3 Essential (TB3-710F) · everything stays on your network</footer>
+
+<script src="ui-mock.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

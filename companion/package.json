@@ -1,0 +1,63 @@
+{
+  "name": "astos-companion",
+  "productName": "AstOS Companion",
+  "version": "1.1.0",
+  "description": "Pair, set up, manage, mod and update your AstOS tablet over Bluetooth or USB.",
+  "main": "src/main.js",
+  "author": "StillAdum",
+  "license": "Apache-2.0",
+  "private": false,
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/protocol.test.js && bash test/interop.sh",
+    "dist": "electron-builder --win nsis portable --x64",
+    "dist:all": "electron-builder --win nsis portable"
+  },
+  "devDependencies": {
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  },
+  "build": {
+    "appId": "software.astos.companion",
+    "productName": "AstOS Companion",
+    "copyright": "AstOS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "!src/ui/index-test.html",
+      "!src/ui/ui-mock.js",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/adb",
+        "to": "adb",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "AstOS Companion",
+      "artifactName": "AstOS-Companion-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "AstOS-Companion-Portable-${version}.${ext}"
+    }
+  }
+}

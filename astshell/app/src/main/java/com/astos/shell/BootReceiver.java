@@ -22,6 +22,16 @@ public class BootReceiver extends BroadcastReceiver {
         // "notification center can still be opened" bug)
         KioskService.ensureRunning(context);
 
+        // v3.1: the PC companion channel (Bluetooth SPP + USB/adb). The
+        // tablet listens; the companion connects. Bluetooth is flipped on
+        // so "pair from the PC" just works on a kiosk tablet.
+        try {
+            android.bluetooth.BluetoothAdapter bt =
+                    android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (bt != null && !bt.isEnabled()) bt.enable();
+        } catch (Throwable ignored) {}
+        try { LinkHostShell.ensure(context); } catch (Throwable ignored) {}
+
         if (!AppSettings.bootLaunch(context)) return;
 
         boolean setupDone = false;

@@ -1,0 +1,10 @@
+{
+  "id": "uptime_card",
+  "name": "Uptime Card",
+  "version": "1.0",
+  "author": "astos",
+  "description": "Shows how long the tablet has been up as a home card.",
+  "permissions": ["ui"],
+  "main": "plugin.js",
+  "tickSeconds": 60
+}

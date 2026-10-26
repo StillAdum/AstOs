@@ -23,6 +23,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridView;
@@ -50,9 +51,28 @@ import java.util.Locale;
  * Groq AI fallback, Home Assistant, news + weather.
  */
 public class HomeActivity extends Activity
-        implements CommandRouter.Actions, VoiceEngine.Callback, MusicEngine.Listener {
+        implements CommandRouter.Actions, VoiceEngine.Callback, MusicEngine.Listener,
+                   PluginHost.Listener {
 
     public static volatile Context sAppContext;
+
+    /** Companion/remote refresh hook — cheap, safe to call from any thread. */
+    public static void requestRefresh() {
+        final Context c = sAppContext;
+        if (c == null) return;
+        final Handler h = new Handler(Looper.getMainLooper());
+        h.post(new Runnable() {
+            @Override public void run() {
+                PluginHost ph = PluginHost.get();
+                if (ph != null) ph.reloadAll();
+                Intent i = new Intent(c, HomeActivity.class);
+                // the home is singleTask: this is a no-op bring-to-front that
+                // still triggers onResume -> full data refresh
+                i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                try { c.startActivity(i); } catch (Throwable ignored) {}
+            }
+        });
+    }
 
     // views
     private TextView mClock, mDate, mTimerText;
@@ -73,6 +93,8 @@ public class HomeActivity extends Activity
     private TextView mHomeTag;
     private PixelBackdrop mBackdrop;
     private Runnable mTypeStep;
+    private LinearLayout mPluginsRow;
+    private boolean mPluginsBound;
 
     // state
     private final Handler mHandler = new Handler(Looper.getMainLooper());
@@ -120,6 +142,13 @@ public class HomeActivity extends Activity
         // lockdown + persistent shade-killer (v2.4 layer)
         Kiosk.apply(this);
         KioskService.ensureRunning(this);
+
+        // the companion channel (Bluetooth SPP + USB) — runs alongside the UI
+        try { LinkHostShell.ensure(this); } catch (Throwable ignored) {}
+
+        // .astpl mods: load + watch for card changes
+        PluginHost.init(this).setListener(this);
+        PluginHost.get().reloadAll();
 
         setContentView(R.layout.activity_home);
         Ui.apply(this, findViewById(android.R.id.content));
@@ -217,9 +246,60 @@ public class HomeActivity extends Activity
                     || Intent.ACTION_BATTERY_CHANGED.equals(a)) {
                 Kiosk.disableShadePublic(HomeActivity.this);
                 if (AppSettings.kiosk(HomeActivity.this)) applyImmersive(true);
+                // .astpl mods get their onTick from the minute tick — cheap
+                // and perfectly fine for dashboards
+                PluginHost ph = PluginHost.get();
+                if (ph != null) ph.tick();
             }
         }
     };
+
+    // ------------------------------------------------------------ plugin cards
+
+    /** PluginHost.Listener — cards changed, re-render the row. */
+    @Override public void onCardsChanged() {
+        mHandler.post(new Runnable() { @Override public void run() { renderPluginCards(); } });
+    }
+
+    @Override public void onToast(final String msg) {
+        mHandler.post(new Runnable() {
+            @Override public void run() { toast(msg); }
+        });
+    }
+
+    private void renderPluginCards() {
+        LinearLayout row = mPluginsRow;
+        if (row == null) return;
+        row.removeAllViews();
+        List<PluginHost.Card> cards = PluginHost.get() == null
+                ? java.util.Collections.<PluginHost.Card>emptyList()
+                : PluginHost.get().cards();
+        for (int i = 0; i < Math.min(4, cards.size()); i++) {
+            final PluginHost.Card card = cards.get(i);
+            Button b = new Button(this);
+            b.setText(card.title + (card.value == null || card.value.isEmpty()
+                    ? "" : "\n" + card.value));
+            b.setAllCaps(false);
+            b.setTextSize(9f);
+            b.setTypeface(Ui.monoB(this));
+            b.setPadding(Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 10), Ui.dp(this, 8));
+            b.setBackgroundResource(R.drawable.bg_icon_box);
+            b.setTextColor(Ui.col("ink"));
+            b.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.rightMargin = Ui.dp(this, 8);
+            row.addView(b, lp);
+            Ui.press(b, 2);
+            b.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    PluginHost ph = PluginHost.get();
+                    if (ph != null) ph.cardTap(card.pluginId, card.id);
+                }
+            });
+        }
+        row.setVisibility(cards.isEmpty() ? View.GONE : View.VISIBLE);
+    }
 
     /** landscape = two columns; portrait = one */
     private void adjustForOrientation(int orientation) {
@@ -272,6 +352,8 @@ public class HomeActivity extends Activity
         mVoiceStatus = (TextView) findViewById(R.id.voiceStatus);
         mMic = (MicButtonView) findViewById(R.id.micBtn);
         mCursor = (TextView) findViewById(R.id.cursor);
+        mPluginsRow = (LinearLayout) findViewById(R.id.pluginsRow);
+        renderPluginCards();
         mHomeTag = (TextView) findViewById(R.id.homeTag);
         mBackdrop = (PixelBackdrop) findViewById(R.id.backdrop);
 
@@ -897,6 +979,9 @@ public class HomeActivity extends Activity
     }
 
     @Override public void onResult(String text) {
+        // .astpl mods can observe everything said to the tablet
+        PluginHost ph = PluginHost.get();
+        if (ph != null) ph.onVoice(text);
         String response = CommandRouter.route(text, this);
         if (response != null) {
             typeLine(response);

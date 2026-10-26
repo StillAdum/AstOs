@@ -1,0 +1,85 @@
+name: AstOS Companion (exe only)
+
+# Fast lane: rebuild JUST the Windows companion app and push it onto the
+# newest existing release — no 9-hour ROM rebuild needed for app-only
+# changes. The full build.yml runs this too and ships the exe with the ROM.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'companion/**'
+      - '.github/workflows/companion.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: companion-only
+  cancel-in-progress: true
+
+jobs:
+  companion:
+    name: Companion exe (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: ''
+
+      - name: Set up Java 17 (codec interop test)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install + test
+        shell: bash
+        working-directory: companion
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+      - name: Fetch adb (platform-tools)
+        shell: bash
+        working-directory: companion
+        run: |
+          mkdir -p resources/adb
+          curl -sL -o /tmp/pt.zip https://dl.google.com/android/repository/platform-tools-latest-windows.zip
+          unzip -j -o /tmp/pt.zip 'platform-tools/adb.exe' 'platform-tools/AdbWinApi.dll' 'platform-tools/AdbWinUsbApi.dll' -d resources/adb
+          ls -la resources/adb
+
+      - name: Build installers (electron-builder)
+        shell: bash
+        working-directory: companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx electron-builder --win nsis portable --x64 --publish never
+          ls -la dist
+
+      - name: Attach to the newest release
+        shell: bash
+        working-directory: companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # find the newest tag this repo has
+          LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+          if [ -z "$LATEST" ]; then
+            echo "no release yet — the next full ROM build will carry the exe"
+            exit 0
+          fi
+          echo "uploading to release: $LATEST"
+          gh release upload "$LATEST" \
+            dist/AstOS-Companion-Setup-*.exe \
+            dist/AstOS-Companion-Portable-*.exe \
+            --clobber

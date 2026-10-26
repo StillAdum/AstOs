@@ -43,6 +43,16 @@ android {
     androidResources {
         noCompress 'ttf'
     }
+
+    // v3.1: the shared AstLink companion protocol (Bluetooth SPP + USB),
+    // compiled into both apps from one source tree.
+    sourceSets {
+        main {
+            java {
+                srcDir '../../astlink/src/main/java'
+            }
+        }
+    }
 }
 
 dependencies {
@@ -54,6 +64,10 @@ dependencies {
     // tablet can resolve streams itself, Discord-bot style.
     implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.26.5'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // v3.1: the .astpl mod engine — pure-Java JS interpreter, works on
+    // Android when run with optimizationLevel -1 (interpreted mode).
+    implementation 'org.mozilla:rhino:1.7.14'
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }

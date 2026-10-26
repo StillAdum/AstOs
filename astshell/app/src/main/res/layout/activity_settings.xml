@@ -261,6 +261,13 @@
                         android:text="Power options"/>
 
                     <Button
+                        android:id="@+id/pluginsBtn"
+                        style="@style/ChipBtn"
+                        android:layout_marginTop="8dp"
+                        android:tag="d:btn f:monoB"
+                        android:text="Mods (.astpl plugins)"/>
+
+                    <Button
                         android:id="@+id/wizardBtn"
                         style="@style/ChipBtn"
                         android:layout_marginTop="8dp"
@@ -287,6 +294,17 @@
                         android:layout_marginTop="8dp"
                         android:tag="d:btnFlat f:monoB"
                         android:text="Android settings"/>
+
+                    <TextView
+                        android:id="@+id/companionText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textSize="9sp"
+                        android:letterSpacing="0.08"
+                        android:textColor="@color/soft"
+                        android:tag="t:soft"
+                        android:text="PC companion: Bluetooth + USB listening · code ------"/>
 
                     <TextView
                         android:id="@+id/aboutText"

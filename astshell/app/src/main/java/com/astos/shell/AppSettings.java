@@ -177,15 +177,81 @@ public final class AppSettings {
 
     // ---- Behaviour -----------------------------------------------------------------
 
-    public static boolean kiosk(Context c)             { return p(c).getBoolean("kiosk", true); }
-    public static void setKiosk(Context c, boolean v)  { p(c).edit().putBoolean("kiosk", v).apply(); }
+    /** v3.1: these four are now Global-backed so the PC companion and
+     *  .astpl mods can flip them too (Settings.Global "astos_*"). */
 
-    public static boolean keepScreenOn(Context c)             { return p(c).getBoolean("keep_screen", true); }
-    public static void setKeepScreenOn(Context c, boolean v)  { p(c).edit().putBoolean("keep_screen", v).apply(); }
+    public static boolean kiosk(Context c) {
+        String g = global(c, "astos_kiosk");
+        if (g != null) return !"0".equals(g);
+        return p(c).getBoolean("kiosk", true);
+    }
+    public static void setKiosk(Context c, boolean v) {
+        p(c).edit().putBoolean("kiosk", v).apply();
+        setGlobal(c, "astos_kiosk", v ? "1" : "0");
+    }
 
-    public static boolean speakEnabled(Context c)             { return p(c).getBoolean("speak", true); }
-    public static void setSpeakEnabled(Context c, boolean v)  { p(c).edit().putBoolean("speak", v).apply(); }
+    public static boolean keepScreenOn(Context c) {
+        String g = global(c, "astos_keep_screen");
+        if (g != null) return !"0".equals(g);
+        return p(c).getBoolean("keep_screen", true);
+    }
+    public static void setKeepScreenOn(Context c, boolean v) {
+        p(c).edit().putBoolean("keep_screen", v).apply();
+        setGlobal(c, "astos_keep_screen", v ? "1" : "0");
+    }
 
-    public static boolean bootLaunch(Context c)             { return p(c).getBoolean("boot_launch", true); }
-    public static void setBootLaunch(Context c, boolean v)  { p(c).edit().putBoolean("boot_launch", v).apply(); }
+    public static boolean speakEnabled(Context c) {
+        String g = global(c, "astos_speak");
+        if (g != null) return !"0".equals(g);
+        return p(c).getBoolean("speak", true);
+    }
+    public static void setSpeakEnabled(Context c, boolean v) {
+        p(c).edit().putBoolean("speak", v).apply();
+        setGlobal(c, "astos_speak", v ? "1" : "0");
+    }
+
+    public static boolean bootLaunch(Context c) {
+        String g = global(c, "astos_boot_launch");
+        if (g != null) return !"0".equals(g);
+        return p(c).getBoolean("boot_launch", true);
+    }
+    public static void setBootLaunch(Context c, boolean v) {
+        p(c).edit().putBoolean("boot_launch", v).apply();
+        setGlobal(c, "astos_boot_launch", v ? "1" : "0");
+    }
+
+    // ---- Companion link + plugins -----------------------------------------------
+
+    /** Master switch for system-grade mods (the .astpl "system" grant). */
+    public static boolean pluginsEnabled(Context c) {
+        String g = global(c, "astos_plugins_on");
+        if (g != null) return !"0".equals(g);
+        return p(c).getBoolean("plugins_on", true);
+    }
+    public static void setPluginsEnabled(Context c, boolean v) {
+        p(c).edit().putBoolean("plugins_on", v).apply();
+        setGlobal(c, "astos_plugins_on", v ? "1" : "0");
+    }
+
+    /** Device name shown to the companion app. */
+    public static String deviceName(Context c) {
+        String g = global(c, "astos_device_name");
+        return (g != null && !g.isEmpty()) ? g : "AstTab";
+    }
+    public static void setDeviceName(Context c, String v) {
+        setGlobal(c, "astos_device_name", v == null ? "" : v);
+    }
+
+    // ---- Raw prefs for the plugin settings bridge -------------------------------
+
+    /** Raw read: prefs only (globals go through their typed getters). */
+    public static String raw(Context c, String key) {
+        return p(c).getString(key, "");
+    }
+
+    /** Raw write: prefs + global when the key is astos_*. */
+    public static void setRaw(Context c, String key, String v) {
+        p(c).edit().putString(key, v).apply();
+        if (key.startsWith("astos_")) setGlobal(c, key, v);
+    }
 }

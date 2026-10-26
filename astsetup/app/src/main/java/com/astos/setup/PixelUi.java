@@ -65,6 +65,10 @@ public class PixelUi extends View {
     private final Paint mRect = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF mTmp = new RectF();
 
+    // tap-flash feedback: the last hit fired + when (for a 140ms overlay)
+    private RectF mFlashRect;
+    private long mFlashAt;
+
     // background FX
     private String mBgMode = "DOTS";
     private Bitmap mBgImage;
@@ -171,18 +175,35 @@ public class PixelUi extends View {
             mText.setTypeface(mMono);
             c.drawText("ui frame error: " + t2, dp(8), dp(16), mText);
         }
+        // tap-flash overlay: proof the tap registered
+        if (mFlashRect != null
+                && SystemClock.elapsedRealtime() - mFlashAt < 140) {
+            mRect.setColor(0x33F2B896);
+            mRect.setStyle(Paint.Style.FILL);
+            c.drawRoundRect(mFlashRect, dp(8), dp(8), mRect);
+        } else {
+            mFlashRect = null;
+        }
         if (mRunning) postInvalidateOnAnimation();
     }
 
     // ---------------------------------------------------------------- hits
 
-    /** Register a tap region for this frame. */
-    public void hit(RectF r, Runnable run) {
-        if (r != null && run != null) mHits.add(new Hit(r, run));
+    /** Register a tap region for this frame.
+     *
+     *  v3.1 FIX: the arguments are (left, top, WIDTH, HEIGHT) — this is what
+     *  every call site passes. The old (l, t, r, b) interpretation made
+     *  every button after the welcome screen an inverted/dead rectangle:
+     *  the "no phone? set up wifi on the tablet" pill, the local wifi list
+     *  rows, RESCAN, SKIP WIFI, RETRY, CONTINUE and ENTER ASTOS all refused
+     *  to fire ("i cant tap it, if i do nothing happens").
+     */
+    public void hit(float l, float t, float w, float h, Runnable run) {
+        mHits.add(new Hit(new RectF(l, t, l + w, t + h), run));
     }
 
-    public void hit(float l, float t, float r, float b, Runnable run) {
-        mHits.add(new Hit(new RectF(l, t, r, b), run));
+    public void hit(RectF r, Runnable run) {
+        if (r != null && run != null) mHits.add(new Hit(r, run));
     }
 
     @Override
@@ -212,6 +233,8 @@ public class PixelUi extends View {
             Hit h = mHits.get(i);
             if (x >= h.rect.left - slop && x <= h.rect.right + slop
                     && y >= h.rect.top - slop && y <= h.rect.bottom + slop) {
+                mFlashRect = new RectF(h.rect);   // visual ack — see onDraw
+                mFlashAt = SystemClock.elapsedRealtime();
                 h.run.run();
                 performClick();
                 return true;

@@ -8,6 +8,13 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- v3.1: the PC companion channel (AstLink) -->
+    <uses-permission android:name="android.permission.BLUETOOTH"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <!-- platform-signed privileged app inside the ROM: silent pairing */
+    <uses-permission android:name="android.permission.BLUETOOTH_PRIVILEGED"/>
+    <!-- staging TWRP openrecoveryscript in /cache for ROM updates -->
+    <uses-permission android:name="android.permission.ACCESS_CACHE_FILESYSTEM"/>
     <!-- Platform-signed priv-app inside the ROM gets these; gracefully
          degrades when side-loaded on other ROMs -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
@@ -56,6 +63,13 @@
             android:exported="false"
             android:screenOrientation="landscape"
             android:windowSoftInputMode="stateAlwaysHidden"/>
+
+        <!-- the .astpl mod manager -->
+        <activity
+            android:name=".PluginManagerActivity"
+            android:label="AstOs Mods"
+            android:exported="false"
+            android:screenOrientation="landscape"/>
 
         <!-- pixel power menu -->
         <activity

@@ -1,4 +1,4 @@
-# Setting up AstOs 3.0
+# Setting up AstOs 3.1
 
 On first boot the **AstOs setup wizard** ALWAYS opens on a fresh flash.
 Setup is **fully phone-driven**: the tablet opens its own setup hotspot,
@@ -14,8 +14,11 @@ The wizard steps:
    `AstSetup_9f3e` — an open network, no password). The screen shows
    three clean cards:
    * **1 · CONNECT** — join `AstSetup_xxxx` on your phone
-   * **2 · SCAN** — scan the QR code (or type the `http://…:8420`
-     address shown under it) to open the setup page
+   * **2 · SCAN** — scan the QR code. The address is a clean
+     `http://…` now (no port), and on most phones the setup page opens
+     BY ITSELF: join the hotspot and the "sign in to network" sheet pops
+     straight into the form. If it doesn't, scan the QR or type the
+     address shown under it
    * **3 · SEND** — fill the short form on your phone (styled like the
      tablet): your home WiFi (picked from the tablet's live network scan,
      password included), city, Groq key, Home Assistant, one of the six
@@ -28,11 +31,24 @@ The wizard steps:
    the download automatically when you're on WiFi.
 5. **Done** — *AstOs is ready.* Tap **ENTER ASTOS**.
 
-**No phone handy?** The pair screen has a *"no phone? set up wifi on the
-tablet"* link: pick your network on the tablet itself (password prompt
-included). Everything else — city, Groq key, theme, Home Assistant — can
-be changed any time later in **Settings** (System -> Run setup wizard
-re-runs the whole wizard too).
+**No phone handy?** The pair screen has a *"no phone? set up wifi here"*
+pill — tap it and pick your network on the tablet itself (password prompt
+included). **Every button in the wizard is tappable now** (they were
+re-built in v3.1 — an inverted hit-rectangle bug made them dead in 3.0).
+Everything else — city, Groq key, theme, Home Assistant — can be changed
+any time later in **Settings** (System -> Run setup wizard re-runs the
+whole wizard too).
+
+**Rather use your PC?** Install the **AstOS Companion** app (Windows
+installer from the release) and pick **set up from a PC** — pair over
+Bluetooth with the 6-digit code shown on the tablet (or just plug in USB),
+then the whole setup form runs on the PC. See COMPANION.md.
+
+**Setup page won't load on the phone?** The phone's browser sometimes
+refuses to talk to a network that has no internet. Fix: turn **OFF mobile
+data** for a minute (the setup page says so too), or use the PC app
+instead. The hotspot name is **AstSetup_xxxx — never in quotes**: if your
+phone shows quotes around the name, that's a stale 3.0 build — flash 3.1.
 
 **Hotspot can't start?** (only happens on side-loaded dev builds) the
 wizard falls back to LAN pairing: join the same WiFi as the tablet, then
