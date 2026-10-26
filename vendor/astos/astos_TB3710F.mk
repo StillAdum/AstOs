@@ -23,7 +23,8 @@ DEVICE_PACKAGE_OVERLAYS := vendor/astos/overlay $(DEVICE_PACKAGE_OVERLAYS)
 
 # zram swap init script (kernel has CONFIG_ZRAM=y, huge win on 1 GB RAM)
 PRODUCT_COPY_FILES += \
-    vendor/astos/configs/astos.rc:system/etc/init/astos.rc
+    vendor/astos/configs/astos.rc:system/etc/init/astos.rc \
+    vendor/astos/configs/default-permissions-astos.xml:system/etc/default-permissions/astos.xml
 
 # The AstShell home-assistant dashboard and the AstSetup first-boot
 # wizard, both installed as privileged system apps (re-signed with the
@@ -35,7 +36,7 @@ PRODUCT_PACKAGES += \
 # --- Behaviour tuning --------------------------------------------------------
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.astos.version=3.1.0 \
+    ro.astos.version=3.2.0 \
     ro.astos.device=TB3-710F \
     ro.config.low_ram=true
 

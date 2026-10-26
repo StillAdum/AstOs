@@ -1,7 +1,17 @@
+# Trusted Java plugins (3.2 security model)
+
+**Plugins are not sandboxed.** Enabling one trusts it with Java/Android classes, AstShell data and all permissions granted to the AstShell process. It does not automatically gain root. All new or updated installs start disabled, including formerly trusted plugins. Use the trust prompt and master switch to enable only code you have reviewed.
+
+Rhino scripts can call `Packages.java.lang.System.getProperty("os.version")` or use the injected `context` to call platform APIs. The `astos` helper API remains available, now without manifest capability gates. Manifest permission lists below are descriptive for compatibility, not enforceable security boundaries. The legacy API reference below describes packaging and helper methods; its former sandbox/grant rules are superseded by this section.
+
+See [validation and limitations](FIX-VALIDATION.md).
+
+---
+
 # AstOS mods — the .astpl plugin system
 
 `.astpl` files are how you **mod the whole OS**: JavaScript mods with a
-permission system, sandboxed and crash-isolated, that can add cards to
+trusted Java access, exception handling, that can add cards to
 the home dashboard, react to your voice, control Home Assistant, and —
 with the `system` grant — run shell commands, set system properties,
 write secure settings and inject input. That's real whole-OS access on a
@@ -48,7 +58,7 @@ release (uptime-card, battery-guard, sys-mod).
 | `voice` | `astos.voice.say` + `onVoice(text)` events | none |
 | `network` | `astos.http.get / postJson` | none |
 | `files` | `astos.files.read/write/list/delete` (own folder) | none |
-| `system` | `astos.system.shell/setting/prop/input/intent` | **manifest + master switch + starts disabled** |
+| `system` | `astos.system.shell/setting/prop/input/intent` | **trusted enable + master switch; starts disabled** |
 
 Always available (no grant): `astos.store`, `astos.battery`,
 `astos.device`.
@@ -127,18 +137,9 @@ function onCommand(name) { … }             // future extension points
 
 Card `onTap` callbacks fire when the card is tapped on the dashboard.
 
-## Safety model
+## Runtime stability
 
-* **Sandbox**: scripts run on Rhino in interpreted mode with a
-  ClassShutter that exposes ONLY the `astos` object — no `java.*`, no
-  `Packages`, no reflection.
-* **Watchdog**: each dispatch has a deadline; a stuck or looping script is
-  killed and disabled, the dashboard keeps running.
-* **Crash isolation**: a throwing mod is disabled with its error shown in
-  the Mods list — AstShell itself never goes down with it.
-* **Whole-OS opt-in**: `system`-grade mods install DISABLED and need the
-  master switch; the console + companion sys.* commands check the same
-  switch.
+Exceptions are caught and a five-second watchdog remains. It cannot safely interrupt arbitrary blocking Java/native calls; a trusted plugin can crash or compromise the shell.
 
 ## Writing your own
 

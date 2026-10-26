@@ -40,6 +40,11 @@ public class VoiceEngine implements RecognitionListener {
         return sInstance;
     }
 
+    private android.content.Context mContext;
+    private WhisperSpeech mCloud;
+    public boolean cloudMode() { return mContext != null && mContext.getSharedPreferences("voice", 0).getBoolean("whisper", false); }
+    public void finishCloud() { if (mCloud != null) mCloud.finish(); }
+    private Recognizer mRecognizer;
     private Model mModel;
     private SpeechService mSpeech;
     private volatile boolean mListening = false;
@@ -50,7 +55,8 @@ public class VoiceEngine implements RecognitionListener {
 
     /** Loads Vosk from filesDir/model (downloaded by ModelDownloader). */
     public void prepare(final Context ctx, final ReadyListener ready) {
-        if (mModel != null) { ready.onReady(true, null); return; }
+        mContext = ctx.getApplicationContext();
+        if (cloudMode() || mModel != null) { ready.onReady(true, null); return; }
         final Context app = ctx.getApplicationContext();
         new Thread(new Runnable() {
             @Override
@@ -87,19 +93,35 @@ public class VoiceEngine implements RecognitionListener {
     public boolean isListening() { return mListening; }
 
     public synchronized void startListening() throws IOException {
-        if (mModel == null || mListening) return;
+        if (mListening) return;
+        if (cloudMode()) {
+            mCloud = new WhisperSpeech(mContext); mListening = true;
+            try {
+                mCloud.start((text, error) -> {
+                    mListening = false;
+                    Callback cb = mCallback;
+                    if (cb != null) { if (error != null) cb.onError(error); else cb.onResult(text); }
+                });
+            } catch (Exception e) { mListening = false; throw new IOException(e); }
+            return;
+        }
+        if (mModel == null) return;
+        if (mSpeech != null) stopListening();
         Recognizer rec = new Recognizer(mModel, 16000.0f);
+        mRecognizer = rec;
         mSpeech = new SpeechService(rec, 16000.0f);
         mSpeech.startListening(this);
         mListening = true;
     }
 
     public synchronized void stopListening() {
+        if (mCloud != null) { mCloud.cancel(); mCloud = null; }
         if (mSpeech != null) {
             try { mSpeech.stop(); } catch (Exception ignored) {}
             try { mSpeech.shutdown(); } catch (Exception ignored) {}
             mSpeech = null;
         }
+        if (mRecognizer != null) { mRecognizer.close(); mRecognizer = null; }
         mListening = false;
     }
 

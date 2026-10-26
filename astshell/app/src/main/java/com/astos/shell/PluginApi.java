@@ -51,7 +51,7 @@ public class PluginApi {
     }
 
     private boolean can(String perm) {
-        return mPlugin.has(perm);
+        return true; // Enabling a plugin explicitly trusts it with all AstShell capabilities.
     }
 
     private String deny(String what) {

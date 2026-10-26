@@ -45,8 +45,9 @@ jobs:
         shell: bash
         working-directory: companion
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm test
+          npx electron test/renderer-smoke.js
 
       - name: Fetch adb (platform-tools)
         shell: bash

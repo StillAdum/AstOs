@@ -5,6 +5,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const THE_TABLET = { name: '', ver: '' };
 
 const THEMES = [
@@ -80,7 +81,7 @@ document.querySelectorAll('.tab').forEach(t => {
 });
 document.addEventListener('click', ev => {
   const g = ev.target.closest('[data-goto]');
-  if (g) showView(g.dataset.goto);
+  if (g) { showView(g.dataset.goto); if (g.dataset.goto === 'setup') loadSetup(); }
 });
 
 // ------------------------------------------------------------ connect
@@ -146,8 +147,8 @@ async function onPaired(info) {
   THE_TABLET.name = info.name || '';
   THE_TABLET.ver = info.ver || '';
   enableTabs(true);
-  showView('dash');
-  loadDash();
+  showView(setupMode ? 'setup' : 'dash');
+  if (setupMode) loadSetup(); else loadDash();
 }
 
 // ------------------------------------------------------------ dashboard
@@ -186,6 +187,15 @@ $('btnRefresh').addEventListener('click', loadDash);
 // ------------------------------------------------------------ setup
 
 let pickedSsid = '';
+let setupMode = false;
+$('btnExisting').onclick = () => { setupMode = false; showView('connect'); };
+$('btnNew').onclick = () => { setupMode = true; showView('connect'); };
+$('btnRescanWifi').onclick = loadSetup;
+$('btnSpotify').onclick = async () => {
+  const info = await window.astos.spotifyInfo();
+  $('spotifyToken').textContent = info.token;
+  $('spotifyState').textContent = info.connected ? 'Spotify connected' : 'Open Spotify and configure the AstOS extension';
+};
 
 async function loadSetup() {
   // wifi list from the tablet's own radio
@@ -199,10 +209,13 @@ async function loadSetup() {
     nets.forEach(n => {
       const row = document.createElement('div');
       row.className = 'netrow';
-      row.innerHTML = `<span>${n.ssid}</span>
-        <span class="sig">${n.secure ? '🔒'.replace('🔒', 'lock') : 'open'} · ${n.level} dBm</span>`;
+      const name = document.createElement('span'); name.textContent = n.ssid;
+      const signal = document.createElement('span'); signal.className = 'sig';
+      signal.textContent = `${n.secure ? 'lock' : 'open'} · ${n.level} dBm`;
+      row.append(name, signal);
       row.addEventListener('click', () => {
         pickedSsid = n.ssid;
+        $('wifiSsid').value = n.ssid;
         [...list.children].forEach(c => c.classList.remove('sel'));
         row.classList.add('sel');
       });
@@ -245,9 +258,9 @@ let pickedTheme = 'dune';
 
 $('btnJoin').addEventListener('click', async () => {
   try {
-    const ssid = pickedSsid;
+    const ssid = $('wifiSsid').value || pickedSsid;
     const pass = $('wifiPass').value;
-    if (!ssid) { status('setupStatus', 'pick a network from the list first', 'err'); return; }
+    if (!ssid) { status('setupStatus', 'choose or enter a network name first', 'err'); return; }
     status('setupStatus', 'saving settings…');
     await rpc('setup.set', {
       city: $('city').value.trim(),
@@ -315,15 +328,16 @@ async function loadMods() {
       row.className = 'modrow';
       row.innerHTML = `
         <div class="meta">
-          <div class="name">${p.name} <span class="dim">${p.version || ''}</span></div>
-          <div class="perms">${(p.permissions || []).join(' · ')}</div>
-          ${p.error ? `<div class="errline">${p.error}</div>` : ''}
+          <div class="name">${escapeHtml(p.name)} <span class="dim">${escapeHtml(p.version || '')}</span></div>
+          <div class="perms">Full Java access · ${escapeHtml((p.permissions || []).join(' · '))}</div>
+          ${p.error ? `<div class="errline">${escapeHtml(p.error)}</div>` : ''}
           <div class="state">${p.enabled ? 'enabled' : 'disabled'}</div>
         </div>`;
       const sw = document.createElement('div');
       sw.className = 'sw' + (p.enabled ? ' on' : '');
       sw.addEventListener('click', async () => {
-        const r = await window.astos.rpc('rpc', 'plugin.set',
+        if (!p.enabled && !confirm('Trust this plugin with Java access, AstShell data and all granted system permissions? Only enable code you trust.')) return;
+        const r = await window.astos.rpc('plugin.set',
           { id: p.id, enabled: !p.enabled }, 15000);
         if (r.ok) loadMods();
         else sw.classList.add('shake');
@@ -334,7 +348,7 @@ async function loadMods() {
       del.title = 'remove mod';
       del.addEventListener('click', async () => {
         if (!confirm('Remove ' + p.name + ' from the tablet?')) return;
-        const r = await window.astos.rpc('rpc', 'plugin.remove', { id: p.id }, 15000);
+        const r = await window.astos.rpc('plugin.remove', { id: p.id }, 15000);
         if (r.ok) loadMods();
       });
       row.appendChild(sw);
@@ -343,7 +357,7 @@ async function loadMods() {
       list.appendChild(card);
     });
   } catch (e) {
-    list.innerHTML = `<div class="dim">${e.message}</div>`;
+    list.innerHTML = `<div class="dim">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -354,7 +368,7 @@ $('btnInstallPlugin').addEventListener('click', async () => {
   try {
     const up = await window.astos.transfer(file, 'plugin');
     if (!up.ok) throw new Error(up.error);
-    const r = await window.astos.rpc('rpc', 'plugin.install',
+    const r = await window.astos.rpc('plugin.install',
       { path: up.result.path }, 30000);
     if (!r.ok) throw new Error(r.error);
     alert('mod installed: ' + (r.result && r.result.name ? r.result.name : file));
@@ -395,7 +409,7 @@ $('btnStage').addEventListener('click', async () => {
     if (!up.ok) throw new Error(up.error);
     $('zipProg').style.width = '100%';
     $('zipMeta').textContent = 'transferred · checksum ' + (up.result.shaOk || 'sent');
-    const r = await window.astos.rpc('rpc', 'rom.apply',
+    const r = await window.astos.rpc('rom.apply',
       { name: up.result.name, sha256: up.result.sha256, delayMs: 3000 }, 30000);
     if (!r.ok) throw new Error(r.error);
     $('zipMeta').textContent = 'staged — the tablet is rebooting into recovery now. '

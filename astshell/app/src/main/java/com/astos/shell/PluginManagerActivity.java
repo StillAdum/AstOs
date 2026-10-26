@@ -69,7 +69,7 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
         root.addView(scan, lp(10));
 
         Button master = new Button(this);
-        master.setText("system mods: master switch");
+        master.setText("trusted Java plugins: master switch");
         master.setAllCaps(false);
         master.setTypeface(Ui.monoB(this));
         Ui.press(master, 2);
@@ -135,7 +135,11 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
     private void toggleMaster() {
         boolean now = !AppSettings.pluginsEnabled(this);
         AppSettings.setPluginsEnabled(this, now);
-        toast(now ? "system mods allowed" : "system mods blocked");
+        if (!now && PluginHost.get() != null) {
+            for (PluginHost.Plugin plugin : PluginHost.get().list())
+                if (plugin.enabled) PluginHost.get().setEnabled(plugin.id, false);
+        }
+        toast(now ? "Trusted plugins can access AstShell data, Java and system permissions" : "Plugins blocked");
         rebuild();
     }
 
@@ -173,7 +177,7 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
         List<PluginHost.Plugin> plugins = ph == null
                 ? java.util.Collections.<PluginHost.Plugin>emptyList() : ph.list();
 
-        mMasterBtn.setText("system mods: " + (AppSettings.pluginsEnabled(this) ? "ON" : "OFF"));
+        mMasterBtn.setText("trusted Java plugins: " + (AppSettings.pluginsEnabled(this) ? "ON" : "OFF"));
 
         mEmpty.setVisibility(plugins.isEmpty() ? View.VISIBLE : View.GONE);
         for (final PluginHost.Plugin p : plugins) {
@@ -224,8 +228,16 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
             sw.setListener(new PixelSwitch.On() {
                 @Override public void changed(PixelSwitch s, boolean on) {
                     PluginHost ph = PluginHost.get();
-                    if (ph != null) ph.setEnabled(p.id, on);
-                    rebuild();
+                    if (ph != null && on) {
+                        new android.app.AlertDialog.Builder(PluginManagerActivity.this)
+                            .setTitle("Trust Java plugin?")
+                            .setMessage("This plugin can access AstShell data, Java classes and all system permissions granted to AstShell. Only enable code you trust.")
+                            .setPositiveButton("Trust and enable", (d, w) -> { ph.setEnabled(p.id, true); rebuild(); })
+                            .setNegativeButton("Cancel", (d, w) -> rebuild()).show();
+                    } else {
+                        if (ph != null) ph.setEnabled(p.id, false);
+                        rebuild();
+                    }
                 }
             });
             row.addView(sw, new LinearLayout.LayoutParams(

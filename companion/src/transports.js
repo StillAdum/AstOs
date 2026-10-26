@@ -28,6 +28,7 @@ class LinkSession {
     this.pending = new Map();   // id -> {resolve, reject, timer}
     this.parser = require('./protocol').makeParser();
     this.onDead = null;
+    this.dead = false;
   }
 
   ingest(chunk) {
@@ -47,6 +48,8 @@ class LinkSession {
   }
 
   ended() {
+    if (this.dead) return;
+    this.dead = true;
     for (const [, p] of this.pending) {
       clearTimeout(p.timer);
       p.reject(new LinkError('connection closed'));
@@ -56,6 +59,7 @@ class LinkSession {
   }
 
   call(transport, cmd, args, timeoutMs) {
+    if (this.dead) return Promise.reject(new LinkError("connection closed"));
     const proto = require('./protocol');
     const frame = proto.makeFrame(cmd, args);
     const m = /^{"v":1,"id":"(c\d+)"/.exec(frame);
@@ -83,18 +87,36 @@ class LinkError extends Error {
 async function listBluetoothPorts() {
   const { SerialPort } = require('serialport');
   const ports = await SerialPort.list();
-  return ports.filter(p =>
-    /bluetooth/i.test(p.friendlyName || '') ||
-    /bluetooth/i.test((p.manufacturer || '')) ||
-    (p.path || '').match(/^COM\d+$/i) && /bluetooth/i.test(p.friendlyName || ''));
+  // serialport can omit labels. Windows' PNP IDs retain the BTHENUM
+  // identity; never probe unrelated serial equipment with AstLink frames.
+  if (process.platform === 'win32') {
+    try {
+      const extra = await new Promise((resolve, reject) => {
+        const script = "@(Get-CimInstance Win32_SerialPort | Where-Object { $_.PNPDeviceID -like 'BTHENUM*' } | Select-Object DeviceID,Name,PNPDeviceID) | ConvertTo-Json -Compress";
+        const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {windowsHide:true});
+        let text = ''; const timer = setTimeout(() => { child.kill(); reject(new Error('Bluetooth port enumeration timed out')); }, 8000);
+        child.stdout.on('data', b => { text += b; });
+        child.on('error', e => { clearTimeout(timer); reject(e); });
+        child.on('close', code => { clearTimeout(timer); if (code) reject(new Error('Bluetooth enumeration failed')); else { try { resolve(text ? JSON.parse(text) : []); } catch (e) { reject(e); } } });
+      });
+      for (const p of (Array.isArray(extra) ? extra : [extra])) {
+        if (!ports.some(x => x.path === p.DeviceID)) ports.push({path:p.DeviceID, friendlyName:p.Name, pnpId:p.PNPDeviceID});
+        else { const old = ports.find(x => x.path === p.DeviceID); old.pnpId = p.PNPDeviceID; }
+      }
+    } catch (e) { /* labeled ports below remain usable without PowerShell */ }
+  }
+  return ports.filter(p => /bluetooth|bthenum/i.test(`${p.friendlyName || ''} ${p.manufacturer || ''} ${p.pnpId || ''}`)
+    || /^\/dev\/rfcomm/.test(p.path || ''));
 }
 
 /** Probe a COM port for the AstLink protocol. Resolves a LinkSession or
  *  rejects after `timeoutMs`. */
-function probeCom(portPath, timeoutMs = 2500) {
+function probeCom(portPath, timeoutMs = 10000) {
   const { SerialPort } = require('serialport');
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timer;
+    let sp;
     const done = (err, session) => {
       if (settled) return;
       settled = true;
@@ -102,14 +124,14 @@ function probeCom(portPath, timeoutMs = 2500) {
       if (err) { reject(err); try { sp && sp.close(); } catch (e) {} }
       else resolve(session);
     };
-    const sp = new SerialPort({
+    sp = new SerialPort({
       path: portPath,
       baudRate: 115200,
       autoOpen: true
     }, err => { if (err) return done(new LinkError('open failed: ' + err.message)); });
 
     const session = new LinkSession(
-      s => { try { sp.write(s); } catch (e) { done(new LinkError(e.message)); } },
+      s => sp.write(s, err => { if (err) session.ended(); }),
       () => { try { sp.close(); } catch (e) {} },
       'bluetooth:' + portPath
     );
@@ -121,7 +143,7 @@ function probeCom(portPath, timeoutMs = 2500) {
     const proto = require('./protocol');
     const frame = proto.makeFrame('hello', {});
     const id = /^{"v":1,"id":"(c\d+)"/.exec(frame)[1];
-    const timer = setTimeout(() => done(new LinkError('timeout')), timeoutMs);
+    timer = setTimeout(() => done(new LinkError('timeout')), timeoutMs);
     session.pending.set(id, {
       resolve: r => done(null, session),
       reject: e => {
@@ -131,7 +153,10 @@ function probeCom(portPath, timeoutMs = 2500) {
       },
       timer
     });
-    try { sp.write(frame + '\n'); } catch (e) { done(new LinkError(e.message)); }
+    sp.once('open', () => {
+      try { sp.write(frame + '\n', e => { if (e) done(new LinkError(e.message)); }); }
+      catch (e) { done(new LinkError(e.message)); }
+    });
   });
 }
 
@@ -196,6 +221,7 @@ function connectUsb(serial, progress) {
       const f = await runAdb(serial
         ? ['-s', serial, 'forward', 'tcp:58517', 'tcp:58517']
         : ['forward', 'tcp:58517', 'tcp:58517']);
+      if (f.code !== 0) throw new LinkError(f.err || "USB port forwarding failed");
       if (progress) progress('connecting');
       const sock = net.connect(58517, '127.0.0.1');
       const session = new LinkSession(
@@ -204,14 +230,17 @@ function connectUsb(serial, progress) {
         'usb' + (serial ? ':' + serial : '')
       );
       sock.on('data', d => session.ingest(d));
-      sock.on('error', e => { reject(new LinkError(e.message)); });
+      sock.setTimeout(8000, () => sock.destroy(new Error('USB connection timed out')));
+      sock.on('error', e => { session.ended(); sock.destroy(); reject(new LinkError(e.message)); });
       sock.on('close', () => session.ended());
       sock.on('connect', async () => {
         try {
           await session.call(null, 'ping', {}, 4000);
+          sock.setTimeout(0);
           if (progress) progress('connected');
           resolve(session);
         } catch (e) {
+          sock.destroy();
           reject(e);
         }
       });

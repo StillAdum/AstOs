@@ -44,10 +44,9 @@ import java.util.zip.ZipFile;
  *   plugin.js       the mod itself (JavaScript, runs on Rhino)
  *   assets/…        optional files, extracted beside the plugin
  *
- * "system" grants shell/props/input/intent — the whole-OS modding the
- * user asked for. Everything is permission-gated, sandboxed (no java.*
- * access from JS), single-threaded per host, watchdogged (a stuck script
- * is killed + disabled), and crash-isolated from the shell.
+ * Trusted scripts have unrestricted Java interop within AstShell's OS
+ * permissions. They are NOT isolated from this process. Watchdogs catch
+ * interpreted loops, but cannot safely terminate blocking Java/native code.
  */
 public final class PluginHost {
 
@@ -172,7 +171,8 @@ public final class PluginHost {
         if (pa != null) for (int i = 0; i < pa.length(); i++)
             if ("system".equals(pa.optString(i))) hasSystem = true;
         // system-grade mods start DISABLED: the user flips them on knowingly
-        boolean enabled = !hasSystem && prefs().getBoolean("on_" + id, true);
+        boolean enabled = false;
+        prefs().edit().putBoolean("on_" + id, false).putBoolean("trusted_" + id, false).apply();
         Plugin p = new Plugin(id, dir, mf, enabled);
         mPlugins.put(id, p);
         if (enabled) load(p);
@@ -204,10 +204,10 @@ public final class PluginHost {
     public synchronized boolean setEnabled(String id, boolean on) {
         Plugin p = mPlugins.get(id);
         if (p == null) return false;
-        if (on && p.has("system") && !AppSettings.pluginsEnabled(mCtx)) {
+        if (on && !AppSettings.pluginsEnabled(mCtx)) {
             return false;   // system mods need the master switch too
         }
-        prefs().edit().putBoolean("on_" + id, on).apply();
+        prefs().edit().putBoolean("on_" + id, on).putBoolean("trusted_" + id, on).apply();
         p.enabled = on;
         if (on) { load(p); } else { unloadQuietly(p); p.cards.clear(); }
         notifyCards();
@@ -231,7 +231,7 @@ public final class PluginHost {
                     String l;
                     while ((l = r.readLine()) != null) sb.append(l);
                     Plugin p = new Plugin(d.getName(), d, new JSONObject(sb.toString()),
-                            prefs().getBoolean("on_" + d.getName(), true));
+                            prefs().getBoolean("on_" + d.getName(), false) && prefs().getBoolean("trusted_" + d.getName(), false) && AppSettings.pluginsEnabled(mCtx));
                     mPlugins.put(p.id, p);
                 } catch (Exception ignored) {}
             }
@@ -266,7 +266,7 @@ public final class PluginHost {
         runIsolated(p, "load", new Job() {
             @Override public void run(Context cx, ScriptableObject shared) throws Exception {
                 if (p.scope == null) {
-                    Scriptable scope = cx.initSafeStandardObjects(shared);
+                    Scriptable scope = cx.initStandardObjects();
                     File main = new File(p.dir, p.manifest.optString("main", "plugin.js"));
                     StringBuilder sb = new StringBuilder();
                     try (FileInputStream fi = new FileInputStream(main)) {
@@ -274,10 +274,11 @@ public final class PluginHost {
                         String l;
                         while ((l = r.readLine()) != null) sb.append(l).append('\n');
                     }
-                    // the sandboxed api
+                    // Trusted plugins run with AstShell process privileges.
                     PluginApi api = new PluginApi(PluginHost.this, p);
                     Object wrapped = Context.javaToJS(api, scope);
                     scope.put("astos", scope, wrapped);
+                    scope.put("context", scope, Context.javaToJS(mCtx, scope));
                     cx.evaluateString(scope, sb.toString(), p.id + "/plugin.js", 1, null);
                     p.scope = scope;
                     p.onLoad = asFn(scope, "onLoad");
@@ -321,7 +322,8 @@ public final class PluginHost {
                     cx.setOptimizationLevel(-1);       // pure interpretation —
                     // generating JVM bytecode does NOT work on Android
                     cx.setLanguageVersion(Context.VERSION_ES6);
-                    cx.setClassShutter(SHUTTER);
+                    sDeadline.set(System.currentTimeMillis() + 5000);
+                    cx.setInstructionObserverThreshold(10000);
                     job.run(cx, sSharedScope);
                 } catch (Throwable t) {
                     p.loadFailed = true;
@@ -335,6 +337,7 @@ public final class PluginHost {
                         notifyCards();
                     }
                 } finally {
+                    sDeadline.remove();
                     if (cx != null) Context.exit();
                 }
             }
@@ -359,13 +362,6 @@ public final class PluginHost {
         Object o = scope.get(name, scope);
         return o instanceof Function ? (Function) o : null;
     }
-
-    private static final ClassShutter SHUTTER = new ClassShutter() {
-        @Override public boolean visibleToScripts(String fullClassName) {
-            return fullClassName.startsWith("com.astos.shell.PluginApi")
-                    || fullClassName.equals("java.lang.Object");
-        }
-    };
 
     /** Context factory with an instruction watchdog. */
     private static final class AstFactory extends ContextFactory {
@@ -392,7 +388,7 @@ public final class PluginHost {
         Context cx = sFactory.enterContext();
         try {
             cx.setOptimizationLevel(-1);
-            return cx.initSafeStandardObjects();
+            return cx.initStandardObjects();
         } finally { Context.exit(); }
     }
 

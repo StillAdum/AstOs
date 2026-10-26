@@ -71,7 +71,7 @@ public class SettingsActivity extends Activity {
         updateWifiLine();
 
         ((TextView) findViewById(R.id.aboutText)).setText(
-                "AstOS " + com.astos.link.LinkServer.osVersion() + " · AstShell pixel · LineageOS 14.1 base");
+                "AstOS " + com.astos.link.LinkServer.osVersion() + " · AstShell");
 
         // companion link status + the pairing code the PC app asks for
         try {
@@ -90,6 +90,11 @@ public class SettingsActivity extends Activity {
         pressAll();
     }
 
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        if (focused) Ui.setKioskBars(this, AppSettings.kiosk(this));
+    }
+
     private void pressAll() {
         Ui.press(findViewById(R.id.haTestBtn), 3);
         Ui.press(findViewById(R.id.groqSaveBtn), 3);
@@ -98,8 +103,6 @@ public class SettingsActivity extends Activity {
         Ui.press(findViewById(R.id.pluginsBtn), 3);
         Ui.press(findViewById(R.id.wizardBtn), 3);
         Ui.press(findViewById(R.id.notifAccessBtn), 2);
-        Ui.press(findViewById(R.id.homeChooserBtn), 2);
-        Ui.press(findViewById(R.id.androidSettingsBtn), 2);
     }
 
     // ------------------------------------------------------------ theme
@@ -219,6 +222,8 @@ public class SettingsActivity extends Activity {
         findViewById(R.id.wizardBtn).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 try {
+                    com.astos.link.LinkServer link = com.astos.link.LinkServer.peek();
+                    if (link != null) link.stop();
                     Settings.Global.putInt(getContentResolver(), "astos_setup_done", 0);
                     startActivity(new Intent().setClassName("com.astos.setup",
                             "com.astos.setup.SetupActivity"));
@@ -231,17 +236,20 @@ public class SettingsActivity extends Activity {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
             }
         });
-        findViewById(R.id.homeChooserBtn).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                Intent i = new Intent(Intent.ACTION_MAIN);
-                i.addCategory(Intent.CATEGORY_HOME);
-                startActivity(Intent.createChooser(i, "Home app"));
-            }
-        });
-        findViewById(R.id.androidSettingsBtn).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                startActivity(new Intent(Settings.ACTION_SETTINGS));
-            }
+        findViewById(R.id.audioOutputBtn).setOnClickListener(v -> AudioOutput.choose(this));
+        findViewById(R.id.voiceModelBtn).setOnClickListener(v -> {
+            String[] options = {"Offline Vosk (continuous)", "Groq Whisper large v3 turbo (sends audio to Groq)"};
+            new android.app.AlertDialog.Builder(this).setTitle("Speech recognition")
+                .setItems(options, (d, which) -> {
+                    if (which == 1 && AppSettings.groqKey(this).isEmpty()) {
+                        Toast.makeText(this, "Save a Groq key first", Toast.LENGTH_LONG).show(); return;
+                    }
+                    VoiceEngine.get().stopListening();
+                    getSharedPreferences("voice", 0).edit().putBoolean("whisper", which == 1).apply();
+                    VoiceEngine.get().prepare(this, (ok, message) -> {
+                        if (!ok) Toast.makeText(this, "Download the offline voice model from the dashboard", Toast.LENGTH_LONG).show();
+                    });
+                }).show();
         });
     }
 

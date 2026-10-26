@@ -134,6 +134,11 @@ public final class LinkServer {
         mRunning = true;
         btListen();
         tcpListen();
+        new Thread(() -> {
+            while (mRunning) {
+                try { Thread.sleep(2000); ensureBluetooth(); } catch (InterruptedException e) { return; }
+            }
+        }, "astlink-bt-retry").start();
         Log.i("link up (" + mHost.appName() + ")");
     }
 
@@ -147,7 +152,11 @@ public final class LinkServer {
     public boolean isRunning() { return mRunning; }
 
     /** Called again when the user flips Bluetooth on. */
-    public synchronized void ensureBluetooth() { if (mRunning && mBt == null) btListen(); }
+    public synchronized void ensureBluetooth() {
+        if (!mRunning) return;
+        if (mBt == null) btListen();
+        if (mTcp == null) tcpListen();
+    }
 
     // ------------------------------------------------------------ transports
 
@@ -160,7 +169,7 @@ public final class LinkServer {
             return;
         }
         try {
-            mBt = ad.listenUsingInsecureRfcommWithServiceRecord("AstOS Link", SPP_UUID);
+            mBt = ad.listenUsingRfcommWithServiceRecord("AstOS Link", SPP_UUID);
         } catch (Exception e) {
             Log.i("bt listen failed: " + e);
             return;
@@ -174,6 +183,8 @@ public final class LinkServer {
                         serve(s.getInputStream(), s.getOutputStream(), "bt");
                     } catch (Exception e) {
                         if (mRunning) Log.i("bt accept: " + e);
+                        close(srv);
+                        synchronized (LinkServer.this) { if (mBt == srv) mBt = null; }
                         return;
                     }
                 }
@@ -198,6 +209,8 @@ public final class LinkServer {
                         serve(s.getInputStream(), s.getOutputStream(), "usb");
                     } catch (Exception e) {
                         if (mRunning) Log.i("tcp accept: " + e);
+                        try { srv.close(); } catch (Exception ignored) {}
+                        synchronized (LinkServer.this) { if (mTcp == srv) mTcp = null; }
                         return;
                     }
                 }
@@ -334,6 +347,8 @@ public final class LinkServer {
             return err("need-code");
         }
 
+        if ("pc.poll".equals(cmd)) return pcPoll(args);
+        if ("pc.result".equals(cmd)) return pcResult(args);
         if ("info".equals(cmd))           return info();
         if ("setup.get".equals(cmd))     return setupGet();
         if ("setup.set".equals(cmd))     return setupSet(args);
@@ -482,12 +497,55 @@ public final class LinkServer {
                     : err("provisioning refused (not platform-signed?)");
     }
 
+    public interface PcCallback { void done(String error); }
+    private static final class PcCommand {
+        LinkJson.Obj body; PcCallback callback; long expires;
+    }
+    private final java.util.LinkedHashMap<String, PcCommand> pcCommands = new java.util.LinkedHashMap<>();
+    private long pcSeen;
+    private boolean spotifyReady;
+    public synchronized boolean pcReady() {
+        return spotifyReady && SystemClock.elapsedRealtime() - pcSeen < 8000;
+    }
+    public synchronized void sendPc(String action, String query, boolean sticky, PcCallback cb) {
+        if (!pcReady()) { cb.done("PC Spotify is disconnected. Open Companion and the AstOS Spotify extension."); return; }
+        if (pcCommands.size() >= 16) { cb.done("PC command queue is busy"); return; }
+        String id = java.util.UUID.randomUUID().toString();
+        PcCommand c = new PcCommand();
+        c.body = new LinkJson.Obj().put("id", id).put("action", action).put("query", query).put("sticky", sticky);
+        c.callback = cb; c.expires = SystemClock.elapsedRealtime() + 12000;
+        pcCommands.put(id, c);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            synchronized (LinkServer.this) {
+                PcCommand expired = pcCommands.remove(id);
+                if (expired != null) expired.callback.done("PC Spotify did not acknowledge the command");
+            }
+        }, 12500);
+    }
+    private synchronized Res pcPoll(LinkJson.Obj args) {
+        pcSeen = SystemClock.elapsedRealtime(); spotifyReady = args.bool("spotify", false);
+        LinkJson.Arr commands = new LinkJson.Arr();
+        for (PcCommand c : pcCommands.values())
+            if (c.expires > pcSeen) commands.add(c.body);
+        return ok(commands);
+    }
+    private synchronized Res pcResult(LinkJson.Obj args) {
+        PcCommand c = pcCommands.remove(args.str("id", ""));
+        if (c != null) c.callback.done(args.bool("ok", false) ? null : args.str("error", "Spotify command failed"));
+        return ok();
+    }
+
     // ---- wifi ------------------------------------------------------------------
 
     @SuppressWarnings({"deprecation", "MissingPermission"})
     private Res wifiList() {
-        WifiManager w = (WifiManager) mCtx.getSystemService(Context.WIFI_SERVICE);
-        try { w.startScan(); } catch (Exception ignored) {}
+        WifiManager w;
+        try { w = WifiSupport.station(mCtx); }
+        catch (Exception e) { return err(e.getMessage()); }
+        try {
+            if (!w.startScan()) return err("Wi-Fi scan refused; check location permission and retry");
+            Thread.sleep(2500);
+        } catch (Exception e) { return err("Wi-Fi scan failed: " + e.getMessage()); }
         List<ScanResult> all = w.getScanResults();
         for (int t = 0; (all == null || all.isEmpty()) && t < 3; t++) {
             try { Thread.sleep(1200); } catch (Exception ignored) {}
@@ -514,52 +572,21 @@ public final class LinkServer {
         final String ssid = args.str("ssid", "");
         String pass = args.str("pass", "");
         if (ssid.isEmpty()) return err("empty ssid");
-        WifiManager w = (WifiManager) mCtx.getSystemService(Context.WIFI_SERVICE);
-        try { w.setWifiEnabled(true); } catch (Exception ignored) {}
-        int netId = -1;
-        try {
-            for (WifiConfiguration cfg : w.getConfiguredNetworks()) {
-                if (cfg.SSID != null && cfg.SSID.equals("\"" + ssid + "\"")) {
-                    netId = cfg.networkId;
-                    if (!pass.isEmpty()) {
-                        WifiConfiguration upd = new WifiConfiguration();
-                        upd.networkId = netId;
-                        upd.preSharedKey = "\"" + pass + "\"";
-                        upd.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                        w.updateNetwork(upd);
-                    }
-                    break;
-                }
-            }
-            if (netId < 0) {
-                WifiConfiguration cfg = new WifiConfiguration();
-                cfg.SSID = "\"" + ssid + "\"";
-                if (pass.isEmpty()) {
-                    cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-                } else {
-                    cfg.preSharedKey = "\"" + pass + "\"";
-                    cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                }
-                netId = w.addNetwork(cfg);
-            }
-            if (netId < 0) return err("addNetwork failed");
-            w.disconnect();
-            w.enableNetwork(netId, true);
-            w.reconnect();
-        } catch (Exception e) {
-            return err("wifi error: " + e);
-        }
+        final int networkId;
+        try { networkId = WifiSupport.join(mCtx, ssid, pass); }
+        catch (Exception e) { return err(e.getMessage()); }
         // report the first reachable state (max ~18s)
-        for (int i = 0; i < 12; i++) {
+        for (int i = 0; i < 30; i++) {
             try { Thread.sleep(1500); } catch (Exception ignored) {}
             LinkJson.Obj st = wifiState();
-            if (st.bool("connected", false)) {
+            if (st.bool("connected", false) && ssid.equals(st.str("ssid", ""))
+                    && ((WifiManager) mCtx.getSystemService(Context.WIFI_SERVICE)).getConnectionInfo().getNetworkId() == networkId) {
                 mHost.onWifiJoined(true, ssid, st.str("ip", ""));
                 return ok(st.put("ssid", ssid));
             }
         }
         mHost.onWifiJoined(false, ssid, "");
-        return ok(wifiState().put("ssid", ssid));
+        return err("Could not join " + ssid + "; check 2.4 GHz WPA2 mode, password and router DHCP");
     }
 
     @SuppressWarnings("deprecation")
@@ -576,7 +603,7 @@ public final class LinkServer {
             String ip = ipInt == 0 ? "" : String.format(Locale.US, "%d.%d.%d.%d",
                     ipInt & 0xff, (ipInt >> 8) & 0xff, (ipInt >> 16) & 0xff, (ipInt >> 24) & 0xff);
             return new LinkJson.Obj()
-                    .put("connected", ipInt != 0)
+                    .put("connected", ipInt != 0 && i.getSupplicantState() == android.net.wifi.SupplicantState.COMPLETED)
                     .put("ssid", ssid)
                     .put("ip", ip);
         } catch (Exception e) {
@@ -1024,7 +1051,7 @@ public final class LinkServer {
             int dot = v.indexOf('.', v.indexOf('.') + 1);   // "3.1" or "3.1.0"
             return dot > 0 ? v.substring(0, dot) : v;
         }
-        return "3.1";       // keep in sync with scripts/VERSION
+        return "3.2";       // keep in sync with scripts/VERSION
     }
 
     private String readGlobal(String key) {

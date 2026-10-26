@@ -263,7 +263,8 @@ public final class Ui {
             Object sb = a.getSystemService("statusbar");
             java.lang.reflect.Method m = sb.getClass().getMethod("disable", int.class);
             // DISABLE_EXPAND = 0x00010000 — shade can't be opened while kiosk is on
-            m.invoke(sb, on ? 0x00010000 : 0x00000000);
+            m.invoke(sb, on ? (0x00010000 | 0x00020000 | 0x00080000 | 0x00100000) : 0);
+            sb.getClass().getMethod("disable2", int.class).invoke(sb, on ? 1 : 0);
         } catch (Throwable ignored) { }
     }
 

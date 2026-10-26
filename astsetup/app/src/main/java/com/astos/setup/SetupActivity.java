@@ -211,14 +211,17 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
     }
 
     /** No shade / no lock screen / our keyboard — platform-signed powers. */
     static void kioskLockdown(Context c) {
         try {
             Settings.Global.putString(c.getContentResolver(), "policy_control",
-                    "immersive.status=* immersive.navigation=*");
+                    "immersive.full=*");
         } catch (Throwable ignored) {}
         try {
             Object sbm = c.getSystemService("statusbar");
@@ -489,11 +492,11 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         sb.append("   (from the AstOs release page)\n\n");
         sb.append("2. Enable Bluetooth on the tablet\n");
         sb.append("   (it's already on during setup)\n\n");
-        sb.append("3. In the app: PAIR TABLET, choose this tablet,\n");
+        sb.append("3. Pair it in Windows Bluetooth settings, then scan in Companion,\n");
         sb.append("   and type this code when asked:\n\n");
         sb.append("        " + mLinkCode + "\n\n");
         sb.append("USB cable also works: connect it, the app\n");
-        sb.append("finds the tablet with no code at all.");
+        sb.append("finds the tablet; enter the same code.");
         b.setTitle("Set up from a PC");
         b.setMessage(sb.toString());
         b.setPositiveButton("Got it", null);
@@ -656,7 +659,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         if (ok) {
             sub = mCity.isEmpty() ? "moving on..." : "locating " + mCity + "...";
         } else if (fail) {
-            sub = "check the password / move closer to the router";
+            sub = mErr.isEmpty() ? "check 2.4 GHz WPA2 mode, password and router DHCP" : mErr;
         } else {
             sub = "the tablet left the setup hotspot and is joining your home wifi";
         }
@@ -822,7 +825,22 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         try {
             android.bluetooth.BluetoothAdapter bt =
                     android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            if (bt != null && !bt.isEnabled()) bt.enable();
+            if (bt != null) {
+                bt.setName(SoftAp.ssid(this));
+                if (!bt.isEnabled()) bt.enable();
+                final Runnable makeVisible = new Runnable() {
+                    int attempts;
+                    @Override public void run() {
+                        if (bt.isEnabled()) {
+                            try {
+                                bt.getClass().getMethod("setScanMode", int.class, int.class)
+                                    .invoke(bt, android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE, 300);
+                            } catch (Exception ignored) {}
+                        } else if (++attempts < 15) mH.postDelayed(this, 1000);
+                    }
+                };
+                mH.postDelayed(makeVisible, 1000);
+            }
         } catch (Throwable ignored) {}
         try {
             com.astos.link.LinkServer lk =
@@ -838,7 +856,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         SoftAp.start(this, new SoftAp.Callback() {
             @Override public void onApReady(String ssid, String ip) {
                 mPairStage = "ready";
-                mUrl = "http://" + ip + ":" + PairServer.PORT;
+                mUrl = mPair.url(ip);
                 mQr = Qr.encode(mUrl, 480, 0xFF2A241C, 0xFFF8F2E4); // ink on panel
                 mPairStatus = "waiting for your phone...";
             }
@@ -848,7 +866,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 mPairStage = "lan";
                 String ip = PairServer.lanIp();
                 if (ip != null) {
-                    mUrl = "http://" + ip + ":" + PairServer.PORT;
+                    mUrl = mPair.url(ip);
                     mQr = Qr.encode(mUrl, 480, 0xFF2A241C, 0xFFF8F2E4);
                     mPairStatus = "hotspot unavailable - join the same wifi, then scan";
                 } else {
@@ -930,34 +948,17 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         mWifiPass = pass == null ? "" : pass;
         mConnState = "joining";
         mConnT0 = android.os.SystemClock.elapsedRealtime();
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext()
-                    .getSystemService(WIFI_SERVICE);
-            WifiConfiguration cfg = new WifiConfiguration();
-            cfg.SSID = "\"" + ssid + "\"";
-            if (mWifiPass.isEmpty()) {
-                cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-            } else {
-                cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                cfg.preSharedKey = "\"" + mWifiPass + "\"";
+        new Thread(() -> {
+            try {
+                com.astos.link.WifiSupport.join(this, ssid, pass);
+                mH.post(() -> {
+                    mH.removeCallbacks(mConnPoll);
+                    mH.postDelayed(mConnPoll, 1200);
+                });
+            } catch (Exception e) {
+                mH.post(() -> { mConnState = "fail"; mErr = e.getMessage(); });
             }
-            int id = wm.addNetwork(cfg);
-            if (id != -1) {
-                wm.disconnect();
-                wm.enableNetwork(id, true);
-                wm.reconnect();
-            } else {
-                mConnState = "fail";
-                mErr = "wifi join failed";
-                return;
-            }
-        } catch (Throwable e) {
-            mConnState = "fail";
-            mErr = "wifi error: " + e.getMessage();
-            return;
-        }
-        mH.removeCallbacks(mConnPoll);
-        mH.postDelayed(mConnPoll, 1200);
+        }, "setup-wifi-join").start();
     }
 
     private void pollConnect() {
@@ -1104,8 +1105,8 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 boolean hasWifi = wifiSsid != null && !wifiSsid.trim().isEmpty();
                 SoftAp.stop(SetupActivity.this);      // hotspot down, client up
                 if (hasWifi) {
-                    joinWifi(wifiSsid.trim(),
-                            wifiPass == null ? "" : wifiPass.trim());
+                    joinWifi(wifiSsid,
+                            wifiPass == null ? "" : wifiPass);
                     go(PAGE_CONNECT);
                 } else {
                     go(PAGE_DOWNLOADS);
@@ -1150,6 +1151,9 @@ public class SetupActivity extends Activity implements PairServer.Callback {
             return;
         }
 
+        // Release pairing endpoints BEFORE starting the shell process.
+        com.astos.link.LinkServer link = com.astos.link.LinkServer.peek();
+        if (link != null) link.stop();
         // enter the OS
         Intent home = new Intent(Intent.ACTION_MAIN);
         home.addCategory(Intent.CATEGORY_HOME);

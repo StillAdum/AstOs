@@ -1,7 +1,7 @@
 {
   "name": "astos-companion",
   "productName": "AstOS Companion",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Pair, set up, manage, mod and update your AstOS tablet over Bluetooth or USB.",
   "main": "src/main.js",
   "author": "StillAdum",
@@ -13,7 +13,7 @@
   "private": false,
   "scripts": {
     "start": "electron .",
-    "test": "node test/protocol.test.js && bash test/interop.sh",
+    "test": "node test/protocol.test.js && node test/spotify.test.js && node test/transports.test.js && node test/spicetify.test.js && bash test/interop.sh && bash test/router.sh",
     "dist": "electron-builder --win nsis portable --x64",
     "dist:all": "electron-builder --win nsis portable"
   },
@@ -42,13 +42,25 @@
       {
         "from": "resources/adb",
         "to": "adb",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png"
     },

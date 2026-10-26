@@ -5,7 +5,7 @@
  */
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const T = require('./transports');
@@ -15,6 +15,56 @@ const APP_VERSION = require('../package.json').version;
 let win = null;
 let session = null;          // LinkSession
 let paired = { token: '', name: '', ver: '' };
+let spotifyBridge;
+let pcTimer;
+let pcBusy = false;
+let pairBusy = false;
+const handledPc = new Map();
+const pendingPc = new Set();
+function persistPair() {
+  if (!safeStorage.isEncryptionAvailable()) return;
+  fs.writeFileSync(path.join(app.getPath('userData'), 'pairing.bin'), safeStorage.encryptString(JSON.stringify(paired)));
+}
+async function init() {
+  fs.mkdirSync(app.getPath('userData'), {recursive:true});
+  try { paired = JSON.parse(safeStorage.decryptString(fs.readFileSync(path.join(app.getPath('userData'), 'pairing.bin')))); } catch {}
+  const tokenPath = path.join(app.getPath('userData'), 'spotify-token');
+  let token;
+  try { token = fs.readFileSync(tokenPath, 'utf8'); } catch {
+    token = require('crypto').randomBytes(32).toString('hex');
+    fs.writeFileSync(tokenPath, token, {mode: 0o600});
+  }
+  spotifyBridge = new (require('./spotify-bridge').SpotifyBridge)(token);
+  try { await spotifyBridge.start(); } catch (e) { console.error('Spotify bridge unavailable:', e.message); }
+  createWindow();
+  pcTimer = setInterval(pollPc, 750);
+}
+async function pollPc() {
+  if (pcBusy || !session) return;
+  pcBusy = true;
+  const active = session;
+  try {
+    const commands = await active.call(null, 'pc.poll', {spotify: !!spotifyBridge?.connected}, 5000);
+    spotifyBridge.tabletSeen = Date.now();
+    for (const command of commands || []) {
+      const result = handledPc.get(command.id);
+      if (result) {
+        await active.call(null, 'pc.result', result, 5000);
+      } else if (!pendingPc.has(command.id)) {
+        pendingPc.add(command.id);
+        spotifyBridge.execute(command).then(
+          () => ({id: command.id, ok: true}),
+          e => ({id: command.id, ok: false, error: e.message})
+        ).then(result => {
+          handledPc.set(command.id, result); pendingPc.delete(command.id);
+          if (handledPc.size > 128) handledPc.delete(handledPc.keys().next().value);
+        });
+      }
+    }
+  } catch (e) {
+    if (active === session && /closed/.test(e.message)) dieSession(e.message);
+  } finally { pcBusy = false; }
+}
 
 // ------------------------------------------------------------ window
 
@@ -39,7 +89,8 @@ function createWindow() {
   Menu.setApplicationMenu(null);
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(init);
+app.on('before-quit', () => { clearInterval(pcTimer); spotifyBridge?.close(); session?.close(); });
 app.on('window-all-closed', () => app.quit());
 
 // ------------------------------------------------------------ helpers
@@ -51,6 +102,7 @@ function send(channel, payload) {
 function dieSession(reason) {
   if (!session) return;
   session = null;
+  spotifyBridge?.disconnect();
   send('link-dead', { reason: reason || 'connection lost' });
 }
 
@@ -60,7 +112,7 @@ async function rpc(cmd, args, timeoutMs) {
   try {
     return await session.call(null, cmd, args, timeoutMs);
   } catch (e) {
-    if (e && e.astLink && /timed out/.test(e.message)) {
+    if (e && e.astLink && /timed out/.test(e.message) && /^(info|setup.get|wifi.state|settings.get)$/.test(cmd)) {
       return await session.call(null, cmd, args, timeoutMs);
     }
     throw e;
@@ -80,17 +132,21 @@ async function tryHello(s, token) {
 }
 
 ipcMain.handle('find-tablet', async (ev, kind) => {
+  if (pairBusy) return {ok: false, error: 'A scan is already running'};
+  pairBusy = true;
   try {
+    if (session) { const old = session; session = null; old.onDead = null; old.close(); }
     if (kind === 'usb') {
       const devices = await T.listUsbDevices();
       if (devices.length === 0) {
         return { ok: false, error: 'no USB tablet found — plug the cable in,\nenable USB debugging, then retry. (The tablet accepts the\nconnection when its ROM is AstOS - no prompt needed.)' };
       }
       session = await T.connectUsb(devices[0], m => send('scan-progress', m));
-      session.onDead = () => dieSession();
+      { const active = session; session.onDead = () => { if (session === active) dieSession(); }; }
       const r = await tryHello(session, paired.token);
       if (r.needCode) return { ok: true, needCode: true };
       paired.token = r.token || paired.token;
+      persistPair();
       send('paired', { name: r.name, ver: r.ver, via: 'USB' });
       return { ok: true, info: r };
     } else {
@@ -99,16 +155,17 @@ ipcMain.handle('find-tablet', async (ev, kind) => {
         return { ok: false, error: 'no AstOS tablet found.\n\n1. On the tablet: Settings -> Bluetooth ON (it turns itself\n   on during setup).\n2. In Windows Bluetooth settings: Add device -> the tablet\n   named "AstSetup_xxxx" (or its normal name after setup).\n   Pair it — Windows then creates its serial COM port.\n3. Press SCAN again.' };
       }
       session = s;
-      session.onDead = () => dieSession();
+      { const active = session; session.onDead = () => { if (session === active) dieSession(); }; }
       const r = await tryHello(session, paired.token);
       if (r.needCode) return { ok: true, needCode: true };
       paired.token = r.token || paired.token;
+      persistPair();
       send('paired', { name: r.name, ver: r.ver, via: 'Bluetooth' });
       return { ok: true, info: r };
     }
   } catch (e) {
     return { ok: false, error: String(e.message || e) };
-  }
+  } finally { pairBusy = false; }
 });
 
 ipcMain.handle('auth', async (ev, code) => {
@@ -116,6 +173,7 @@ ipcMain.handle('auth', async (ev, code) => {
   try {
     const r = await session.call(null, 'auth', { code }, 10000);
     paired.token = r.token;
+    persistPair();
     send('paired', { name: r.name, ver: r.ver, via: session.label });
     return { ok: true, info: r };
   } catch (e) {
@@ -205,3 +263,5 @@ ipcMain.handle('about', async () => ({
 ipcMain.on('open-external', (ev, url) => {
   if (/^https:\/\//.test(url)) shell.openExternal(url);
 });
+
+ipcMain.handle('spotify-info', () => ({ token: spotifyBridge?.token || '', connected: !!spotifyBridge?.connected }));

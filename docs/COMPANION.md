@@ -12,11 +12,11 @@ Two transports, one protocol (AstLink):
 | **USB** (adb, bundled) | plug the cable — the app finds the tablet | ~8-12 MB/s | ROM updates, big files |
 | **Bluetooth** (serial SPP) | pair the tablet once in Windows Bluetooth settings, then enter the 6-digit code shown on the tablet | ~20-50 KB/s | setup, settings, mods, small transfers |
 
-Everything is local. No accounts, no cloud, no data leaves your network.
+Pairing and control are local. Spotify and opt-in Groq speech/AI use their respective online services.
 
 ## Install
 
-1. Download **`AstOS-Companion-Setup-1.1.0.exe`** from the newest
+1. Download **`AstOS-Companion-Setup-1.2.0.exe`** from the newest
    [AstOs release](../../releases) (a portable `.exe` ships too).
 2. Run the installer. Windows may warn about an unsigned app —
    "More info -> Run anyway" (self-built hobby software, no EV cert).
@@ -29,13 +29,12 @@ Everything is local. No accounts, no cloud, no data leaves your network.
 The wizard turns the tablet's Bluetooth on by itself and shows a 6-digit
 code on the PAIR step (and under *"set up from a PC"*):
 
-1. In the app open the **pair** tab, press **scan bluetooth**.
+1. Pair the tablet in Windows Bluetooth settings, then choose **pair an existing tablet** or **set up a new tablet** in Companion and press **scan bluetooth**.
 2. Type the code the tablet shows when asked.
 3. The dashboard opens — you're paired. The tablet writes the token, and
    this PC is remembered; no code again unless you wipe the tablet.
 
-Tip: **USB needs no code at all** — plug in the cable during setup and
-press **scan usb**.
+USB also requires the six-digit AstLink code on first pairing.
 
 ### After setup (normal life)
 
@@ -93,3 +92,7 @@ in the app.
   during setup it's on the PAIR screen.
 * **connection lost mid-transfer** — re-pair and press send again: the
   transfer resumes from where it stopped.
+
+## Version 3.2 additions
+
+See [PC playback and speech](PC-PLAYBACK.md) and [validation checklist](FIX-VALIDATION.md). Use **rescan networks** or enter an exact hidden network name. Desktop setup turns off the setup hotspot to use the tablet radio for scanning.

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('astos', {
 
   findTablet: (kind) => ipcRenderer.invoke('find-tablet', kind),
   auth: (code) => ipcRenderer.invoke('auth', code),
+  spotifyInfo: () => ipcRenderer.invoke('spotify-info'),
 
   rpc: (cmd, args, timeoutMs) => ipcRenderer.invoke('rpc', cmd, args, timeoutMs),
 
