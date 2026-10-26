@@ -57,6 +57,17 @@ public final class GroqClient {
                 messages.put(new JSONObject().put("role", "user").put("content", question));
 
                 JSONObject body = new JSONObject();
+                JSONObject mediaParameters = new JSONObject()
+                    .put("type", "object")
+                    .put("properties", new JSONObject()
+                        .put("action", new JSONObject().put("type", "string").put("enum", new JSONArray(new String[]{"play", "pause", "resume", "next", "previous"})))
+                        .put("query", new JSONObject().put("type", "string"))
+                        .put("until_disconnected", new JSONObject().put("type", "boolean")))
+                    .put("required", new JSONArray(new String[]{"action"}));
+                body.put("tools", new JSONArray().put(new JSONObject().put("type", "function")
+                    .put("function", new JSONObject().put("name", "pc_spotify")
+                        .put("description", "Control Spotify on the paired PC ONLY when the user explicitly requests PC/computer playback. Never use for tablet playback.")
+                        .put("parameters", mediaParameters))));
                 body.put("model", MODEL);
                 body.put("messages", messages);
                 body.put("max_tokens", 200);
@@ -97,8 +108,20 @@ public final class GroqClient {
                 }
                 JSONObject resp = new JSONObject(sb.toString());
                 JSONArray choices = resp.getJSONArray("choices");
-                String text = choices.getJSONObject(0)
-                        .getJSONObject("message").getString("content").trim();
+                JSONObject message = choices.getJSONObject(0).getJSONObject("message");
+                JSONArray calls = message.optJSONArray("tool_calls");
+                if (calls != null && calls.length() > 0) {
+                    JSONObject fn = calls.getJSONObject(0).getJSONObject("function");
+                    if (!"pc_spotify".equals(fn.optString("name"))) throw new Exception("Unknown assistant action");
+                    JSONObject args = new JSONObject(fn.getString("arguments"));
+                    String action = args.optString("action");
+                    if (!java.util.Arrays.asList("play", "pause", "resume", "next", "previous").contains(action))
+                        throw new Exception("Unsupported playback action");
+                    main().post(() -> PcPlayback.send(ctx, action, args.optString("query", ""), args.optBoolean("until_disconnected", false)));
+                    post(cb, "Sent your playback request to the PC.", null);
+                    return;
+                }
+                String text = message.optString("content", "").trim();
                 post(cb, text, null);
             } catch (final Throwable e) {
                 post(cb, null, "Groq failed: " + e.getMessage());

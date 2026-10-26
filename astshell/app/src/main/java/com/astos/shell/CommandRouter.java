@@ -40,6 +40,8 @@ public final class CommandRouter {
         void allApps();
         void askGroq(String question);              // assistant fallback
         void whatsPlaying();
+        default void pcAction(String action, String query, boolean sticky) {}
+        default boolean pcSelected() { return false; }
     }
 
     private CommandRouter() {}
@@ -48,6 +50,27 @@ public final class CommandRouter {
     public static String route(String raw, Actions a) {
         String s = normalize(raw);
         if (s.isEmpty()) return null;
+
+        s = s.replaceFirst("^(hey |hi )?(ast os|astos|ast)\\b[ ,]*", "").trim();
+        boolean explicitPc = s.matches(".*\\b(pc|computer|desktop)\\b.*");
+        boolean stickyPc = s.contains("until") && s.contains("disconnect");
+        if (explicitPc || a.pcSelected()) {
+            String action = null;
+            if (s.contains("next") || s.contains("skip")) action = "next";
+            else if (s.contains("previous") || s.contains("last song")) action = "previous";
+            else if (s.startsWith("pause") || s.startsWith("stop")) action = "pause";
+            else if (s.startsWith("resume")) action = "resume";
+            else if (s.startsWith("play") || s.startsWith("put on")) action = "play";
+            if (action != null) {
+                String query = s.replaceFirst("^(play|put on)\\s*", "")
+                    .replaceAll("\\b(on|in|through|thru|thrugh) (my |the )?(pc|computer|desktop)\\b", "")
+                    .replaceAll("\\b(on |in )?spotify\\b", "")
+                    .replaceAll("until.*disconnect.*", "").trim();
+                if (query.matches("(some |my )?(music|songs|song)?")) query = "";
+                a.pcAction(action, query, stickyPc || a.pcSelected());
+                return null;
+            }
+        }
 
         // ---- help / identity ------------------------------------------------
         if (s.equals("help") || s.contains("what can you say") || s.equals("commands")
@@ -64,7 +87,7 @@ public final class CommandRouter {
         if (s.contains("thank")) return "You're welcome.";
         if (s.contains("who are you") || s.contains("what are you") || s.equals("who made you")
                 || s.contains("what os is this") || s.contains("which os")) {
-            return "I'm AstOs — your own custom operating system. Not Android. Yours.";
+            return "I'm AstOs — your voice-first home assistant.";
         }
 
         // ---- on-demand music (Discord bot style) -------------------------------
@@ -159,10 +182,10 @@ public final class CommandRouter {
             a.openNotificationAccess(); return "Open notification access and enable AstOs.";
         }
         if (s.contains("android settings") || s.contains("system settings")) {
-            a.openAndroidSettings(); return null;
+            a.openSettings(); return null;
         }
         if (s.contains("settings") || s.contains("setup")) { a.openSettings(); return null; }
-        if (s.contains("home screen chooser") || s.contains("default home")) { a.homeChooser(); return null; }
+        if (s.contains("home screen chooser") || s.contains("default home")) { a.openSettings(); return null; }
         if (s.equals("apps") || s.contains("all apps") || s.contains("app drawer")) { a.allApps(); return null; }
 
         // ---- Home Assistant ------------------------------------------------------
@@ -224,8 +247,8 @@ public final class CommandRouter {
             if (q.startsWith(pre)) {
                 String rest = q.substring(pre.length()).trim();
                 if (q.startsWith("queue ") || q.startsWith("add ")) return rest;
-                q = rest;
-                break;
+                if (rest.matches("(some |my )?(music|songs)|local music|next song|previous song")) return null;
+                return rest.isEmpty() ? null : rest;
             }
         }
         if (!q.startsWith("play ") && !q.startsWith("search ") && !q.startsWith("find ")) return null;

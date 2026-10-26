@@ -96,6 +96,10 @@ public final class LinkHostShell implements LinkServer.Host {
     }
 
     @Override public void onSetupChanged() {
+        PluginHost host = PluginHost.get();
+        if (host != null && !AppSettings.pluginsEnabled(HomeActivity.sAppContext)) {
+            for (PluginHost.Plugin plugin : host.list()) if (plugin.enabled) host.setEnabled(plugin.id, false);
+        }
         // the shell reads Settings.Global live on its next frame — nothing
         // to do but wake the home screen for a repaint
         HomeActivity.requestRefresh();

@@ -281,19 +281,10 @@
                         android:tag="d:btnFlat f:monoB"
                         android:text="Media control access"/>
 
-                    <Button
-                        android:id="@+id/homeChooserBtn"
-                        style="@style/ChipBtn"
-                        android:layout_marginTop="8dp"
-                        android:tag="d:btnFlat f:monoB"
-                        android:text="Choose default home"/>
-
-                    <Button
-                        android:id="@+id/androidSettingsBtn"
-                        style="@style/ChipBtn"
-                        android:layout_marginTop="8dp"
-                        android:tag="d:btnFlat f:monoB"
-                        android:text="Android settings"/>
+                    <Button android:id="@+id/audioOutputBtn" style="@style/ChipBtn"
+                        android:layout_marginTop="8dp" android:text="Playback device"/>
+                    <Button android:id="@+id/voiceModelBtn" style="@style/ChipBtn"
+                        android:layout_marginTop="8dp" android:text="Speech recognition"/>
 
                     <TextView
                         android:id="@+id/companionText"

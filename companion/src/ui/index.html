@@ -44,7 +44,8 @@
         <div class="stepcard"><span class="tag">2</span><b>SET UP</b><p>Wi-Fi, city, AI key, Home Assistant — straight from the PC.</p></div>
         <div class="stepcard"><span class="tag">3</span><b>MOD + UPDATE</b><p>.astpl plugins and TWRP-flash ROM updates, applied from here.</p></div>
       </div>
-      <button class="bigbtn reveal d3" data-goto="connect">pair a tablet &gt;</button>
+      <button class="bigbtn reveal d3" id="btnExisting">pair an existing tablet &gt;</button>
+      <button class="bigbtn reveal d3" id="btnNew">set up a new tablet &gt;</button>
     </div>
   </section>
 
@@ -92,6 +93,9 @@
   <!-- DASHBOARD -->
   <section class="view" id="v-dash">
     <h2 class="vt" id="dashTitle">tablet</h2>
+    <div class="card"><b>Spotify on this PC</b><p>Install spicetify/astos.js from the repository, then paste this token in its AstOS menu. Keep Companion open.</p>
+      <button class="ghost" id="btnSpotify">show Spotify pairing token</button>
+      <code id="spotifyToken"></code><p id="spotifyState"></p></div>
     <div class="kvgrid">
       <div class="card mini"><span class="tag">NAME</span><b id="kvName">—</b></div>
       <div class="card mini"><span class="tag">VERSION</span><b id="kvVer">—</b></div>
@@ -117,6 +121,9 @@
         <span class="tag">WIFI</span>
         <label>home network</label>
         <div class="netlist" id="netList"><div class="dim">scanning…</div></div>
+        <button class="ghost" id="btnRescanWifi">rescan networks</button>
+        <label>network name (or choose above)</label>
+        <input id="wifiSsid" autocomplete="off" placeholder="Exact network name — 2.4 GHz WPA2">
         <label>password</label>
         <input id="wifiPass" type="password" placeholder="password (empty for open networks)" autocomplete="off">
       </div>
@@ -153,7 +160,7 @@
       <button class="bigbtn" id="btnInstallPlugin">install .astpl from pc…</button>
       <button class="bigbtn ghosty" id="btnReloadPlugins">refresh</button>
     </div>
-    <p class="sub">installed on the tablet · system-grant mods need the master switch on the tablet (AstOs Settings &gt; Mods)</p>
+    <p class="sub">installed on the tablet · all trusted Java plugins need the master switch on the tablet (AstOs Settings &gt; Mods)</p>
     <div class="modlist" id="modList"><div class="dim">no mods installed yet</div></div>
   </section>
 

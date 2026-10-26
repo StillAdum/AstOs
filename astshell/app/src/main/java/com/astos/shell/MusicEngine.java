@@ -40,6 +40,10 @@ public class MusicEngine extends Service {
     public static final String EXTRA_QUERY = "query";
 
     private static MusicEngine sInstance;
+    public static void refreshOutput() {
+        MusicEngine s = sInstance;
+        if (s != null && s.mPlayer != null) AudioOutput.apply(s, s.mPlayer);
+    }
 
     /** UI listener — HomeActivity implements this to redraw Now Playing. */
     public interface Listener {
@@ -293,6 +297,7 @@ public class MusicEngine extends Service {
     private void startStream(String url) {
         try {
             mPlayer = new MediaPlayer();
+            AudioOutput.apply(this, mPlayer);
             mPlayer.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK);
             mPlayer.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -327,6 +332,7 @@ public class MusicEngine extends Service {
         if (t == null || t.localFile == null) { mPreparing = false; return; }
         try {
             mPlayer = new MediaPlayer();
+            AudioOutput.apply(this, mPlayer);
             mPlayer.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK);
             mPlayer.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)

@@ -71,7 +71,7 @@ public final class Kiosk {
         try {
             // framework reads this on window layout: immersive everywhere
             Settings.Global.putString(c.getContentResolver(), "policy_control",
-                    "immersive.status=* immersive.navigation=*");
+                    "immersive.full=*");
         } catch (Exception ignored) {}
     }
 
@@ -93,6 +93,7 @@ public final class Kiosk {
                     | 0x00080000 /* NOTIFICATION_TICKER */
                     | 0x00100000 /* SYSTEM_INFO */;
             sbm.getClass().getMethod("disable", int.class).invoke(sbm, flags);
+            sbm.getClass().getMethod("disable2", int.class).invoke(sbm, 1 /* QUICK_SETTINGS */);
         } catch (Throwable ignored) {
             // side-loaded case or API drift: graceful degradation
         }

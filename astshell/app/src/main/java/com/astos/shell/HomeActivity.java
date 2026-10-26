@@ -197,6 +197,8 @@ public class HomeActivity extends Activity
     @Override
     protected void onResume() {
         super.onResume();
+        if (!setupDone()) return;
+        try { LinkHostShell.ensure(this); } catch (Throwable ignored) {}
         sAppContext = getApplicationContext();
         Kiosk.apply(this); // self-heal lockdown
         if (Ui.appliedKey() != null && !Ui.appliedKey().equals(AppSettings.themeKey(this))) {
@@ -516,6 +518,11 @@ public class HomeActivity extends Activity
     private void bindMic() {
         mMic.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
+                if (VoiceEngine.get().isListening() && VoiceEngine.get().cloudMode()) {
+                    VoiceEngine.get().finishCloud();
+                    typeLine("transcribing…");
+                    return;
+                }
                 if (VoiceEngine.get().isListening()) {
                     toggleMicOff();
                     return;
@@ -546,7 +553,7 @@ public class HomeActivity extends Activity
         try {
             v.startListening();
             setMicActive(true);
-            typeLine("listening…");
+            typeLine(v.cloudMode() ? "listening… tap again to send (up to 8 seconds)" : "listening…");
         } catch (Exception e) {
             toast("Mic error: " + e.getMessage());
         }
@@ -1004,6 +1011,11 @@ public class HomeActivity extends Activity
     }
 
     // ------------------------------------------------------------ CommandRouter.Actions
+
+    @Override public void pcAction(String action, String query, boolean sticky) {
+        PcPlayback.send(this, action, query, sticky);
+    }
+    @Override public boolean pcSelected() { return PcPlayback.selected(); }
 
     @Override public void openApp(final String query) {
         for (ResolveInfo ri : mLaunchables) {

@@ -72,6 +72,11 @@ public class PairServer {
         mCb = cb;
     }
 
+    public String url(String ip) {
+        if (mBoundPort < 0) return "";
+        return "http://" + ip + (mBoundPort == 80 ? "" : ":" + mBoundPort) + "/";
+    }
+
     public void setNetworks(List<ScanResult> networks) {
         if (networks != null) mNetworks = networks;
     }

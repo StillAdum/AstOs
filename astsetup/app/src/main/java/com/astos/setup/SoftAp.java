@@ -91,6 +91,10 @@ public final class SoftAp {
             return;
         }
 
+        sReportedIp = null;
+        sLanFallback = false;
+        // Legacy SoftAP does NOT itself start tethering/DHCP.
+        if (wm.isWifiEnabled()) wm.setWifiEnabled(false);
         WifiConfiguration cfg = new WifiConfiguration();
         cfg.SSID = ssid(ctx);                     // UNQUOTED — see the v3.1 note
         cfg.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
@@ -144,7 +148,7 @@ public final class SoftAp {
         final long t0 = android.os.SystemClock.elapsedRealtime();
         final Runnable[] poll = new Runnable[1];
         poll[0] = new Runnable() {
-            boolean reported = false;
+            boolean tetherRequested = false;
             @Override public void run() {
                 boolean up = false;
                 try {
@@ -153,10 +157,19 @@ public final class SoftAp {
                     up = (r instanceof Boolean) && (Boolean) r;
                 } catch (Throwable ignored) {}
 
+                if (up && !tetherRequested) {
+                    // ConnectivityService configures the interface and DHCP server.
+                    String iface = hotspotInterface();
+                    if (iface != null) try {
+                        Object cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+                        Object result = cm.getClass().getMethod("tether", String.class).invoke(cm, iface);
+                        tetherRequested = result instanceof Integer && ((Integer) result) == 0;
+                    } catch (Throwable ignored) {}
+                }
                 String ip = hotspotIp();
                 long waited = android.os.SystemClock.elapsedRealtime() - t0;
 
-                if (up && ip != null) {
+                if (up && tetherRequested && ip != null) {
                     if (!ip.equals(sReportedIp)) {
                         sReportedIp = ip;
                         cb.onApReady(ssid(ctx), ip);  // re-fires with the real
@@ -169,19 +182,8 @@ public final class SoftAp {
                     return;
                 }
                 if (waited >= TIMEOUT_MS) {
-                    if (up) {
-                        if (!reported) {
-                            reported = true;
-                            sReportedIp = FALLBACK_IP;
-                            cb.onApReady(ssid(ctx), FALLBACK_IP); // slow dhcp —
-                            // the poller above refreshes the QR when the
-                            // true address shows up
-                        }
-                        h.postDelayed(this, POLL_MS * 2);
-                        return;
-                    }
                     sLanFallback = true;
-                    cb.onApFailed("hotspot did not come up");
+                    cb.onApFailed("hotspot/DHCP did not become ready; use Bluetooth or USB setup");
                     return;
                 }
                 h.postDelayed(this, POLL_MS);
@@ -221,6 +223,19 @@ public final class SoftAp {
         } catch (Throwable ignored) {}
     }
 
+    private static String hotspotInterface() {
+        try {
+            Enumeration<NetworkInterface> all = NetworkInterface.getNetworkInterfaces();
+            String wlan = null;
+            while (all.hasMoreElements()) {
+                NetworkInterface n = all.nextElement();
+                if (n.getName().equals("ap0") || n.getName().startsWith("softap")) return n.getName();
+                if (n.getName().startsWith("wlan")) wlan = n.getName();
+            }
+            return wlan;
+        } catch (Exception e) { return null; }
+    }
+
     /** Live address of the AP interface: ap0 (MTK) first, then wlan0, else any. */
     public static String hotspotIp() {
         try {
@@ -236,7 +251,7 @@ public final class SoftAp {
             }
             if (ap != null) { String ip = firstIpv4(ap); if (ip != null) return ip; }
             if (wlan != null) { String ip = firstIpv4(wlan); if (ip != null) return ip; }
-            if (any != null) { String ip = firstIpv4(any); if (ip != null) return ip; }
+
         } catch (Throwable ignored) {}
         return null;
     }

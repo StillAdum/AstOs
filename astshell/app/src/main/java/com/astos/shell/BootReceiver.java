@@ -30,7 +30,6 @@ public class BootReceiver extends BroadcastReceiver {
                     android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if (bt != null && !bt.isEnabled()) bt.enable();
         } catch (Throwable ignored) {}
-        try { LinkHostShell.ensure(context); } catch (Throwable ignored) {}
 
         if (!AppSettings.bootLaunch(context)) return;
 
@@ -39,6 +38,10 @@ public class BootReceiver extends BroadcastReceiver {
             setupDone = Settings.Global.getInt(context.getContentResolver(),
                     "astos_setup_done", 0) == 1;
         } catch (Throwable ignored) {}
+
+        if (setupDone) {
+            try { LinkHostShell.ensure(context); } catch (Throwable ignored) {}
+        }
 
         if (!setupDone) {
             try {

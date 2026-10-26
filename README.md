@@ -39,7 +39,7 @@ an AstOs layer baked into `/system`.
 |---|---|
 | 🧭 **Phone-driven first-boot setup** | The tablet opens its own hotspot **`AstSetup_xxxx`** — connect your phone and the setup form usually opens BY ITSELF (v3.1 answers the OS captive-portal probes). Or scan the QR, or use the PC app. The tablet then joins your WiFi and finishes on its own. |
 | 🖥️ **AstOS Companion (PC app)** | **v3.1**: a Windows installer ships with every release — pair over **Bluetooth or USB** and run the whole setup from your PC, manage the tablet (battery, wifi, toggles, power), install mods, and apply **ROM updates from the TWRP-flashable zips** straight from the app (it stages the recovery flash for you). Styled like the OS, with the same pixel animations. |
-| 🧩 **.astpl mods — mod the WHOLE OS** | **v3.1**: JavaScript plugins with a permission system. `ui/ha/media/voice/network/files/settings` grants for normal mods, and the `system` grant for REAL whole-OS access: shell, system properties, secure settings, input injection — sandboxed, watchdogged, opt-in per mod. Ship in `/sdcard/AstOs/plugins` or install from the PC app. |
+| 🧩 **.astpl mods — mod the WHOLE OS** | **v3.1**: Trusted JavaScript plugins with unrestricted Java interop. `ui/ha/media/voice/network/files/settings` grants for normal mods, and the `system` grant for REAL whole-OS access: shell, system properties, secure settings, input injection — not sandboxed; explicit trust required. Java/native calls cannot be safely interrupted by the script watchdog. Ship in `/sdcard/AstOs/plugins` or install from the PC app. |
 | 🔒 **Pure kiosk** | Landscape-locked. No lock screen, no notification shade, no nav bar, no edge-swipe surprises — power-on goes straight to the dashboard, and a persistent foreground service holds the shade closed with a 20 s heartbeat. Nobody guesses it's Android. |
 | 🖥️ **Pixel-shell UI** | The approved pixel design, 99% point-for-point: VT323 clock + IBM Plex Mono, corner-tagged cards with ink borders and hard shadows, dotted-paper backdrop with drifting motes, segmented bars, EQ visualizer, six themes (Dune/Forest/Rust/Mono/Ember/Pine). 100% native Views — no WebView. ASCII art lives only in the boot animation. |
 | 🏷️ **Boot screen never lies again** | **v3.1**: the boot animation caption is stamped from `scripts/VERSION` at every ROM build — the boot screen always shows the version you actually flashed. |
@@ -96,3 +96,7 @@ AstOs stands on giant shoulders:
 AstOs code (AstShell, `vendor/astos`, scripts) is Apache-2.0. The ROM
 itself inherits the LineageOS / Android licensing of its sources. No
 Google proprietary code is included.
+
+## 3.2 connectivity and PC playback update
+
+See [PC Spotify, external audio and Whisper setup](docs/PC-PLAYBACK.md) and [fixes, test coverage and hardware acceptance checklist](docs/FIX-VALIDATION.md). The Spicetify extension is `spicetify/astos.js`. APK compilation and automated tests do not establish physical tablet behavior; see the checklist before flashing.
