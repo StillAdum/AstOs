@@ -17,17 +17,19 @@ JAVAC="$JDK_BIN/javac"
 JAVA="$JDK_BIN/java"
 WORK="$(mktemp -d)"
 
-# compile the REAL LinkJson + the driver
-"$JAVAC" -d "$WORK" "$ASTLINK/com/astos/link/LinkJson.java" "$HERE/JavaDriver.java"
+# compile the REAL LinkJson + the driver.
+# -encoding UTF-8 is NOT optional: javac defaults to the platform charset,
+# and Windows runners would mangle the unicode escapes in the golden frames.
+"$JAVAC" -encoding UTF-8 -d "$WORK" "$ASTLINK/com/astos/link/LinkJson.java" "$HERE/JavaDriver.java"
 
 # 1) Java writes golden frames; node parses each with the PC codec
-"$JAVA" -cp "$WORK" JavaDriver write "$WORK/java-frames.txt"
+"$JAVA" -Dfile.encoding=UTF-8 -cp "$WORK" JavaDriver write "$WORK/java-frames.txt"
 
 # 2) node writes frames for Java to verify
 node "$HERE/write-frames.js" "$WORK/node-frames.txt"
 
 # 3) Java verifies the node frames
-"$JAVA" -cp "$WORK" JavaDriver verify "$WORK/node-frames.txt"
+"$JAVA" -Dfile.encoding=UTF-8 -cp "$WORK" JavaDriver verify "$WORK/node-frames.txt"
 
 # 4) node verifies the java frames + asserts semantics
 node "$HERE/verify-frames.js" "$WORK/java-frames.txt"
