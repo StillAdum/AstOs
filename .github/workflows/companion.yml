@@ -60,8 +60,6 @@ jobs:
       - name: Build installers (electron-builder)
         shell: bash
         working-directory: companion
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           npx electron-builder --win nsis portable --x64 --publish never
           ls -la dist
