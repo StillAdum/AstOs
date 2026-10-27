@@ -79,7 +79,10 @@
         }
         await request('/result', result);
       }
-    } catch (e) { if(window.document)await new Promise(r=>setTimeout(r,2000)); }
+    } catch (e) {
+      if(sticky&&Date.now()-lastOk>45000){sticky=false;await Spicetify.Player.pause();Spicetify.showNotification('AstOS disconnected — PC playback paused');}
+      if(window.document)await new Promise(r=>setTimeout(r,2000));
+    }
     finally { busy = false; }
   }
   setInterval(poll,750);

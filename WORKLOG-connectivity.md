@@ -36,3 +36,8 @@ See `docs/AI-PROVIDERS.md` for official sources and configuration, and `docs/VAL
 ## 3.4 follow-up — physical reports and structural corrections
 
 Added native RFCOMM (32feet) to remove COM-port dependency; direct challenge/secret-authenticated ECDH/GCM LAN transport with discovery, Wi-Fi handoff and background reconnect; tray lifecycle; heartbeat/long-poll media recovery; cross-app Wi-Fi configuration grant and scan/association diagnostics. Corrected the ROM's hidden navigation contradiction (`config_showNavigationBar=false`, `qemu.hw.mainkeys=1`) and supplied AstOS pixel navigation assets. Replaced generated EQ motion with captured local/opt-in PC audio levels; added cover loading, PC-first routing and target selection. Restyled new controls/dialogs/keyboard, removed large prompt utilities from Home, added compact keyboard icon and timed expandable response line, improved six-theme text contrast, disabled window entrances and added persisted custom backdrop controls. See `docs/FOLLOWUP-3.4.md` for exact tests, sources, privacy and unresolved hardware acceptance tests. No zero-defect or physical connectivity claim is made.
+
+
+### Explicit navigation follow-up
+
+The user requested that navigation buttons NOT be enabled. Restored `config_showNavigationBar=false` and `qemu.hw.mainkeys=1`. The privileged shell service provides invisible left-edge Back/Home gestures instead; existing AstOS in-app controls remain. Updated assertions and release documentation accordingly. Also reproduced and fixed sticky playback failing to pause when Companion exits completely, with a dedicated extension regression. Edge overlay/injection requires a platform-signed ROM and physical acceptance testing.

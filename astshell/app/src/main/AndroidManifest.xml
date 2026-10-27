@@ -29,6 +29,8 @@
     <uses-permission android:name="android.permission.MEDIA_CONTENT_CONTROL"/>
     <!-- kiosk lockdown: no shade, no lock screen -->
     <uses-permission android:name="android.permission.STATUS_BAR"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.INJECT_EVENTS"/>
     <uses-permission android:name="android.permission.ACCESS_KEYGUARD_SECURE_STORAGE"/>
     <!-- KioskService foreground heartbeat (no-op enforcement on 7.1) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>

@@ -25,7 +25,7 @@ LAN uses TCP 58517 and discovery uses UDP 58519. Application frames use per-conn
 - Manual prompt is a small keyboard-icon button next to the mic, using the same custom button drawing. Card/provider/backdrop/playback utilities live in Settings rather than a second large dock row.
 - Responses/errors appear in the existing assistant line. Tap to expand long text. Response text/dialogs clear after approximately 15 seconds; volume/transport acknowledgements no longer produce `PC Spotify: volset` toasts.
 - Backdrop presets plus a custom builder persist particle count, speed, pixel size, direction and theme-relative color. Activity/window entrance animations are disabled; backdrop motion is controlled separately.
-- A boot property and framework overlay had disabled navigation even when the app requested Back/Home. Both are corrected; navigation uses AstOS pixel icons. Navigation remains available deliberately so calendar/external apps cannot strand the user.
+- Per the explicit follow-up request, the system navigation bar remains disabled (`qemu.hw.mainkeys=1`, `config_showNavigationBar=false`). AstOS in-app controls remain. After setup, the platform-signed kiosk service provides invisible left-edge gestures: swipe inward at least 64 dp for Back, or swipe upward at least 72 dp from that edge for Home. No navigation buttons are shown. Edge injection/overlay behavior still requires testing on the actual ROM; it is not available in ordinary unsigned side-loads.
 
 ## Music, covers and real levels
 
@@ -40,7 +40,7 @@ Spotify commands use network-completion-driven long polling rather than dependin
 ## Verification
 
 - Static Android/ROM XML and JavaScript/shell/workflow syntax checks.
-- Six-theme contrast assertions, dock/dialog integration and navigation boot-property assertions.
+- Six-theme contrast assertions, dock/dialog integration and navigation-disabled boot-property/edge-service assertions.
 - Android release builds (AstShell 3.4/code 8, AstSetup 3.4/code 7).
 - Windows helper cross-compilation (.NET 8, NAudio.Wasapi 2.2.1, 32feet 4.2.5).
 - Provider mock-server contracts; Java/Node framing and encrypted-frame interoperability; real LAN socket ECDH/GCM/command roundtrip; replay/wrong-key rejection.

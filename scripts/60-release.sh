@@ -43,7 +43,7 @@ v3.4 — cable-free pairing, pixel UI and real media feedback
 * PC-first song requests, actual cover art, optional real PC audio levels and local audio-session capture.
 * Theme-aware pixel keyboard/dialogs, improved text contrast, keyboard-icon prompt and expandable timed response line.
 * Persistent custom backdrop builder and disabled window entrance animations.
-* ROM navigation boot-property conflict fixed, with AstOS pixel Back/Home icons.
+* System navigation buttons remain disabled; AstOS supplies in-app and invisible edge navigation.
 
 Tests/builds do not certify physical tablet radios, audio or live Spotify behavior.
 Read FOLLOWUP-3.4.md for required matching versions, setup and validation limits.

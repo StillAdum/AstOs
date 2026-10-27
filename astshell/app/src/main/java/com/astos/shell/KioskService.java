@@ -29,6 +29,7 @@ import android.os.Looper;
  */
 public class KioskService extends Service {
 
+    private EdgeNavigation navigation;
     private static final long HEARTBEAT_MS = 20_000L;
 
     private final Handler mH = new Handler(Looper.getMainLooper());
@@ -72,6 +73,7 @@ public class KioskService extends Service {
         f.addAction(Intent.ACTION_USER_PRESENT);
         f.addAction(Intent.ACTION_TIME_TICK);
         try { registerReceiver(mRecv, f); } catch (Throwable ignored) {}
+        navigation=new EdgeNavigation(this);navigation.start();
         reassert();
         mH.postDelayed(mBeat, HEARTBEAT_MS);
     }
@@ -84,6 +86,7 @@ public class KioskService extends Service {
 
     @Override
     public void onDestroy() {
+        if(navigation!=null)navigation.stop();
         mH.removeCallbacksAndMessages(null);
         try { unregisterReceiver(mRecv); } catch (Throwable ignored) {}
         super.onDestroy();

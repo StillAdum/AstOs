@@ -6,6 +6,6 @@
         <item>restart</item>
     </string-array>
 
-    <!-- Keep an always-available navigation path. SystemUI icons are AstOS pixels. -->
-    <bool name="config_showNavigationBar">true</bool>
+    <!-- No visible system navigation buttons. AstOS supplies in-app and edge navigation. -->
+    <bool name="config_showNavigationBar">false</bool>
 </resources>
