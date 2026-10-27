@@ -118,7 +118,7 @@ public class HomeActivity extends Activity
         @Override public void run() {
             updateClock();
             updateMedia();
-            mHandler.postDelayed(this, 1000);
+            mHandler.postDelayed(this, 150);
         }
     };
 
@@ -163,9 +163,14 @@ public class HomeActivity extends Activity
         bindMic();
         bindNav();
         mDashboard = new DashboardCards(this, mHomeCols);
-        findViewById(R.id.editCardsBtn).setOnClickListener(v -> mDashboard.edit());
+
         findViewById(R.id.promptBtn).setOnClickListener(v -> com.astos.link.TextEntry.show(this, "Type a prompt", mLastUtterance, false, this::onResult));
-        findViewById(R.id.providersBtn).setOnClickListener(v -> startActivity(new Intent(this, ProviderSettingsActivity.class)));
+        mVoiceStatus.setOnClickListener(v -> {
+            if(mFullResponse==null||mFullResponse.isEmpty())return;
+            android.app.AlertDialog response=new com.astos.link.PixelUi.Builder(this).setTitle("Ast").setMessage(mFullResponse).setPositiveButton("Close",null).show();
+            mHandler.postDelayed(()->response.dismiss(),Math.max(0,mResponseExpiresAt-android.os.SystemClock.elapsedRealtime()));
+        });
+        PcPlayback.setListener(message -> {typeLine(message);keepLine(15000);});
         bindScenes();
 
         loadLaunchables();
@@ -220,6 +225,8 @@ public class HomeActivity extends Activity
         refreshWeather();
         refreshHomeAssistant();
         updateVolume();
+        if(mDashboard!=null)mDashboard.reflow();
+        ((PixelBackdrop)findViewById(R.id.backdrop)).setAnimating(AppSettings.backdropAnim(this));
         applyImmersive(AppSettings.kiosk(this));
         if (AppSettings.keepScreenOn(this)) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -237,6 +244,7 @@ public class HomeActivity extends Activity
 
     @Override
     protected void onDestroy() {
+        PcPlayback.clearListener();
         MusicEngine.unlisten(this);
         VoiceEngine.get().stopListening();
         mHandler.removeCallbacks(mTick);
@@ -450,7 +458,8 @@ public class HomeActivity extends Activity
             int position = pc.optInt("positionMs",0), duration = pc.optInt("durationMs",0);
             mProgBar.setLevel(duration > 0 ? Math.round(position * 36f / duration) : 0);
             mT0.setText(formatLeft(position));mT1.setText(formatLeft(duration));
-            mArt.seed(pc.optString("title", "Spotify"));
+            mArt.load(pc.optString("artUrl", ""),pc.optString("title", "Spotify"));
+            mEq.useSession(-1);mEq.levels(pc.optJSONArray("bands"));
             return;
         }
         SongSearch.Track t = MusicEngine.current();
@@ -464,7 +473,8 @@ public class HomeActivity extends Activity
             mProgBar.setLevel(Math.round(p * 36f));
             mT0.setText(formatLeft(MusicEngine.positionMs()));
             mT1.setText(formatLeft(t.durationMs > 0 ? (int) t.durationMs : MusicEngine.durationMs()));
-            mArt.seed(t.title == null ? "astos" : t.title);
+            mArt.load(t.artUrl,t.title == null ? "astos" : t.title);
+            mEq.useSession(MusicEngine.audioSession());
         } else if (MediaControlService.hasActive()) {
             String tr = MediaControlService.track();
             mTrack.setText(tr == null || tr.isEmpty() ? "—" : tr);
@@ -475,8 +485,10 @@ public class HomeActivity extends Activity
             mProgBar.setLevel(0);
             mT0.setText("--:--");
             mT1.setText("--:--");
-            mArt.seed(tr == null ? "astos" : tr);
+            mArt.showBitmap(MediaControlService.artwork(),tr==null?"media":tr);
+            mEq.useSession(-1);
         } else {
+            mEq.useSession(-1);mArt.load("","idle");
             mTrack.setText("Nothing playing");
             mArtist.setText("media shows up here");
             mSrc.setText("idle");
@@ -575,15 +587,20 @@ public class HomeActivity extends Activity
     }
 
     /** char-by-char voiceline, like the mock's typewriter */
+    private long mResponseExpiresAt;
+    private String mFullResponse="";
     private void typeLine(final String s) {
         if (mTypeStep != null) mVoiceStatus.removeCallbacks(mTypeStep);
         mHandler.removeCallbacks(mHideStatus);
-        mVoiceStatus.setText(s == null ? "" : s);
+        mResponseExpiresAt=android.os.SystemClock.elapsedRealtime()+15000;
+        mFullResponse=s==null?"":s;
+        mVoiceStatus.setText(mFullResponse);
+        mHandler.postDelayed(mHideStatus,15000);
     }
 
     private void keepLine(long ms) {
         mHandler.removeCallbacks(mHideStatus);
-        mHandler.postDelayed(mHideStatus, ms);
+        mHandler.postDelayed(mHideStatus, 15000);
     }
 
     private final Runnable mHideStatus = new Runnable() {
@@ -592,7 +609,7 @@ public class HomeActivity extends Activity
 
     private void toast(String s) {
         if (s == null || s.isEmpty()) return;
-        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+        typeLine(s);keepLine(15000);
     }
 
     // ------------------------------------------------------------ voice model
@@ -1017,9 +1034,10 @@ public class HomeActivity extends Activity
     // ------------------------------------------------------------ CommandRouter.Actions
 
     @Override public void pcAction(String action, String query, boolean sticky) {
-        PcPlayback.send(this, action, query, sticky);
+        if(sticky)PcPlayback.preferLocal(this,false);PcPlayback.send(this, action, query, sticky);
     }
-    @Override public boolean pcSelected() { return PcPlayback.selected(); }
+    @Override public boolean pcSelected() { return PcPlayback.selected() || (PcPlayback.available() && !PcPlayback.localSelected(this)); }
+    @Override public String playbackTarget(boolean pc){if(pc&&!PcPlayback.available())return "PC is not connected";PcPlayback.preferLocal(this,!pc);return pc?"Playback set to PC":"Playback set to tablet";}
 
     @Override public void openApp(final String query) {
         for (ResolveInfo ri : mLaunchables) {
@@ -1079,6 +1097,7 @@ public class HomeActivity extends Activity
     }
 
     @Override public void playSong(String query) {
+        if(PcPlayback.available() && !PcPlayback.localSelected(this)){PcPlayback.send(this,"play",query,true);return;}
         typeLine("finding " + query + "…");
         MusicEngine.playQuery(this, query);
     }
