@@ -229,7 +229,7 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
                 @Override public void changed(PixelSwitch s, boolean on) {
                     PluginHost ph = PluginHost.get();
                     if (ph != null && on) {
-                        new android.app.AlertDialog.Builder(PluginManagerActivity.this)
+                        new com.astos.link.PixelUi.Builder(PluginManagerActivity.this)
                             .setTitle("Trust Java plugin?")
                             .setMessage("This plugin can access AstShell data, Java classes and all system permissions granted to AstShell. Only enable code you trust.")
                             .setPositiveButton("Trust and enable", (d, w) -> { ph.setEnabled(p.id, true); rebuild(); })
@@ -255,7 +255,7 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
     }
 
     private void confirmRemove(final PluginHost.Plugin p) {
-        new AlertDialog.Builder(this, R.style.DialogTheme)
+        new com.astos.link.PixelUi.Builder(this, R.style.DialogTheme)
                 .setTitle("Remove " + p.name() + "?")
                 .setMessage("The mod is deleted from the tablet.")
                 .setPositiveButton("Remove", new DialogInterface.OnClickListener() {

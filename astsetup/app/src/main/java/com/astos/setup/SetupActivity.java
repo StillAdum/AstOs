@@ -487,7 +487,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         // a pixel-styled dialog with the steps + the code (real dialog so the
         // wizard underneath keeps animating)
         android.app.AlertDialog.Builder b =
-                new android.app.AlertDialog.Builder(this, R.style.AstSetupDialog);
+                new com.astos.link.PixelUi.Builder(this, R.style.AstSetupDialog);
         StringBuilder sb = new StringBuilder();
         sb.append("On your Windows PC:\n\n");
         sb.append("1. Install AstOS Companion\n");
@@ -906,10 +906,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         mLocalStatus="Starting Wi-Fi scan…";
         new Thread(() -> {
             try {
-                WifiManager wm=com.astos.link.WifiSupport.station(this);
-                if(!wm.startScan())throw new Exception("Scan refused; check location permission and retry");
-                Thread.sleep(3000);
-                List<ScanResult> found=wm.getScanResults();List<ScanResult> out=new ArrayList<>();java.util.Set<String> seen=new java.util.HashSet<>();
+                List<ScanResult> found=com.astos.link.WifiSupport.scan(this);List<ScanResult> out=new ArrayList<>();java.util.Set<String> seen=new java.util.HashSet<>();
                 if(found!=null)for(ScanResult item:found)if(item.SSID!=null&&!item.SSID.isEmpty()&&seen.add(item.SSID))out.add(item);
                 java.util.Collections.sort(out,(a,c)->Integer.compare(c.level,a.level));
                 mH.post(()->{mNetworks=out;mLocalStatus=out.isEmpty()?"No networks. Check 2.4 GHz Wi-Fi, or retry.":out.size()+" networks";if(mPair!=null)mPair.setNetworks(out);mUi.invalidate();});
@@ -943,6 +940,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
 
     private void pollConnect() {
         if (mPage != PAGE_CONNECT || !"joining".equals(mConnState)) return;
+        if(!com.astos.link.WifiSupport.failure().isEmpty()){mConnState="fail";mErr=com.astos.link.WifiSupport.failure();return;}
         try {
             WifiManager wm = (WifiManager) getApplicationContext()
                     .getSystemService(WIFI_SERVICE);
