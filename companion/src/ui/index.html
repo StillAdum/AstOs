@@ -54,9 +54,16 @@
   <section class="view" id="v-connect">
     <h2 class="vt">pair your tablet</h2>
     <div class="pairgrid">
+      <div class="card" id="wifiCard">
+        <h3>WI-FI <span class="vt accent">recommended</span></h3>
+        <p>Connect PC and tablet to the same network. No USB required after setup. Leave the address blank to discover one tablet automatically.</p>
+        <label>Tablet IP address (optional)</label><input id="wifiHost" placeholder="Auto-discover, or 192.168.1.42">
+        <label>First connection: six-digit tablet pairing code</label><input id="wifiPairCode" inputmode="numeric" maxlength="6" placeholder="Leave blank for a remembered tablet" type="password">
+        <button class="bigbtn" id="btnWifi">connect over Wi-Fi</button><div class="scanline" id="wifiProgress"></div>
+      </div>
       <div class="card" id="usbCard">
         <div class="radar"><div class="outline"></div><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="core"></div></div>
-        <h3>USB CABLE <span class="vt accent">fastest</span></h3>
+        <h3>USB CABLE <span class="vt accent">optional setup</span></h3>
         <p>Plug the tablet in. The app finds it through adb — a ROM update
           (~340 MB) moves in about a minute. Best path for big files.</p>
         <button class="bigbtn" id="btnUsb">scan usb</button>
@@ -70,6 +77,7 @@
           serial port for AstOS. No cables on the couch.</p>
         <label>Outgoing Bluetooth serial port (optional)</label>
         <input id="btPort" placeholder="Auto-detect, or COM7 from Windows Bluetooth ports">
+        <button class="ghost" id="btnBluetoothSettings">Pair tablet with Windows</button>
         <button class="bigbtn" id="btnBt">scan bluetooth</button>
         <div class="scanline" id="btProgress"></div>
       </div>
@@ -95,6 +103,7 @@
 
   <!-- DASHBOARD -->
   <section class="view" id="v-dash">
+    <p><label class="ghost"><input type="checkbox" id="audioVisualizer"> Real PC audio levels (output analysis only)</label></p>
     <h2 class="vt" id="dashTitle">tablet</h2>
     <div class="card"><b>Spotify on this PC</b><p>Install spicetify/astos.js from the repository, then paste this token in its AstOS menu. Keep Companion open.</p>
       <button class="ghost" id="btnSpotify">show Spotify pairing token</button>

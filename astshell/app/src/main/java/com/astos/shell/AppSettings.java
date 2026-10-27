@@ -112,6 +112,8 @@ public final class AppSettings {
         setGlobal(c, "astos_h24", v ? "1" : "0");
     }
 
+    public static int backdropMode(Context c){return p(c).getInt("backdrop_mode",backdropAnim(c)?2:0);}
+    public static void setBackdropMode(Context c,int mode){p(c).edit().putInt("backdrop_mode",mode).apply();setBackdropAnim(c,mode!=0);}
     /** drifting motes on the dotted-paper backdrop */
     public static boolean backdropAnim(Context c) {
         try {

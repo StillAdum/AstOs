@@ -162,6 +162,7 @@ function probeCom(portPath, timeoutMs = 10000) {
 
 /** Walk all Bluetooth COM ports, return the first that speaks AstLink. */
 async function findBluetoothTablet(progress) {
+  if(process.platform==='win32'){try{return await findNativeBluetooth(progress);}catch(e){if(progress)progress(e.message+'; trying outgoing COM ports');}}
   const ports = await listBluetoothPorts();
   if (progress) progress(ports.map(p => p.path));
   for (const p of ports) {
@@ -255,3 +256,51 @@ module.exports = {
   listBluetoothPorts, probeCom, findBluetoothTablet,
   adbBinary, runAdb, listUsbDevices, connectUsb
 };
+
+// Direct LAN channel: no ADB, shell access or permanently attached USB cable.
+async function discoverWifi(timeout=2000){
+ const dgram=require('node:dgram'),os=require('node:os');const socket=dgram.createSocket('udp4');const found=new Map();
+ return new Promise(resolve=>{let timer;const done=()=>{clearTimeout(timer);try{socket.close();}catch{}resolve([...found.values()]);};socket.on('error',done);
+ socket.on('message',(data,remote)=>{try{const info=JSON.parse(data.toString());if(info.service==='astos'&&info.secure===true&&info.port===58517)found.set(remote.address,{...info,host:remote.address});}catch{}});
+ socket.bind(0,()=>{socket.setBroadcast(true);const hosts=new Set(['255.255.255.255']);for(const list of Object.values(os.networkInterfaces()))for(const n of list||[])if(n.family==='IPv4'&&!n.internal){const ip=n.address.split('.').map(Number),mask=n.netmask.split('.').map(Number);hosts.add(ip.map((p,i)=>p|(~mask[i]&255)).join('.'));}
+ for(const host of hosts)socket.send('ASTOS_DISCOVER_V1',58519,host,()=>{});timer=setTimeout(done,timeout);});
+ });
+}
+function connectWifi(host,secret,pair=false,port=58517){
+ if(!secret)return Promise.reject(new LinkError('Enter the six-digit tablet pairing code for the first Wi-Fi connection'));
+ if(!/^(?:[a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+$/.test(host||''))return Promise.reject(new LinkError('Enter a tablet IP address or hostname'));
+ const {SecureLink}=require('./secure-link'),crypto=require('node:crypto');
+ return new Promise((resolve,reject)=>{const sock=net.connect(port,host);sock.setNoDelay(true);sock.setKeepAlive(true,15000);let channel,session,buffer='',settled=false;
+ const timer=setTimeout(()=>{sock.destroy();reject(new LinkError('Wi-Fi handshake timed out'));},8000);
+ const fail=e=>{clearTimeout(timer);session?.ended();if(!settled){settled=true;reject(new LinkError(e.message));}sock.destroy();};
+ sock.on('error',fail);sock.on('close',()=>{session?.ended();if(!settled)fail(Error('Wi-Fi connection closed; check tablet pairing code or saved pairing'));});
+ sock.on('data',chunk=>{buffer+=chunk.toString('utf8');if(buffer.length>2*1024*1024)return fail(Error('Frame too large'));let idx;
+ while((idx=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,idx);buffer=buffer.slice(idx+1);try{
+  if(!channel){const hello=JSON.parse(line);if(hello.secure!==true||typeof hello.challenge!=='string')throw Error('Tablet requires a newer AstOS version');
+   const dh=crypto.createECDH('prime256v1');dh.generateKeys();const shared=dh.computeSecret(Buffer.from(hello.publicKey,'base64').subarray(-65)).toString('hex');
+   channel=new SecureLink(secret,hello.challenge,shared);sock.write(JSON.stringify({pair,publicKey:dh.getPublicKey().toString('base64')})+'\n');
+   session=new LinkSession(s=>sock.write(channel.seal(s.trim())+'\n'),()=>sock.destroy(),'wifi:'+host);
+   clearTimeout(timer);settled=true;resolve(session);
+  }else session.ingest(channel.open(line)+'\n');
+ }catch(e){fail(Error('Secure Wi-Fi link failed: '+e.message));return;}}
+ });
+ });
+}
+module.exports.discoverWifi=discoverWifi;
+module.exports.connectWifi=connectWifi;
+
+function nativeHelper(){return path.join(process.resourcesPath||path.join(__dirname,'..','resources'),'audio','AstAudio.exe');}
+async function findNativeBluetooth(progress){
+ const exe=nativeHelper();if(!fs.existsSync(exe))throw Error('Native Bluetooth helper is not installed');
+ const devices=await new Promise((resolve,reject)=>{const child=spawn(exe,['--bluetooth-list'],{windowsHide:true});let out='',error='';const timer=setTimeout(()=>{child.kill();reject(Error('Bluetooth device listing timed out'));},10000);child.stdout.on('data',b=>out+=b);child.stderr.on('data',b=>error+=b);child.on('error',reject);child.on('close',code=>{clearTimeout(timer);try{if(code)throw Error(error);resolve(JSON.parse(out));}catch(e){reject(e);}});});
+ const tablets=devices.filter(d=>/ast/i.test(d.name));if(!tablets.length)throw Error('No paired AstOS tablet. Pair AstSetup/the AstOS tablet in Windows Bluetooth first');
+ for(const device of tablets){if(progress)progress('RFCOMM '+device.name);try{return await connectNativeBluetooth(exe,device.address);}catch(e){if(progress)progress(e.message);}}
+ throw Error('Paired tablet did not accept RFCOMM. Keep tablet Bluetooth on and close other serial connections');
+}
+function connectNativeBluetooth(exe,address){return new Promise((resolve,reject)=>{
+ const child=spawn(exe,['--bluetooth',address],{windowsHide:true});let buffer='',error='',ready=false;const session=new LinkSession(s=>child.stdin.write(s),()=>child.kill(),'bluetooth:'+address);
+ const timer=setTimeout(()=>{child.kill();reject(new LinkError('Native Bluetooth connection timed out'));},18000);
+ child.stderr.on('data',b=>error=(error+b).slice(-1000));child.on('error',e=>{clearTimeout(timer);session.ended();reject(new LinkError(e.message));});child.on('close',()=>{clearTimeout(timer);session.ended();if(!ready)reject(new LinkError(error||'Bluetooth connection closed'));});
+ child.stdout.on('data',chunk=>{if(ready){session.ingest(chunk);return;}buffer+=chunk.toString();const i=buffer.indexOf('\n');if(i<0)return;try{if(!JSON.parse(buffer.slice(0,i)).transportReady)throw Error('Bad Bluetooth handshake');ready=true;clearTimeout(timer);session.ingest(buffer.slice(i+1));session.call(null,'hello',{},4000).then(()=>resolve(session),e=>{/need-code/.test(e.message)?resolve(session):(child.kill(),reject(e));});}catch(e){child.kill();reject(e);}});
+ });}
+module.exports.connectNativeBluetooth=connectNativeBluetooth;

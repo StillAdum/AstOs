@@ -254,7 +254,7 @@ public class AstKeyboardService extends InputMethodService {
     }
 
     private void styleAccent(TextView k) {
-        k.setTextColor(Ui.cur.micink);
+        k.setTextColor(Ui.onAccent());
         k.setBackgroundDrawable(Ui.d(this, "keyAccent"));
     }
 
