@@ -7,6 +7,13 @@ import com.astos.link.LinkServer;
 public final class PcPlayback {
     private static boolean sticky;
     private PcPlayback() {}
+    public static org.json.JSONObject state() {
+        LinkServer link = LinkServer.peek();
+        if (link == null) return null;
+        com.astos.link.LinkJson.Obj state = link.pcPlaybackState();
+        if (state == null) return null;
+        try { return new org.json.JSONObject(com.astos.link.LinkJson.write(state)); } catch (Exception e) { return null; }
+    }
     public static boolean selected() {
         LinkServer link = LinkServer.peek();
         if (link == null || !link.pcReady()) sticky = false;

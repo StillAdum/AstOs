@@ -25,3 +25,9 @@ No physical tablet, Bluetooth adapter, Windows PC, Spotify login, speakers or Gr
 ## Distribution
 
 Version 3.2 APKs remain unsigned until the existing ROM pipeline re-signs them with its platform key. Do not replace a platform-signed system app with a locally signed APK. The release pipeline includes `astos.js`, PC setup instructions and the validation checklist. All unrestricted plugins must be explicitly re-enabled/trusted.
+
+## 3.3 follow-up: setup recovery, navigation, providers and media sync
+
+Implemented tablet theme visibility/per-activity refresh, persistent Back/Home, explicit Settings Back, standalone touch keyboard, typed prompt and transcript UI, editable/reflowing dashboard cards, provider-native APIs and opt-in fallback, model discovery, metadata sync/remote PC volume, setup discoverability/radio sequencing, companion saved-pairing resume and authoritative setup routing. Added Java mock-server provider contracts, static integration assertions and expanded media/renderer regressions. Updated release versions to ROM/apps 3.3 and companion 1.3.0. Full Actions removes only the already-merged `fix/setup-connectivity-pc-playback` branch and performs clean Windows validation before the ROM job.
+
+See `docs/AI-PROVIDERS.md` for official sources and configuration, and `docs/VALIDATION-3.3.md` for five independent software verification passes and explicit unverified physical acceptance tests. Actual hardware connectivity, microphone accuracy, external audio and live-provider/Spotify accounts cannot be certified by these tests. ROM/installer Actions status must be checked separately after pushing main.
