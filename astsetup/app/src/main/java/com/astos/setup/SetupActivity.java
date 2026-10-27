@@ -171,6 +171,8 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         sInst = this;
+        // PC pairing is available on WELCOME too, not only after entering the QR page.
+        try { com.astos.link.LinkServer.get(this, LinkHostSetup.INSTANCE).start(); } catch (Throwable ignored) {}
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
         mPal = AsciiTheme.PALETTES[0];
@@ -211,17 +213,17 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                       
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+                       );
     }
 
     /** No shade / no lock screen / our keyboard — platform-signed powers. */
     static void kioskLockdown(Context c) {
         try {
             Settings.Global.putString(c.getContentResolver(), "policy_control",
-                    "immersive.full=*");
+                    "immersive.status=*");
         } catch (Throwable ignored) {}
         try {
             Object sbm = c.getSystemService("statusbar");
@@ -497,6 +499,7 @@ public class SetupActivity extends Activity implements PairServer.Callback {
         sb.append("        " + mLinkCode + "\n\n");
         sb.append("USB cable also works: connect it, the app\n");
         sb.append("finds the tablet; enter the same code.");
+        requestDiscoverability();
         b.setTitle("Set up from a PC");
         b.setMessage(sb.toString());
         b.setPositiveButton("Got it", null);
@@ -504,6 +507,14 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     }
 
     /** Companion finished the whole setup remotely. */
+    private void requestDiscoverability() {
+        try {
+            Intent visible = new Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+            visible.putExtra(android.bluetooth.BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION,300);
+            startActivity(visible);
+        } catch (Exception e) { mErr="Bluetooth visibility unavailable. Use USB setup or retry from Bluetooth settings."; }
+    }
+
     private void companionFinished(String ssid, String pass) {
         if (mReceived) return;
         mReceived = true;
@@ -599,23 +610,9 @@ public class SetupActivity extends Activity implements PairServer.Callback {
             go(PAGE_CONNECT);
             return;
         }
-        final EditText in = new EditText(this);
-        in.setTypeface(Typeface.MONOSPACE);
-        in.setTextSize(16f);
-        in.setTextColor(0xFFF2E7DA);
-        in.setHint("password for " + s.SSID);
-        in.setHintTextColor(0xFF8A6F4D);
-        in.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
-        new AlertDialog.Builder(this, R.style.AstSetupDialog)
-                .setTitle("Join " + s.SSID)
-                .setView(in)
-                .setPositiveButton("Connect", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        joinWifi(s.SSID, in.getText().toString());
-                        go(PAGE_CONNECT);
-                    }
-                })
-                .setNegativeButton("Cancel", null).show();
+        com.astos.link.TextEntry.show(this, "Wi-Fi password for " + s.SSID, "", true, password -> {
+            joinWifi(s.SSID, password); go(PAGE_CONNECT);
+        });
     }
 
     private static boolean isLocked(ScanResult s) {
@@ -791,7 +788,8 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                 onPairEnter();
                 break;
             case PAGE_LOCAL:
-                if (mNetworks.isEmpty()) rescan();
+                SoftAp.stop(this);
+                rescan();
                 break;
             case PAGE_DOWNLOADS:
                 onDownloadsEnter();
@@ -833,9 +831,10 @@ public class SetupActivity extends Activity implements PairServer.Callback {
                     @Override public void run() {
                         if (bt.isEnabled()) {
                             try {
-                                bt.getClass().getMethod("setScanMode", int.class, int.class)
+                                Object visible = bt.getClass().getMethod("setScanMode", int.class, int.class)
                                     .invoke(bt, android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE, 300);
-                            } catch (Exception ignored) {}
+                                if (Boolean.FALSE.equals(visible)) requestDiscoverability();
+                            } catch (Exception ignored) { requestDiscoverability(); }
                         } else if (++attempts < 15) mH.postDelayed(this, 1000);
                     }
                 };
@@ -892,49 +891,30 @@ public class SetupActivity extends Activity implements PairServer.Callback {
     }
 
     private void rescanQuiet() {
-        try {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{
-                        android.Manifest.permission.ACCESS_FINE_LOCATION,
-                        android.Manifest.permission.ACCESS_COARSE_LOCATION}, 7);
-                return;
-            }
-        } catch (Throwable ignored) {
-            // targetSdk 25 on a 7.1 ROM: runtime check exists but is granted
-            // by default; keep going on any failure
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,android.Manifest.permission.ACCESS_COARSE_LOCATION},7);return;
         }
-        try {
-            // Android 7 gates scan results behind the system location switch;
-            // we are platform-signed, so turn it on quietly if it is off.
+        if (mPage != PAGE_LOCAL) {
             try {
-                if (Settings.Secure.getInt(getContentResolver(),
-                        Settings.Secure.LOCATION_MODE, 0) == 0) {
-                    Settings.Secure.putInt(getContentResolver(),
-                            Settings.Secure.LOCATION_MODE, 3);
-                }
-            } catch (Throwable ignored) {}
-            WifiManager wm = (WifiManager) getApplicationContext()
-                    .getSystemService(WIFI_SERVICE);
-            if (wm == null) return;
-            wm.startScan();
-            List<ScanResult> found = wm.getScanResults();
-            if (found == null) found = new ArrayList<ScanResult>();
-            List<ScanResult> out = new ArrayList<ScanResult>();
-            java.util.Set<String> seen = new java.util.HashSet<String>();
-            for (ScanResult s : found) {
-                if (s.SSID == null || s.SSID.isEmpty() || seen.contains(s.SSID)) continue;
-                seen.add(s.SSID);
-                out.add(s);
-            }
-            java.util.Collections.sort(out, new java.util.Comparator<ScanResult>() {
-                @Override public int compare(ScanResult a, ScanResult b) {
-                    return Integer.compare(b.level, a.level);
-                }
-            });
-            mNetworks = out;
-            if (mPair != null) mPair.setNetworks(out);
-        } catch (Throwable ignored) {}
+                WifiManager wm=(WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
+                List<ScanResult> cached=wm.getScanResults();
+                if(cached!=null)mNetworks=new ArrayList<>(cached);
+                if(mPair!=null)mPair.setNetworks(mNetworks);
+            } catch(Throwable ignored){}
+            return;
+        }
+        mLocalStatus="Starting Wi-Fi scan…";
+        new Thread(() -> {
+            try {
+                WifiManager wm=com.astos.link.WifiSupport.station(this);
+                if(!wm.startScan())throw new Exception("Scan refused; check location permission and retry");
+                Thread.sleep(3000);
+                List<ScanResult> found=wm.getScanResults();List<ScanResult> out=new ArrayList<>();java.util.Set<String> seen=new java.util.HashSet<>();
+                if(found!=null)for(ScanResult item:found)if(item.SSID!=null&&!item.SSID.isEmpty()&&seen.add(item.SSID))out.add(item);
+                java.util.Collections.sort(out,(a,c)->Integer.compare(c.level,a.level));
+                mH.post(()->{mNetworks=out;mLocalStatus=out.isEmpty()?"No networks. Check 2.4 GHz Wi-Fi, or retry.":out.size()+" networks";if(mPair!=null)mPair.setNetworks(out);mUi.invalidate();});
+            }catch(Exception e){mH.post(()->{mLocalStatus=e.getMessage();mErr=e.getMessage();mUi.invalidate();});}
+        },"setup-network-scan").start();
     }
 
     @Override
