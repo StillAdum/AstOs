@@ -427,13 +427,7 @@
             </LinearLayout>
         </ScrollView>
 
-        <TextView android:id="@+id/heardText" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:maxLines="2" android:textSize="15sp" android:tag="t:ink" android:text="Your words appear here" android:textIsSelectable="true"/>
-        <LinearLayout android:layout_width="match_parent" android:layout_height="42dp" android:orientation="horizontal">
-            <Button android:id="@+id/promptBtn" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="Type prompt"/>
-            <Button android:id="@+id/editCardsBtn" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="Dashboard cards"/>
-            <Button android:id="@+id/providersBtn" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="AI providers"/>
-        </LinearLayout>
+        <TextView android:id="@+id/heardText" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone" android:textSize="12sp" android:tag="t:ink"/>
         <!-- ================= dock ================= -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -466,7 +460,11 @@
                     android:id="@+id/voiceStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:maxWidth="700dp"
+                    android:maxWidth="640dp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:clickable="true"
+                    android:contentDescription="Assistant response; tap to expand"
                     android:textSize="12sp"
                     android:textColor="@color/soft"
                     android:tag="t:soft"
@@ -530,6 +528,7 @@
                         android:layout_marginTop="5dp"/>
                 </LinearLayout>
 
+                <com.astos.shell.KeyboardButtonView android:id="@+id/promptBtn" android:layout_width="48dp" android:layout_height="48dp" android:layout_marginRight="10dp" android:contentDescription="Type a prompt"/>
                 <com.astos.shell.MicButtonView
                     android:id="@+id/micBtn"
                     android:layout_width="66dp"
