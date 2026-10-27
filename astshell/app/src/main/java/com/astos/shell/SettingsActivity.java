@@ -59,6 +59,8 @@ public class SettingsActivity extends Activity {
         bindWeather();
         bindHa();
         bindGroq();
+        findViewById(R.id.backBtn).setOnClickListener(v -> finish());
+        findViewById(R.id.manageProvidersBtn).setOnClickListener(v -> startActivity(new Intent(this, ProviderSettingsActivity.class)));
 
         mVolRow.init(12, true, new SegBar.L() {
             @Override public void onLevel(SegBar bar, int level) {
@@ -241,7 +243,7 @@ public class SettingsActivity extends Activity {
             String[] options = {"Offline Vosk (continuous)", "Groq Whisper large v3 turbo (sends audio to Groq)"};
             new android.app.AlertDialog.Builder(this).setTitle("Speech recognition")
                 .setItems(options, (d, which) -> {
-                    if (which == 1 && AppSettings.groqKey(this).isEmpty()) {
+                    if (which == 1 && AiProviders.speechKey(this).isEmpty()) {
                         Toast.makeText(this, "Save a Groq key first", Toast.LENGTH_LONG).show(); return;
                     }
                     VoiceEngine.get().stopListening();

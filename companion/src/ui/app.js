@@ -7,6 +7,8 @@
 const $ = (id) => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const THE_TABLET = { name: '', ver: '' };
+let connected = false;
+let setupRequired = false;
 
 const THEMES = [
   { key: 'dune', label: 'dune', chips: ['#efe7d8', '#cfdca6', '#c4742a', '#2a241c'] },
@@ -39,6 +41,7 @@ function spawnLogoBlocks() {
 }
 
 function showView(name) {
+  if (connected && (name === 'welcome' || name === 'connect')) name = setupRequired ? 'setup' : 'dash';
   document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
   $('v-' + name).classList.add('on');
   document.querySelectorAll('.tab').forEach(t =>
@@ -46,6 +49,11 @@ function showView(name) {
 }
 
 function enableTabs(paired) {
+  connected = paired;
+  for (const key of ['welcome','connect']) {
+    const tab = document.querySelector(`.tab[data-view="${key}"]`); if (tab) tab.disabled = paired;
+  }
+  $('btnDisconnect').classList.toggle('hidden', !paired);
   ['dash', 'setup', 'mods', 'update', 'tools'].forEach(v => {
     const b = document.querySelector(`.tab[data-view="${v}"]`);
     if (b) b.disabled = !paired;
@@ -96,7 +104,7 @@ async function findTablet(kind) {
   line.textContent = 'scanning…';
   const off = window.astos.on('scan-progress', m => { line.textContent = m; });
   try {
-    const r = await window.astos.findTablet(kind);
+    const r = await window.astos.findTablet(kind, kind === 'bluetooth' ? $('btPort').value.trim() : '');
     off();
     if (!r.ok) {
       line.textContent = r.error || 'scan failed';
@@ -108,7 +116,7 @@ async function findTablet(kind) {
       line.textContent = 'tablet found — enter the code';
       return;
     }
-    onPaired(r.info);
+    await onPaired(r.info);
   } catch (e) {
     off();
     line.textContent = String(e.message || e);
@@ -144,12 +152,18 @@ window.astos.on('link-dead', info => {
 });
 
 async function onPaired(info) {
-  THE_TABLET.name = info.name || '';
-  THE_TABLET.ver = info.ver || '';
+  const state = await rpc('info');
+  THE_TABLET.name = state.name || info?.name || '';
+  THE_TABLET.ver = state.ver || info?.ver || '';
+  // Device state is authoritative, not whichever welcome button was clicked.
+  setupRequired = state.setupDone !== true;
   enableTabs(true);
-  showView(setupMode ? 'setup' : 'dash');
-  if (setupMode) loadSetup(); else loadDash();
+  showView(setupRequired ? 'setup' : 'dash');
+  if (setupRequired) await loadSetup(); else await loadDash();
 }
+$('btnDisconnect').onclick = async () => {
+  await window.astos.disconnect(); enableTabs(false); showView('connect');
+};
 
 // ------------------------------------------------------------ dashboard
 
@@ -198,6 +212,19 @@ $('btnSpotify').onclick = async () => {
 };
 
 async function loadSetup() {
+  try {
+    const cur = await rpc('setup.get');
+    $('city').value = cur.city || '';
+    $('groq').value = cur.groq || '';
+    $('haUrl').value = cur.haUrl || '';
+    $('haToken').value = cur.haToken || '';
+    $('h24').checked = cur.h24 !== false;
+    $('kiosk').checked = cur.kiosk !== false;
+    $('keepScreen').checked = cur.keepScreen !== false;
+    if (cur.name) $('dashTitle').textContent = cur.name;
+    if (THEMES.some(t => t.key === cur.theme)) pickedTheme = cur.theme;
+    [...$('themeGrid').children].forEach(c => c.classList.toggle('sel', c.dataset.key === pickedTheme));
+  } catch (e) { status('setupStatus', 'Could not load tablet settings: ' + e.message, 'err'); }
   // wifi list from the tablet's own radio
   try {
     const nets = await rpc('wifi.list', {}, 30000);
@@ -221,15 +248,6 @@ async function loadSetup() {
       });
       list.appendChild(row);
     });
-    const cur = await rpc('setup.get');
-    $('city').value = cur.city || '';
-    $('groq').value = cur.groq || '';
-    $('haUrl').value = cur.haUrl || '';
-    $('haToken').value = cur.haToken || '';
-    $('h24').checked = cur.h24 !== false;
-    $('kiosk').checked = cur.kiosk !== false;
-    $('keepScreen').checked = cur.keepScreen !== false;
-    if (cur.name) $('dashTitle').textContent = cur.name;
   } catch (e) {
     status('setupStatus', 'wifi list failed: ' + e.message, 'err');
   }
@@ -282,6 +300,7 @@ $('btnJoin').addEventListener('click', async () => {
     }
     status('setupStatus', 'finishing setup…', 'ok');
     await rpc('setup.finish', { ssid, pass });
+    setupRequired = false; showView('dash'); await loadDash();
     status('setupStatus', 'done — watch the tablet finish by itself', 'ok');
   } catch (e) {
     status('setupStatus', e.message, 'err');
@@ -302,6 +321,7 @@ $('btnFinishNoWifi').addEventListener('click', async () => {
       keepScreen: $('keepScreen').checked
     });
     await rpc('setup.finish', {});
+    setupRequired = false; showView('dash'); await loadDash();
     status('setupStatus', 'done — the tablet finishes on its own', 'ok');
   } catch (e) {
     status('setupStatus', e.message, 'err');
@@ -499,3 +519,6 @@ spawnMotes();
 spawnLogoBlocks();
 themeRow();
 enableTabs(false);
+
+// Resume only an already trusted tablet; first-time pairing still requires its code.
+if (window.astos.resume) window.astos.resume().then(r => { if (r.ok && r.needCode) { showView('connect'); $('codeOverlay').classList.remove('hidden'); $('codeInput').focus(); } else if (r.ok) return onPaired(r.info); }).catch(e => { $('btProgress').textContent = e.message; });

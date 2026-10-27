@@ -13,12 +13,14 @@ const { makeFrame, parseFrame } = require('./protocol');
 
 const APP_VERSION = require('../package.json').version;
 let win = null;
+let authenticated = false;
 let session = null;          // LinkSession
 let paired = { token: '', name: '', ver: '' };
 let spotifyBridge;
 let pcTimer;
 let pcBusy = false;
 let pairBusy = false;
+let pendingPair = {};
 const handledPc = new Map();
 const pendingPc = new Set();
 function persistPair() {
@@ -40,11 +42,11 @@ async function init() {
   pcTimer = setInterval(pollPc, 750);
 }
 async function pollPc() {
-  if (pcBusy || !session) return;
+  if (pcBusy || !session || !authenticated) return;
   pcBusy = true;
   const active = session;
   try {
-    const commands = await active.call(null, 'pc.poll', {spotify: !!spotifyBridge?.connected}, 5000);
+    const commands = await active.call(null, 'pc.poll', {spotify: !!spotifyBridge?.connected, state: spotifyBridge?.connected ? spotifyBridge.state : {available:false}}, 5000);
     spotifyBridge.tabletSeen = Date.now();
     for (const command of commands || []) {
       const result = handledPc.get(command.id);
@@ -102,6 +104,7 @@ function send(channel, payload) {
 function dieSession(reason) {
   if (!session) return;
   session = null;
+  authenticated = false;
   spotifyBridge?.disconnect();
   send('link-dead', { reason: reason || 'connection lost' });
 }
@@ -131,9 +134,11 @@ async function tryHello(s, token) {
   }
 }
 
-ipcMain.handle('find-tablet', async (ev, kind) => {
+async function findTablet(ev, kind, portPath) {
+  if (authenticated && session) return {ok:true, info:await session.call(null, 'info', {}, 5000)};
   if (pairBusy) return {ok: false, error: 'A scan is already running'};
   pairBusy = true;
+  pendingPair = {via:kind,port:portPath || ''};
   try {
     if (session) { const old = session; session = null; old.onDead = null; old.close(); }
     if (kind === 'usb') {
@@ -145,12 +150,14 @@ ipcMain.handle('find-tablet', async (ev, kind) => {
       { const active = session; session.onDead = () => { if (session === active) dieSession(); }; }
       const r = await tryHello(session, paired.token);
       if (r.needCode) return { ok: true, needCode: true };
-      paired.token = r.token || paired.token;
+      authenticated = true;
+      paired = {...paired, token:r.token || paired.token, name:r.name, ver:r.ver, via:kind, port:portPath || ''};
       persistPair();
       send('paired', { name: r.name, ver: r.ver, via: 'USB' });
       return { ok: true, info: r };
     } else {
-      const s = await T.findBluetoothTablet(m => send('scan-progress', String(m)));
+      if (portPath && !/^COM\d+$/i.test(portPath)) throw new Error('Enter an outgoing Bluetooth COM port such as COM7');
+      const s = portPath ? await T.probeCom(portPath) : await T.findBluetoothTablet(m => send('scan-progress', String(m)));
       if (!s) {
         return { ok: false, error: 'no AstOS tablet found.\n\n1. On the tablet: Settings -> Bluetooth ON (it turns itself\n   on during setup).\n2. In Windows Bluetooth settings: Add device -> the tablet\n   named "AstSetup_xxxx" (or its normal name after setup).\n   Pair it — Windows then creates its serial COM port.\n3. Press SCAN again.' };
       }
@@ -158,7 +165,8 @@ ipcMain.handle('find-tablet', async (ev, kind) => {
       { const active = session; session.onDead = () => { if (session === active) dieSession(); }; }
       const r = await tryHello(session, paired.token);
       if (r.needCode) return { ok: true, needCode: true };
-      paired.token = r.token || paired.token;
+      authenticated = true;
+      paired = {...paired, token:r.token || paired.token, name:r.name, ver:r.ver, via:kind, port:portPath || ''};
       persistPair();
       send('paired', { name: r.name, ver: r.ver, via: 'Bluetooth' });
       return { ok: true, info: r };
@@ -166,13 +174,27 @@ ipcMain.handle('find-tablet', async (ev, kind) => {
   } catch (e) {
     return { ok: false, error: String(e.message || e) };
   } finally { pairBusy = false; }
+}
+ipcMain.handle('find-tablet', findTablet);
+ipcMain.handle('resume-pairing', async () => {
+  if (authenticated && session) return {ok:true,info:await session.call(null,'info',{},5000)};
+  if (!paired.token) return {ok:false,error:'No saved tablet'};
+  const first = await findTablet(null, paired.via || 'usb', paired.port || '');
+  if (first.ok) return first;
+  return findTablet(null, paired.via === 'usb' ? 'bluetooth' : 'usb');
+});
+ipcMain.handle('disconnect-tablet', () => {
+  const old = session; if (old) { old.onDead = null; old.close(); }
+  session = null; authenticated = false; spotifyBridge?.disconnect();
+  return {ok:true};
 });
 
 ipcMain.handle('auth', async (ev, code) => {
   if (!session) return { ok: false, error: 'not connected' };
   try {
     const r = await session.call(null, 'auth', { code }, 10000);
-    paired.token = r.token;
+    authenticated = true;
+    paired = {...paired, ...pendingPair, token:r.token, name:r.name, ver:r.ver};
     persistPair();
     send('paired', { name: r.name, ver: r.ver, via: session.label });
     return { ok: true, info: r };
