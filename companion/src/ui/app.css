@@ -21,7 +21,7 @@
   --bg: #efe7d8;
   --panel: #f8f2e4;
   --ink: #2a241c;
-  --soft: #9a8d78;
+  --soft: #70614e;
   --accent: #c4742a;
   --on: #cfdca6;
   --shadow: #d9ccb2;
@@ -455,3 +455,18 @@ footer.foot {
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-thumb { background: var(--shadow); border: 2px solid var(--ink); }
 ::-webkit-scrollbar-track { background: var(--bg); }
+
+/* No page/window entrance motion. Keep chrome responsive at minimum window size. */
+.view { animation:none; }
+header.top {flex-wrap:wrap;}
+.tabs {flex-wrap:wrap;min-width:0;}
+.pairgrid {grid-template-columns:repeat(auto-fit,minmax(280px,1fr));}
+input,button {max-width:100%;}
+@media(max-width:600px){header.top{gap:8px;padding:10px;}main#views{padding:14px;} .wordmark{font-size:26px;} .tabs{order:3;flex-basis:100%;} .pairgrid{grid-template-columns:1fr;}}
+
+button.bigbtn,.tab.on {color:var(--ink);}
+.pairgrid .card input {margin-bottom:14px;}
+.pairgrid .card button.ghost {display:block;border:2px solid var(--ink);padding:9px 12px;background:var(--panel);color:var(--ink);text-decoration:none;margin:0 0 12px;}
+/* Text on terracotta must meet AA, not inherit pale icon foregrounds. */
+button.bigbtn,.tab.on {color:#000;}
+.accent {color:#8a4410;}

@@ -53,6 +53,9 @@ public class SettingsActivity extends Activity {
         // our own keyboard — never relies on the (vanishing) system IME
         mKb = PixelKeyboard.attach(this, mHaUrl, mHaToken, mCity, mGroq);
 
+        findViewById(R.id.editCardsBtn).setOnClickListener(v->DashboardCards.choose(this,null));
+        findViewById(R.id.animationBtn).setOnClickListener(v->new com.astos.link.PixelUi.Builder(this).setTitle("Backdrop animation").setSingleChoiceItems(new String[]{"Off","Slow drift","Drift","Fast drift","Rain","Custom…"},AppSettings.backdropMode(this),(d,w)->{d.dismiss();if(w==5)BackdropSettings.show(this);else AppSettings.setBackdropMode(this,w);}).show());
+        findViewById(R.id.playbackTargetBtn).setOnClickListener(v->new com.astos.link.PixelUi.Builder(this).setTitle("Default playback").setItems(new String[]{"PC when connected (automatic)","Tablet / selected speaker"},(d,w)->{PcPlayback.preferLocal(this,w==1);}).show());
         buildThemeRow();
         bindSwitches();
         bindSystemButtons();
@@ -241,7 +244,7 @@ public class SettingsActivity extends Activity {
         findViewById(R.id.audioOutputBtn).setOnClickListener(v -> AudioOutput.choose(this));
         findViewById(R.id.voiceModelBtn).setOnClickListener(v -> {
             String[] options = {"Offline Vosk (continuous)", "Groq Whisper large v3 turbo (sends audio to Groq)"};
-            new android.app.AlertDialog.Builder(this).setTitle("Speech recognition")
+            new com.astos.link.PixelUi.Builder(this).setTitle("Speech recognition")
                 .setItems(options, (d, which) -> {
                     if (which == 1 && AiProviders.speechKey(this).isEmpty()) {
                         Toast.makeText(this, "Save a Groq key first", Toast.LENGTH_LONG).show(); return;

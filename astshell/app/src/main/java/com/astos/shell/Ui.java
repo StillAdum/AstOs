@@ -43,12 +43,12 @@ public final class Ui {
 
     public static final Map<String, Th> THEMES = new LinkedHashMap<String, Th>();
     static {
-        THEMES.put("dune",   new Th("dune",   "Dune",   0xFFEFE7D8, 0xFFF8F2E4, 0xFF2A241C, 0xFF9A8D78, 0xFFC4742A, 0xFFCFDCA6, 0xFFDFD3BD, 0xFFD9CCB2, 0xFFF8F2E4));
-        THEMES.put("forest", new Th("forest", "Forest", 0xFFE6EAD8, 0xFFF2F4E6, 0xFF1F2819, 0xFF7C8C6A, 0xFF8A5A22, 0xFFBCD69A, 0xFFD3DBC0, 0xFFCBD4B4, 0xFFF2F4E6));
-        THEMES.put("rust",   new Th("rust",   "Rust",   0xFFF0E2D6, 0xFFF9EEE4, 0xFF2B1C15, 0xFF957462, 0xFFB9481F, 0xFFF0C9A0, 0xFFE2CDBB, 0xFFE0C6B0, 0xFFF9EEE4));
-        THEMES.put("mono",   new Th("mono",   "Mono",   0xFFE9E8E3, 0xFFF6F5F0, 0xFF1C1C1C, 0xFF8C8C88, 0xFF2E2E2E, 0xFFC9C9C2, 0xFFDDDCD6, 0xFFD3D2CC, 0xFFF6F5F0));
-        THEMES.put("ember",  new Th("ember",  "Ember",  0xFF15110D, 0xFF1E1812, 0xFFEFE2CB, 0xFF8A7B62, 0xFFE39A48, 0xFF4A421F, 0xFF2B241B, 0xFF0D0A07, 0xFF15110D));
-        THEMES.put("pine",   new Th("pine",   "Pine",   0xFF101510, 0xFF182118, 0xFFE3EAD6, 0xFF7D8D72, 0xFFD2A94F, 0xFF2F4A28, 0xFF223022, 0xFF0A0E0A, 0xFF101510));
+        THEMES.put("dune",   new Th("dune",   "Dune",   0xFFEFE7D8, 0xFFF8F2E4, 0xFF2A241C, 0xFF70614E, 0xFFC4742A, 0xFFCFDCA6, 0xFFDFD3BD, 0xFFD9CCB2, 0xFFF8F2E4));
+        THEMES.put("forest", new Th("forest", "Forest", 0xFFE6EAD8, 0xFFF2F4E6, 0xFF1F2819, 0xFF536146, 0xFF8A5A22, 0xFFBCD69A, 0xFFD3DBC0, 0xFFCBD4B4, 0xFFF2F4E6));
+        THEMES.put("rust",   new Th("rust",   "Rust",   0xFFF0E2D6, 0xFFF9EEE4, 0xFF2B1C15, 0xFF775443, 0xFFB9481F, 0xFFF0C9A0, 0xFFE2CDBB, 0xFFE0C6B0, 0xFFF9EEE4));
+        THEMES.put("mono",   new Th("mono",   "Mono",   0xFFE9E8E3, 0xFFF6F5F0, 0xFF1C1C1C, 0xFF62625E, 0xFF2E2E2E, 0xFFC9C9C2, 0xFFDDDCD6, 0xFFD3D2CC, 0xFFF6F5F0));
+        THEMES.put("ember",  new Th("ember",  "Ember",  0xFF15110D, 0xFF1E1812, 0xFFEFE2CB, 0xFFC0AE91, 0xFFE39A48, 0xFF4A421F, 0xFF2B241B, 0xFF0D0A07, 0xFF15110D));
+        THEMES.put("pine",   new Th("pine",   "Pine",   0xFF101510, 0xFF182118, 0xFFE3EAD6, 0xFFAFBEA3, 0xFFD2A94F, 0xFF2F4A28, 0xFF223022, 0xFF0A0E0A, 0xFF101510));
     }
 
     public static Th cur = THEMES.get("dune");
@@ -80,6 +80,7 @@ public final class Ui {
         return sMonoB;
     }
 
+    public static int onAccent(){double sum=0;int[] shifts={16,8,0};double[] weights={.2126,.7152,.0722};for(int i=0;i<3;i++){double x=((cur.accent>>shifts[i])&255)/255.0;sum+=(x<=.04045?x/12.92:Math.pow((x+.055)/1.055,2.4))*weights[i];}return sum>.179?0xff000000:0xffffffff;}
     public static int dp(Context c, int v) {
         return Math.round(v * c.getResources().getDisplayMetrics().density);
     }
@@ -163,11 +164,13 @@ public final class Ui {
         if (cur == null) cur = THEMES.get("dune");
         sAppliedKey = cur.key;
         Window w = a.getWindow();
-        if (w != null) w.setBackgroundDrawable(new ColorDrawable(cur.bg));
+        if (w != null) {w.setBackgroundDrawable(new ColorDrawable(cur.bg));w.setWindowAnimations(0);w.setNavigationBarColor(0xff2a241c);}
         if (root != null) walk(a, root);
     }
 
     private static void walk(Context c, View v) {
+        if(v instanceof android.widget.Button && !(v instanceof android.widget.CompoundButton))new com.astos.link.PixelUi(c).control((TextView)v);
+        else if(v instanceof TextView){((TextView)v).setTextColor(cur.ink);((TextView)v).setHintTextColor(cur.soft);}
         Object tag = v.getTag();
         if (tag instanceof String) applyTokens(c, v, (String) tag);
         if (v instanceof ViewGroup) {
@@ -182,7 +185,7 @@ public final class Ui {
                 Drawable d = d(c, tok.substring(2));
                 if (d != null) v.setBackgroundDrawable(d);
             } else if (tok.startsWith("t:") && v instanceof TextView) {
-                ((TextView) v).setTextColor(col(tok.substring(2)));
+                ((TextView) v).setTextColor("accent".equals(tok.substring(2)) ? cur.ink : col(tok.substring(2)));
             } else if (tok.startsWith("f:") && v instanceof TextView) {
                 ((TextView) v).setTypeface(font(c, tok.substring(2)));
             } else if (tok.startsWith("i:") && v instanceof ImageView) {

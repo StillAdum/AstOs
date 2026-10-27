@@ -2,10 +2,9 @@
 # The kernel ships with CONFIG_ZRAM=y and CONFIG_SWAP=y.
 
 on post-fs
-    # Kiosk: no Android navigation bar, ever. PhoneWindowManager reads this
-    # property before SystemUI/system_server come up, and it wins over both
-    # the framework config_showNavigationBar and the device tree's value.
-    setprop qemu.hw.mainkeys 1
+    # This tablet has no physical Back/Home keys. Keep the AstOS-styled
+    # navigation strip available in every app; never strand users in a screen.
+    setprop qemu.hw.mainkeys 0
 
     write /sys/block/zram0/disksize 801112064
     exec -- /system/bin/toybox mkswap /dev/block/zram0
