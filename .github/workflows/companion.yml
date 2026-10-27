@@ -41,12 +41,23 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Set up .NET 8 (real audio analyzer)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build audio analyzer
+        shell: bash
+        run: dotnet publish companion/audio-helper/AstAudio.csproj -c Release -o companion/resources/audio
+
       - name: Install + test
         shell: bash
         working-directory: companion
         run: |
           npm ci --no-audit --no-fund
           npm test
+          python ../tests/static33.py
+          python ../tests/ui34.py
           bash ../scripts/test-ai.sh
           npx electron test/renderer-smoke.js
 
