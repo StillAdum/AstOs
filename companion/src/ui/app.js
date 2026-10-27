@@ -94,17 +94,18 @@ document.addEventListener('click', ev => {
 
 // ------------------------------------------------------------ connect
 
+$('btnWifi').addEventListener('click',()=>findTablet('wifi'));
 $('btnUsb').addEventListener('click', () => findTablet('usb'));
 $('btnBt').addEventListener('click', () => findTablet('bluetooth'));
 
 async function findTablet(kind) {
-  const card = kind === 'usb' ? $('usbCard') : $('btCard');
-  const line = kind === 'usb' ? $('usbProgress') : $('btProgress');
+  const card = $(kind === 'usb' ? 'usbCard' : kind === 'wifi' ? 'wifiCard' : 'btCard');
+  const line = $(kind === 'usb' ? 'usbProgress' : kind === 'wifi' ? 'wifiProgress' : 'btProgress');
   card.classList.add('scanning');
   line.textContent = 'scanning…';
   const off = window.astos.on('scan-progress', m => { line.textContent = m; });
   try {
-    const r = await window.astos.findTablet(kind, kind === 'bluetooth' ? $('btPort').value.trim() : '');
+    const r = await window.astos.findTablet(kind, kind === 'wifi' ? $('wifiHost').value.trim() : kind === 'bluetooth' ? $('btPort').value.trim() : '', kind === 'wifi' ? $('wifiPairCode').value.trim() : '');
     off();
     if (!r.ok) {
       line.textContent = r.error || 'scan failed';
@@ -144,6 +145,7 @@ $('codeInput').addEventListener('keydown', e => {
 window.astos.on('paired', info => {
   THE_TABLET.name = info.name || '';
   THE_TABLET.ver = info.ver || '';
+  if(info.reconnected)onPaired(info).catch(e=>status('setupStatus',e.message,'err'));
 });
 window.astos.on('link-dead', info => {
   enableTabs(false);
@@ -162,7 +164,7 @@ async function onPaired(info) {
   if (setupRequired) await loadSetup(); else await loadDash();
 }
 $('btnDisconnect').onclick = async () => {
-  await window.astos.disconnect(); enableTabs(false); showView('connect');
+  await window.astos.disconnect(); enableTabs(false); for(const id of ['usbProgress','btProgress','wifiProgress'])$(id).textContent=''; showView('connect');
 };
 
 // ------------------------------------------------------------ dashboard
@@ -522,3 +524,7 @@ enableTabs(false);
 
 // Resume only an already trusted tablet; first-time pairing still requires its code.
 if (window.astos.resume) window.astos.resume().then(r => { if (r.ok && r.needCode) { showView('connect'); $('codeOverlay').classList.remove('hidden'); $('codeInput').focus(); } else if (r.ok) return onPaired(r.info); }).catch(e => { $('btProgress').textContent = e.message; });
+
+if(window.astos.audioVisualizer){window.astos.audioVisualizer().then(s=>{$('audioVisualizer').checked=s.enabled;}).catch(()=>{});$('audioVisualizer').onchange=async()=>{const state=await window.astos.audioVisualizer($('audioVisualizer').checked);if(state.error)$('btProgress').textContent=state.error;};}
+
+$('btnBluetoothSettings').onclick=()=>window.astos.bluetoothSettings?.();

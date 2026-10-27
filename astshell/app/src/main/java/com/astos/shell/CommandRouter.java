@@ -41,6 +41,7 @@ public final class CommandRouter {
         void askGroq(String question);              // assistant fallback
         void whatsPlaying();
         default void pcAction(String action, String query, boolean sticky) {}
+        default String playbackTarget(boolean pc){return pc?"Playback set to PC":"Playback set to tablet";}
         default boolean pcSelected() { return false; }
     }
 
@@ -52,20 +53,25 @@ public final class CommandRouter {
         if (s.isEmpty()) return null;
 
         s = s.replaceFirst("^(hey |hi )?(ast os|astos|ast)\\b[ ,]*", "").trim();
+        s=s.replaceFirst("^(?:(?:could you|can you|would you|please)\\s+)+", "");
+        if(s.matches(".*(set|switch|change).*(playback|audio|output).*(pc|computer|desktop).*"))return a.playbackTarget(true);
+        if(s.matches(".*(set|switch|change).*(playback|audio|output).*(tablet|local|speaker).*"))return a.playbackTarget(false);
+        if(s.matches(".*(on|through) (my |the )?tablet.*")){a.playbackTarget(false);s=s.replaceAll("(on|through) (my |the )?tablet", "").trim();}
         boolean explicitPc = s.matches(".*\\b(pc|computer|desktop)\\b.*");
         boolean stickyPc = s.contains("until") && s.contains("disconnect");
-        if (explicitPc || a.pcSelected()) {
+        if ((explicitPc || a.pcSelected()) && !s.contains("timer")) {
             String action = null;
-            if (s.contains("next") || s.contains("skip")) action = "next";
-            else if (s.contains("previous") || s.contains("last song")) action = "previous";
+            if (s.startsWith("next") || s.startsWith("skip") || s.startsWith("play next")) action = "next";
+            else if (s.startsWith("previous") || s.startsWith("last song") || s.startsWith("play previous")) action = "previous";
             else if (s.startsWith("pause") || s.startsWith("stop")) action = "pause";
             else if (s.startsWith("resume")) action = "resume";
-            else if (s.startsWith("play") || s.startsWith("put on")) action = "play";
+            else if (s.startsWith("play") || s.startsWith("put on") || s.startsWith("i want to hear")) action = "play";
             if (action != null) {
-                String query = s.replaceFirst("^(play|put on)\\s*", "")
+                String query = s.replaceFirst("^(play|put on|i want to hear)\\s*", "")
                     .replaceAll("\\b(on|in|through|thru|thrugh) (my |the )?(pc|computer|desktop)\\b", "")
                     .replaceAll("\\b(on |in )?spotify\\b", "")
                     .replaceAll("until.*disconnect.*", "").trim();
+                query=query.replaceFirst("^(the )?(song|track)\\s+", "");
                 if (query.matches("(some |my )?(music|songs|song)?")) query = "";
                 a.pcAction(action, query, stickyPc || a.pcSelected());
                 return null;

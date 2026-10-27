@@ -40,6 +40,7 @@ public class MusicEngine extends Service {
     public static final String EXTRA_QUERY = "query";
 
     private static MusicEngine sInstance;
+    public static int audioSession(){try{return sInstance!=null&&sInstance.mPlayer!=null?sInstance.mPlayer.getAudioSessionId():-1;}catch(Exception e){return -1;}}
     public static void refreshOutput() {
         MusicEngine s = sInstance;
         if (s != null && s.mPlayer != null) AudioOutput.apply(s, s.mPlayer);
