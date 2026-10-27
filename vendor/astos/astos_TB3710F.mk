@@ -36,7 +36,7 @@ PRODUCT_PACKAGES += \
 # --- Behaviour tuning --------------------------------------------------------
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.astos.version=3.3.0 \
+    ro.astos.version=3.4.0 \
     ro.astos.device=TB3-710F \
     ro.config.low_ram=true
 

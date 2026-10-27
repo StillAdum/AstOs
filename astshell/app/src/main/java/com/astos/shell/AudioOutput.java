@@ -17,7 +17,7 @@ public final class AudioOutput {
         AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
         String[] labels = new String[devices.length + 1]; labels[0] = "Automatic (system routing)";
         for (int i = 0; i < devices.length; i++) labels[i + 1] = devices[i].getProductName() + " · " + type(devices[i].getType());
-        new AlertDialog.Builder(a).setTitle("Music playback device")
+        new com.astos.link.PixelUi.Builder(a).setTitle("Music playback device")
             .setItems(labels, (d, i) -> {
                 a.getSharedPreferences("audio", 0).edit().putString("device", i == 0 ? "" : key(devices[i - 1])).apply();
                 MusicEngine.refreshOutput();

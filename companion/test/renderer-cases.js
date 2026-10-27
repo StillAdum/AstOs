@@ -11,7 +11,7 @@ module.exports = async function cases(run) {
  await wait("document.getElementById('spotifyToken').textContent==='test-token'");
  await run("document.getElementById('btnDisconnect').click()");
  await wait("!!document.querySelector('#v-connect.on')");
- await run("document.getElementById('btnExisting').click();document.getElementById('btnUsb').click()");
+ await run("document.getElementById('btnExisting').click();document.getElementById('wifiHost').value='192.168.1.5';document.getElementById('wifiPairCode').value='123456';document.getElementById('btnWifi').click()");
  // Fixture now represents an unfinished tablet: Existing must still go to setup.
  await wait("!!document.querySelector('#v-setup.on #netList .netrow')");
  await check("!document.querySelector('#netList img')",'SSID injected HTML');

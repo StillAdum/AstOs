@@ -23,7 +23,7 @@ const assert=require('node:assert/strict');
  assert.equal(snapshots.at(-1).title,'Test title');assert.equal(snapshots.at(-1).artist,'Test artist');assert.equal(snapshots.at(-1).positionMs,321);assert.equal(typeof events.songchange,'function');
  assert.deepEqual(actions,['spotify:track:test']);assert.equal(results[0].ok,true);
  await tick();assert.equal(actions.length,1,'Repeated poll must not replay song');
- state={tabletConnected:false,commands:[]};now+=16000;await tick();
+ state={tabletConnected:false,commands:[]};now+=46000;await tick();
  assert.equal(actions.at(-1),'pause','Sticky playback must pause after tablet disconnect');
  state={tabletConnected:true,commands:[{id:'2',action:'shell'}]};await tick();assert.equal(results.at(-1).ok,false);
  state={tabletConnected:true,commands:[{id:'3',action:'volset',query:75}]};await tick();assert.equal(actions.at(-1),0.75);

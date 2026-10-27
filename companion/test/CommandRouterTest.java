@@ -25,7 +25,12 @@ public class CommandRouterTest {
         test("pause", "mediaAction", "pause", 0); // route returns spoken message too
         sticky = true;
         test("next song", "pcAction", "next", "next song", true);
+        test("please play bohemian rhapsody", "pcAction", "play", "bohemian rhapsody", true);
+        test("stop timer", "cancelTimer");
+        test("set playback to my pc", "playbackTarget", true);
+        test("set playback to tablet", "playbackTarget", false);
         sticky = false;
+        test("could you play despacito", "playSong", "despacito");
         test("android settings", "openSettings");
         System.out.println("COMMAND ROUTER PASS");
     }

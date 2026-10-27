@@ -14,10 +14,10 @@ public final class TextEntry {
     public interface Result { void entered(String value); }
     private TextEntry() {}
     public static void show(Activity a, String title, String initial, boolean secret, Result result) {
-        LinearLayout body = new LinearLayout(a); body.setOrientation(1); body.setPadding(12,4,12,4);
+        LinearLayout body = new LinearLayout(a); body.setOrientation(1); body.setPadding(PixelUi.dp(a,12),PixelUi.dp(a,8),PixelUi.dp(a,12),PixelUi.dp(a,8));
         EditText field = new EditText(a); field.setSingleLine(true); field.setText(initial == null ? "" : initial);
         field.setInputType(InputType.TYPE_CLASS_TEXT | (secret ? InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS));
-        field.setShowSoftInputOnFocus(false); body.addView(field, new LinearLayout.LayoutParams(-1,48));
+        field.setShowSoftInputOnFocus(false); body.addView(field, new LinearLayout.LayoutParams(-1,PixelUi.dp(a,48)));
         LinearLayout keys = new LinearLayout(a); keys.setOrientation(1); body.addView(keys);
         boolean[] shift = {false}, symbols = {false};
         Runnable[] draw = new Runnable[1];
@@ -32,13 +32,13 @@ public final class TextEntry {
                 LinearLayout line = new LinearLayout(a); keys.addView(line);
                 for (char ch : row.toCharArray()) {
                     String text = shift[0] ? String.valueOf(ch).toUpperCase(java.util.Locale.US) : String.valueOf(ch);
-                    TextView key = key(a,text); line.addView(key,new LinearLayout.LayoutParams(0,38,1));
+                    TextView key = key(a,text); line.addView(key,new LinearLayout.LayoutParams(0,PixelUi.dp(a,44),1));
                     key.setOnClickListener(v -> insert.accept(text));
                 }
             }
             LinearLayout last = new LinearLayout(a); keys.addView(last);
             for (String label : new String[]{"Shift","Symbols","Space","Delete","Paste"}) {
-                TextView key=key(a,label);last.addView(key,new LinearLayout.LayoutParams(0,38,1));
+                TextView key=key(a,label);last.addView(key,new LinearLayout.LayoutParams(0,PixelUi.dp(a,44),1));
                 key.setOnClickListener(v -> {
                     if (label.equals("Shift")) {shift[0]=!shift[0];draw[0].run();}
                     else if(label.equals("Symbols")){symbols[0]=!symbols[0];draw[0].run();}
@@ -54,13 +54,13 @@ public final class TextEntry {
             }
         };
         draw[0].run();
-        AlertDialog dialog = new AlertDialog.Builder(a).setTitle(title).setView(body)
+        AlertDialog dialog = new com.astos.link.PixelUi.Builder(a).setTitle(title).setView(body)
             .setPositiveButton("Use text",(d,w)->result.entered(field.getText().toString())).setNegativeButton("Cancel",null).create();
-        dialog.setOnShowListener(d->{field.requestFocus();field.setSelection(field.length());dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);});
+        dialog.setOnShowListener(d->{PixelUi.decorate(dialog);field.requestFocus();field.setSelection(field.length());dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);});
         dialog.show();
-        dialog.getWindow().setLayout(Math.min(a.getResources().getDisplayMetrics().widthPixels-24,900),ViewGroup.LayoutParams.WRAP_CONTENT);
+        dialog.getWindow().setLayout(Math.min(a.getResources().getDisplayMetrics().widthPixels-PixelUi.dp(a,24),PixelUi.dp(a,820)),ViewGroup.LayoutParams.WRAP_CONTENT);
     }
     private static TextView key(Activity a,String text){
-        TextView v=new TextView(a);v.setText(text);v.setTextSize(15);v.setGravity(Gravity.CENTER);v.setTextColor(Color.rgb(42,36,28));v.setBackgroundColor(Color.rgb(239,231,216));v.setFocusable(false);return v;
+        TextView v=new TextView(a);v.setText(text);v.setTextSize(15);v.setGravity(Gravity.CENTER);new PixelUi(a).control(v);v.setPadding(0,0,0,0);v.setFocusable(false);return v;
     }
 }

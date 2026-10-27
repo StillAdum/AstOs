@@ -26,12 +26,12 @@ public final class AsciiTheme {
     }
 
     public static final Palette[] PALETTES = {
-            new Palette("dune",   0xFF2A241C, 0xFF9A8D78, 0xFFC4742A, 0xFFEFE7D8, 0xFFF8F2E4, 0xFFCFDCA6, "DOTS"),
-            new Palette("forest", 0xFF1F2819, 0xFF7C8C6A, 0xFF8A5A22, 0xFFE6EAD8, 0xFFF2F4E6, 0xFFBCD69A, "DOTS"),
-            new Palette("rust",   0xFF2B1C15, 0xFF957462, 0xFFB9481F, 0xFFF0E2D6, 0xFFF9EEE4, 0xFFF0C9A0, "DOTS"),
-            new Palette("mono",   0xFF1C1C1C, 0xFF8C8C88, 0xFF2E2E2E, 0xFFE9E8E3, 0xFFF6F5F0, 0xFFC9C9C2, "DOTS"),
-            new Palette("ember",  0xFFEFE2CB, 0xFF8A7B62, 0xFFE39A48, 0xFF15110D, 0xFF1E1812, 0xFF4A421F, "DOTS"),
-            new Palette("pine",   0xFFE3EAD6, 0xFF7D8D72, 0xFFD2A94F, 0xFF101510, 0xFF182118, 0xFF2F4A28, "DOTS"),
+            new Palette("dune",   0xFF2A241C, 0xFF70614E, 0xFFC4742A, 0xFFEFE7D8, 0xFFF8F2E4, 0xFFCFDCA6, "DOTS"),
+            new Palette("forest", 0xFF1F2819, 0xFF536146, 0xFF8A5A22, 0xFFE6EAD8, 0xFFF2F4E6, 0xFFBCD69A, "DOTS"),
+            new Palette("rust",   0xFF2B1C15, 0xFF775443, 0xFFB9481F, 0xFFF0E2D6, 0xFFF9EEE4, 0xFFF0C9A0, "DOTS"),
+            new Palette("mono",   0xFF1C1C1C, 0xFF62625E, 0xFF2E2E2E, 0xFFE9E8E3, 0xFFF6F5F0, 0xFFC9C9C2, "DOTS"),
+            new Palette("ember",  0xFFEFE2CB, 0xFFC0AE91, 0xFFE39A48, 0xFF15110D, 0xFF1E1812, 0xFF4A421F, "DOTS"),
+            new Palette("pine",   0xFFE3EAD6, 0xFFAFBEA3, 0xFFD2A94F, 0xFF101510, 0xFF182118, 0xFF2F4A28, "DOTS"),
     };
 
     /** legacy bg modes kept for compatibility; DOTS is the pixel default */

@@ -19,19 +19,21 @@ public final class PcPlayback {
         if (link == null || !link.pcReady()) sticky = false;
         return sticky;
     }
-    public static void send(Context c, String action, String query, boolean untilDisconnected) {
-        LinkServer link = LinkServer.peek();
-        if (link == null) {
-            android.widget.Toast.makeText(c, "PC companion is disconnected", android.widget.Toast.LENGTH_LONG).show();
-            if (AppSettings.speakEnabled(c)) Speak.say(c, "PC companion is disconnected"); return;
-        }
-        link.sendPc(action, query, untilDisconnected, error -> {
-            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                sticky = error == null && untilDisconnected;
-                String message = error == null ? "PC Spotify: " + action : error;
-                android.widget.Toast.makeText(c, message, android.widget.Toast.LENGTH_LONG).show();
-                if (AppSettings.speakEnabled(c)) Speak.say(c, message);
-            });
-        });
+    public interface Listener {void status(String message);}
+    private static java.lang.ref.WeakReference<Listener> listener=new java.lang.ref.WeakReference<>(null);
+    private static Listener retained;
+    public static void setListener(Listener value){retained=value;listener=new java.lang.ref.WeakReference<>(value);}
+    public static void clearListener(){retained=null;listener.clear();}
+    public static boolean available(){LinkServer s=LinkServer.peek();return s!=null&&s.pcReady();}
+    public static boolean localSelected(Context c){return c.getSharedPreferences("playback",0).getBoolean("local",false);}
+    public static void preferLocal(Context c,boolean local){c.getSharedPreferences("playback",0).edit().putBoolean("local",local).apply();sticky=!local;}
+    private static void status(String message){Listener l=listener.get();if(l!=null)l.status(message);}
+    public static void send(Context c,String action,String query,boolean untilDisconnected){
+        LinkServer link=LinkServer.peek();if(link==null){status("PC companion is disconnected");return;}
+        if(("play".equals(action)||"resume".equals(action))&&MusicEngine.isPlaying())MusicEngine.toggle(c);
+        link.sendPc(action,query,untilDisconnected,error->new android.os.Handler(android.os.Looper.getMainLooper()).post(()->{
+            if(error==null){sticky=untilDisconnected;if("play".equals(action)&&query!=null&&!query.trim().isEmpty())status("Playing "+query+" on your PC");}
+            else status(error);
+        }));
     }
 }

@@ -23,11 +23,14 @@ final class DashboardCards {
         TextView title=new TextView(a);title.setText("Plugin cards");title.setTextColor(Ui.cur.ink);pluginCard.addView(title);pluginCard.addView(plugins);
         cards.put("plugins",pluginCard);reflow();
     }
-    void edit(){
+    void edit(){choose(activity,this::reflow);}
+    static void choose(Activity activity,Runnable done){
+        SharedPreferences prefs=activity.getSharedPreferences("dashboard",0);
+        String[] keys={"clock","weather","media","home","plugins"};String[] labels={"Clock and timer","Weather","Now playing","Home controls","Plugin cards"};
         boolean[] selected=new boolean[keys.length];for(int i=0;i<keys.length;i++)selected[i]=prefs.getBoolean(keys[i],true);
-        new AlertDialog.Builder(activity).setTitle("Dashboard cards")
+        new com.astos.link.PixelUi.Builder(activity).setTitle("Dashboard cards")
             .setMultiChoiceItems(labels,selected,(d,w,on)->selected[w]=on)
-            .setPositiveButton("Apply",(d,w)->{SharedPreferences.Editor e=prefs.edit();for(int i=0;i<keys.length;i++)e.putBoolean(keys[i],selected[i]);e.apply();reflow();})
+            .setPositiveButton("Apply",(d,w)->{SharedPreferences.Editor e=prefs.edit();for(int i=0;i<keys.length;i++)e.putBoolean(keys[i],selected[i]);e.apply();if(done!=null)done.run();})
             .setNegativeButton("Cancel",null).show();
     }
     void reflow(){

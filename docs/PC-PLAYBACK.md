@@ -7,7 +7,7 @@ The tablet controls Spotify running on the PC; audio plays through the PC's sele
 1. Install Spicetify using its official instructions, and ensure Spotify works normally first.
 2. Copy `spicetify/astos.js` from this repository into your Spicetify `Extensions` directory (`spicetify config-dir` shows the config directory).
 3. Run `spicetify config extensions astos.js` and `spicetify apply`, then restart Spotify.
-4. Open AstOS Companion and pair the tablet over Bluetooth or USB. On the dashboard select **show Spotify pairing token**.
+4. Open AstOS Companion 1.4.0 and pair the tablet over Wi-Fi (or use Bluetooth/USB for initial setup). Closing the Companion window hides it to the tray; use Quit in the tray to stop the bridge. On the dashboard select **show Spotify pairing token**.
 5. In Spotify's profile menu, select **AstOS: pair PC companion** and paste that token. Keep both Spotify and Companion open.
 
 The extension contacts only `127.0.0.1:58518`. The companion uses a random token and accepts only Spotify's UI origin. It never opens a LAN control endpoint. Treat the token as a local control credential; do not post it publicly.
@@ -19,9 +19,9 @@ The extension contacts only `127.0.0.1:58518`. The companion uses a random token
 - “Hey Ast, pause music in my PC.”
 - “Hey Ast, play songs through my PC until it is disconnected.”
 
-The last command resumes the PC's current Spotify context and makes subsequent music commands target the PC. Spotify must have an existing playable context for a query-less request. It pauses within roughly 15–25 seconds of losing the tablet/companion lease; the tablet returns to local routing after its PC heartbeat expires. An explicit PC command fails visibly if the extension is unavailable rather than silently playing on the tablet.
+The last command resumes the PC's current Spotify context and makes subsequent music commands target the PC. Spotify must have an existing playable context for a query-less request. It pauses after the background-safe disconnect grace period (up to roughly 75 seconds after tablet loss while the bridge remains reachable); the tablet returns to local routing after its PC heartbeat expires. An explicit PC command fails visibly if the extension is unavailable rather than silently playing on the tablet.
 
-Direct commands use the local parser. Groq fallback also has one constrained `pc_spotify` tool for explicit PC playback requests; it cannot run arbitrary code. Playback requests have IDs, acknowledgements, timeouts, bounded queues and per-process duplicate suppression. Do not restart the extension during an outstanding command.
+Direct commands use the local parser. Conversational provider replies do not execute arbitrary code; music/playback requests are handled by the local command router. Playback requests have IDs, acknowledgements, timeouts, bounded queues and per-process duplicate suppression. Do not restart the extension during an outstanding command.
 
 ## Tablet speakers
 
@@ -35,3 +35,7 @@ Settings → **Speech recognition** offers:
 - **Groq Whisper large v3 turbo:** opt-in; records up to eight seconds, sends the recording to Groq using your saved key, and deletes the temporary file afterward. Tap again to submit sooner. Requires internet and may incur provider usage. It is not always-on wake-word detection.
 
 No larger offline model is forced onto the 1 GB tablet. Real-device recognition quality and Spotify/Spicetify API compatibility still require testing.
+
+## 3.4 update
+
+Update the ROM, Companion and extension together. See [FOLLOWUP-3.4.md](FOLLOWUP-3.4.md) for cable-free pairing, tray operation, artwork, real output levels, privacy and hardware-validation limits.
