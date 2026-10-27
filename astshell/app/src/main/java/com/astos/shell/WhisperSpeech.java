@@ -59,7 +59,7 @@ final class WhisperSpeech {
             connection = c;
             if (cancelled) return;
             c.setConnectTimeout(10000); c.setReadTimeout(30000); c.setRequestMethod("POST"); c.setDoOutput(true);
-            c.setRequestProperty("Authorization", "Bearer " + AppSettings.groqKey(context));
+            c.setRequestProperty("Authorization", "Bearer " + AiProviders.speechKey(context));
             c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
             try (OutputStream out = c.getOutputStream()) {
                 out.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-large-v3-turbo\r\n"

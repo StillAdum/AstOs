@@ -24,7 +24,7 @@
             android:orientation="horizontal"
             android:gravity="bottom">
 
-            <LinearLayout
+            <LinearLayout android:id="@+id/clockCard"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -66,7 +66,7 @@
                     android:text=""/>
             </LinearLayout>
 
-            <LinearLayout
+            <LinearLayout android:id="@+id/weatherCard"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -138,7 +138,7 @@
                 android:orientation="horizontal">
 
                 <!-- media card -->
-                <LinearLayout
+                <LinearLayout android:id="@+id/mediaCard"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1.12"
@@ -327,7 +327,7 @@
                 </LinearLayout>
 
                 <!-- home control card -->
-                <LinearLayout
+                <LinearLayout android:id="@+id/controlCard"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -427,6 +427,13 @@
             </LinearLayout>
         </ScrollView>
 
+        <TextView android:id="@+id/heardText" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:maxLines="2" android:textSize="15sp" android:tag="t:ink" android:text="Your words appear here" android:textIsSelectable="true"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="42dp" android:orientation="horizontal">
+            <Button android:id="@+id/promptBtn" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="Type prompt"/>
+            <Button android:id="@+id/editCardsBtn" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="Dashboard cards"/>
+            <Button android:id="@+id/providersBtn" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:text="AI providers"/>
+        </LinearLayout>
         <!-- ================= dock ================= -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -459,7 +466,7 @@
                     android:id="@+id/voiceStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:maxWidth="420dp"
+                    android:maxWidth="700dp"
                     android:textSize="12sp"
                     android:textColor="@color/soft"
                     android:tag="t:soft"
