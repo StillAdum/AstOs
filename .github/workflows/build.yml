@@ -25,6 +25,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Remove merged fix branch
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/fix/setup-connectivity-pc-playback" >/dev/null 2>&1; then
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/fix/setup-connectivity-pc-playback"
+          fi
+
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
@@ -43,6 +53,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm test
+          bash ../scripts/test-ai.sh
           npx electron test/renderer-smoke.js
 
       # adb for the USB transport — bundled into resources/adb

@@ -47,6 +47,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm test
+          bash ../scripts/test-ai.sh
           npx electron test/renderer-smoke.js
 
       - name: Fetch adb (platform-tools)
