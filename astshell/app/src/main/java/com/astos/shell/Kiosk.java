@@ -71,7 +71,7 @@ public final class Kiosk {
         try {
             // framework reads this on window layout: immersive everywhere
             Settings.Global.putString(c.getContentResolver(), "policy_control",
-                    "immersive.full=*");
+                    "immersive.status=*");
         } catch (Exception ignored) {}
     }
 

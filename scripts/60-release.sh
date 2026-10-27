@@ -34,21 +34,19 @@ fi
 NOTES="$(cat <<EOF
 AstOs ${ASTOS_VERSION} for the Lenovo Tab 3 Essential (TB3-710F)
 
-v3.2 — connectivity, trusted Java plugins and PC Spotify control
+v3.3 — setup recovery, dashboard, AI providers and PC media sync
 
-* Shared Wi-Fi radio transition and network validation; preserves passwords.
-* Hotspot QR uses the bound port; requests tethering/DHCP instead of assuming it.
-* Existing/new-tablet desktop setup, Bluetooth startup retry, encrypted pairing persistence.
-* Corrected desktop plugin/update RPC arguments.
-* Corrected immersive policy and removed stock settings/home-picker buttons.
-* Opt-in Groq Whisper speech alongside offline Vosk.
-* Authenticated PC Spotify bridge and installable Spicetify extension.
-* AstOS MusicEngine Bluetooth/USB/wired output selection.
-* Trusted plugins get Java access with an explicit enable warning, not a security sandbox.
+* All six themes and per-screen refresh; persistent Back/Home navigation.
+* Built-in touch keyboard for setup, typed prompts and provider configuration.
+* Device-state-driven companion setup, saved pairing resume and manual Bluetooth COM selection.
+* PC Spotify metadata/progress sync and playback/volume controls.
+* Editable dashboard cards with automatic width reflow.
+* Seven AI provider presets, native Anthropic/Gemini APIs, model discovery and explicit opt-in fallback.
+* Visible live offline transcripts and clearer microphone/model/API errors.
 
-APK builds and automated tests are necessary but not physical-device validation.
-See FIX-VALIDATION.md for required tablet/network/speaker/Spotify acceptance tests.
-Back up in TWRP before flashing. Do not assume hardware bugs are verified fixed.
+Automated tests and APK builds are not physical-device validation.
+See VALIDATION-3.3.md for the five verification passes and remaining hardware tests.
+Back up in TWRP before flashing.
 
 sha256: ${SUM}
 Verify yours matches after downloading (see FLASH.md Troubleshooting).
@@ -67,7 +65,7 @@ Same boot.img as inside the ROM zip. Flash via TWRP Install Image ->
 Boot partition for quick testing or rescue (FLASH.md Troubleshooting)."
 fi
 
-ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md" "docs/COMPANION.md" "docs/PLUGINS.md" "docs/PC-PLAYBACK.md" "docs/FIX-VALIDATION.md" "spicetify/astos.js")
+ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md" "docs/COMPANION.md" "docs/PLUGINS.md" "docs/PC-PLAYBACK.md" "docs/FIX-VALIDATION.md" "docs/AI-PROVIDERS.md" "docs/VALIDATION-3.3.md" "spicetify/astos.js")
 if [ -n "$BOOT" ]; then
     ASSETS=("$BOOT" "${ASSETS[@]}")
 fi
@@ -96,7 +94,7 @@ fi
 
 gh release create "$TAG" \
     "${ASSETS[@]}" \
-    --title "AstOs ${ASTOS_VERSION} — connectivity + PC Spotify — $TAG" \
+    --title "AstOs ${ASTOS_VERSION} — setup + providers + media — $TAG" \
     --notes "$NOTES" \
     --target "${GITHUB_SHA:-HEAD}"
 

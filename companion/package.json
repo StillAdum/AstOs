@@ -1,7 +1,7 @@
 {
   "name": "astos-companion",
   "productName": "AstOS Companion",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Pair, set up, manage, mod and update your AstOS tablet over Bluetooth or USB.",
   "main": "src/main.js",
   "author": "StillAdum",

@@ -105,10 +105,11 @@ public class VoiceEngine implements RecognitionListener {
             } catch (Exception e) { mListening = false; throw new IOException(e); }
             return;
         }
-        if (mModel == null) return;
+        if (mModel == null) throw new IOException("Offline voice model is not loaded; download it or select cloud speech");
         if (mSpeech != null) stopListening();
         Recognizer rec = new Recognizer(mModel, 16000.0f);
         mRecognizer = rec;
+        rec.setWords(true);
         mSpeech = new SpeechService(rec, 16000.0f);
         mSpeech.startListening(this);
         mListening = true;
@@ -177,7 +178,7 @@ public class VoiceEngine implements RecognitionListener {
         try {
             JSONObject o = new JSONObject(raw);
             String v = o.optString(key, "");
-            return v == null ? "" : v.trim().toLowerCase();
+            return v == null ? "" : v.trim();
         } catch (Exception e) {
             return "";
         }

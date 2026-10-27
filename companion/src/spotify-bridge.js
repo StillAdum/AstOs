@@ -5,7 +5,7 @@ const ORIGIN = 'https://xpui.app.spotify.com';
 class SpotifyBridge {
   constructor(token, port = 58518) {
     this.token = token; this.port = port; this.lastSeen = 0;
-    this.jobs = new Map(); this.server = null; this.tabletSeen = 0;
+    this.jobs = new Map(); this.server = null; this.tabletSeen = 0; this.state = {available:false};
   }
   get connected() { return Date.now() - this.lastSeen < 5000; }
   start() {
@@ -28,12 +28,19 @@ class SpotifyBridge {
         this.lastSeen = Date.now();
         return res.end(JSON.stringify({tabletConnected: Date.now() - this.tabletSeen < 8000, commands: [...this.jobs.values()].map(j => j.command)}));
       }
-      if (req.url === '/result' && req.method === 'POST') {
+      if ((req.url === '/result' || req.url === '/state') && req.method === 'POST') {
         let data = '';
         req.on('data', c => { data += c; if (data.length > 8192) req.destroy(); });
         req.on('end', () => {
           try {
-            const result = JSON.parse(data); const job = this.jobs.get(result.id);
+            const result = JSON.parse(data);
+            if (req.url === '/state') {
+              this.lastSeen = Date.now();
+              const number = (value, max) => Math.max(0, Math.min(max, Number(value) || 0));
+              this.state = {available: result.available === true, title: String(result.title || '').slice(0,512), artist: String(result.artist || '').slice(0,256), uri: String(result.uri || '').slice(0,512), playing: result.playing === true, positionMs:number(result.positionMs,86400000),durationMs:number(result.durationMs,86400000),volume:number(result.volume,100)};
+              return res.end('{}');
+            }
+            const job = this.jobs.get(result.id);
             if (job) {
               this.jobs.delete(result.id); clearTimeout(job.timer);
               if (result.ok) job.resolve(); else job.reject(new Error(String(result.error || 'Spotify failed')));
@@ -52,7 +59,7 @@ class SpotifyBridge {
   }
   execute(command) {
     if (!this.connected) return Promise.reject(new Error('Spotify extension is disconnected'));
-    if (!['play', 'pause', 'resume', 'next', 'previous'].includes(command.action))
+    if (!['play', 'pause', 'resume', 'next', 'previous', 'volup', 'voldown', 'volset'].includes(command.action))
       return Promise.reject(new Error('Unsupported playback action'));
     if (this.jobs.size >= 16) return Promise.reject(new Error('Spotify queue full'));
     return new Promise((resolve, reject) => {
@@ -61,7 +68,7 @@ class SpotifyBridge {
     });
   }
   disconnect() {
-    this.lastSeen = 0; this.tabletSeen = 0;
+    this.lastSeen = 0; this.tabletSeen = 0; this.state = {available:false};
     for (const j of this.jobs.values()) { clearTimeout(j.timer); j.reject(new Error('Tablet disconnected')); }
     this.jobs.clear();
   }
