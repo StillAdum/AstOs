@@ -102,6 +102,10 @@ public class HomeActivity extends Activity
     private List<ResolveInfo> mLaunchables;
     private CountDownTimer mTimer;
     private long mTimerEndsAt;
+    private String mRenderedTheme;
+    private String mLastUtterance = "";
+    private long mLastUtteranceAt;
+    private DashboardCards mDashboard;
     private boolean mVoiceReady = false;
     private List<NewsProvider.Headline> mNews;
     private int mNewsIdx = 0;
@@ -152,11 +156,16 @@ public class HomeActivity extends Activity
 
         setContentView(R.layout.activity_home);
         Ui.apply(this, findViewById(android.R.id.content));
+        mRenderedTheme = AppSettings.themeKey(this);
 
         bindViews();
         bindMediaButtons();
         bindMic();
         bindNav();
+        mDashboard = new DashboardCards(this, mHomeCols);
+        findViewById(R.id.editCardsBtn).setOnClickListener(v -> mDashboard.edit());
+        findViewById(R.id.promptBtn).setOnClickListener(v -> com.astos.link.TextEntry.show(this, "Type a prompt", mLastUtterance, false, this::onResult));
+        findViewById(R.id.providersBtn).setOnClickListener(v -> startActivity(new Intent(this, ProviderSettingsActivity.class)));
         bindScenes();
 
         loadLaunchables();
@@ -201,7 +210,7 @@ public class HomeActivity extends Activity
         try { LinkHostShell.ensure(this); } catch (Throwable ignored) {}
         sAppContext = getApplicationContext();
         Kiosk.apply(this); // self-heal lockdown
-        if (Ui.appliedKey() != null && !Ui.appliedKey().equals(AppSettings.themeKey(this))) {
+        if (mRenderedTheme != null && !mRenderedTheme.equals(AppSettings.themeKey(this))) {
             recreate();
             return;
         }
@@ -223,6 +232,7 @@ public class HomeActivity extends Activity
     protected void onPause() {
         super.onPause();
         mHandler.removeCallbacks(mTick);
+        VoiceEngine.get().stopListening();
     }
 
     @Override
@@ -306,24 +316,7 @@ public class HomeActivity extends Activity
     /** landscape = two columns; portrait = one */
     private void adjustForOrientation(int orientation) {
         if (mHomeCols == null) return;
-        boolean land = orientation != Configuration.ORIENTATION_PORTRAIT;
-        mHomeCols.setOrientation(land ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        for (int i = 0; i < mHomeCols.getChildCount(); i++) {
-            View child = mHomeCols.getChildAt(i);
-            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) child.getLayoutParams();
-            if (land) {
-                lp.width = 0;
-                lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-                lp.weight = i == 0 ? 1.12f : 1f;
-                lp.setMargins(0, 0, i == 0 ? Ui.dp(this, 14) : 0, 0);
-            } else {
-                lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-                lp.weight = 0;
-                lp.setMargins(0, 0, 0, i == 0 ? Ui.dp(this, 14) : 0);
-            }
-            child.setLayoutParams(lp);
-        }
+        if (mDashboard != null) mDashboard.reflow();
     }
 
     // ------------------------------------------------------------ view binding
@@ -365,7 +358,7 @@ public class HomeActivity extends Activity
         mVolBar.init(12, true, new SegBar.L() {
             @Override public void onLevel(SegBar bar, int level) {
                 int pct = Math.round(level * 100f / 12);
-                MediaControlService.volumePercent(HomeActivity.this, pct);
+                mediaAction("volset", pct);
                 updateVolume();
             }
         });
@@ -449,6 +442,17 @@ public class HomeActivity extends Activity
     }
 
     private void updateMedia() {
+        org.json.JSONObject pc = PcPlayback.state();
+        if (pc != null && (!MusicEngine.isPlaying() || pc.optBoolean("playing", false) || PcPlayback.selected())) {
+            mTrack.setText(pc.optString("title", "Spotify on PC"));
+            mArtist.setText(pc.optString("artist", "")); mSrc.setText("PC · Spotify");
+            setPlaying(pc.optBoolean("playing", false));
+            int position = pc.optInt("positionMs",0), duration = pc.optInt("durationMs",0);
+            mProgBar.setLevel(duration > 0 ? Math.round(position * 36f / duration) : 0);
+            mT0.setText(formatLeft(position));mT1.setText(formatLeft(duration));
+            mArt.seed(pc.optString("title", "Spotify"));
+            return;
+        }
         SongSearch.Track t = MusicEngine.current();
         if (t != null) {
             mTrack.setText(t.title == null || t.title.isEmpty() ? "—" : t.title);
@@ -498,7 +502,8 @@ public class HomeActivity extends Activity
 
     private void updateVolume() {
         int vol = 0;
-        try { vol = MediaControlService.volumePercent(this); } catch (Throwable ignored) {}
+        org.json.JSONObject pc = PcPlayback.state();
+        try { vol = pc != null && (!MusicEngine.isPlaying() || pc.optBoolean("playing", false) || PcPlayback.selected()) ? pc.optInt("volume",0) : MediaControlService.volumePercent(this); } catch (Throwable ignored) {}
         mVolBar.setLevel(Math.round(vol * 12f / 100f));
         mVolText.setText(vol + "%");
     }
@@ -572,16 +577,8 @@ public class HomeActivity extends Activity
     /** char-by-char voiceline, like the mock's typewriter */
     private void typeLine(final String s) {
         if (mTypeStep != null) mVoiceStatus.removeCallbacks(mTypeStep);
-        final int[] i = {0};
-        mTypeStep = new Runnable() {
-            @Override public void run() {
-                i[0]++;
-                mVoiceStatus.setText(s.substring(0, Math.min(i[0], s.length())));
-                if (i[0] < s.length()) mVoiceStatus.postDelayed(this, 26);
-            }
-        };
-        mVoiceStatus.setText("");
-        mVoiceStatus.post(mTypeStep);
+        mHandler.removeCallbacks(mHideStatus);
+        mVoiceStatus.setText(s == null ? "" : s);
     }
 
     private void keepLine(long ms) {
@@ -982,10 +979,17 @@ public class HomeActivity extends Activity
     // ------------------------------------------------------------ voice callbacks
 
     @Override public void onPartial(String text) {
-        typeLine("… " + text);
+        typeLine("Hearing: " + text);
+        ((TextView)findViewById(R.id.heardText)).setText(text);
     }
 
     @Override public void onResult(String text) {
+        if (text == null || text.trim().isEmpty()) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (text.equals(mLastUtterance) && now - mLastUtteranceAt < 1800) return;
+        mLastUtterance = text; mLastUtteranceAt = now;
+        ((TextView)findViewById(R.id.heardText)).setText("You: " + text);
+        VoiceEngine.get().stopListening(); setMicActive(false);
         // .astpl mods can observe everything said to the tablet
         PluginHost ph = PluginHost.get();
         if (ph != null) ph.onVoice(text);
@@ -1037,6 +1041,13 @@ public class HomeActivity extends Activity
     }
 
     @Override public void mediaAction(String action, int value) {
+        org.json.JSONObject pc = PcPlayback.state();
+        if (pc != null && (!MusicEngine.isPlaying() || pc.optBoolean("playing", false) || PcPlayback.selected())) {
+            String remote = "prev".equals(action) ? "previous" : "toggle".equals(action)
+                ? (pc.optBoolean("playing", false) ? "pause" : "resume") : "play".equals(action) ? "resume" : action;
+            PcPlayback.send(this, remote, String.valueOf(value), PcPlayback.selected());
+            return;
+        }
         if ("play".equals(action) || "pause".equals(action) || "toggle".equals(action)) {
             if (MusicEngine.isPlaying() || MusicEngine.current() != null) MusicEngine.toggle(this);
             else MediaControlService.toggle();
@@ -1261,8 +1272,8 @@ public class HomeActivity extends Activity
     }
 
     @Override public void askGroq(String question) {
-        if (AppSettings.groqKey(this).isEmpty()) {
-            String hint = "add a free Groq key in settings for AI answers";
+        if (!AiProviders.configured(this)) {
+            String hint = "configure an AI provider in settings for AI answers";
             typeLine(hint);
             if (AppSettings.speakEnabled(this)) Speak.say(this, hint);
             keepLine(5000);
