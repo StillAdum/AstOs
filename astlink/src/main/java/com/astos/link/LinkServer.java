@@ -134,6 +134,8 @@ public final class LinkServer {
         mRunning = true;
         btListen();
         tcpListen();
+        discoverListen();
+        holdNetwork();
         new Thread(() -> {
             while (mRunning) {
                 try { Thread.sleep(2000); ensureBluetooth(); } catch (InterruptedException e) { return; }
@@ -144,6 +146,9 @@ public final class LinkServer {
 
     public synchronized void stop() {
         mRunning = false;
+        if(discovery!=null)discovery.close();
+        if(cpuLock!=null&&cpuLock.isHeld())cpuLock.release();
+        if(wifiLock!=null&&wifiLock.isHeld())wifiLock.release();
         close(mBt); mBt = null;
         try { if (mTcp != null) mTcp.close(); } catch (Exception ignored) {}
         mTcp = null;
@@ -195,7 +200,7 @@ public final class LinkServer {
 
     private void tcpListen() {
         try {
-            mTcp = new ServerSocket(TCP_PORT, 4, InetAddress.getByName("127.0.0.1"));
+            mTcp = new ServerSocket(TCP_PORT, 4, InetAddress.getByName("0.0.0.0"));
         } catch (Exception e) {
             Log.i("tcp listen failed: " + e);
             return;
@@ -206,7 +211,7 @@ public final class LinkServer {
                 while (mRunning) {
                     try {
                         Socket s = srv.accept();
-                        serve(s.getInputStream(), s.getOutputStream(), "usb");
+                        serve(s.getInputStream(), s.getOutputStream(), s.getInetAddress().isLoopbackAddress() ? "usb" : "wifi");
                     } catch (Exception e) {
                         if (mRunning) Log.i("tcp accept: " + e);
                         try { srv.close(); } catch (Exception ignored) {}
@@ -216,7 +221,7 @@ public final class LinkServer {
                 }
             }
         }, "astlink-tcp").start();
-        Log.i("tcp listening on 127.0.0.1:" + TCP_PORT);
+        Log.i("encrypted LAN + USB listening on " + TCP_PORT);
     }
 
     private static void close(Closeable c) { if (c != null) try { c.close(); } catch (Exception ignored) {} }
@@ -237,15 +242,47 @@ public final class LinkServer {
         String target;
     }
 
+    private android.os.PowerManager.WakeLock cpuLock;
+    private WifiManager.WifiLock wifiLock;
+    private java.net.DatagramSocket discovery;
+    private void holdNetwork(){try{
+      cpuLock=((android.os.PowerManager)mCtx.getSystemService(Context.POWER_SERVICE)).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK,"AstOS:link");cpuLock.acquire();
+      wifiLock=((WifiManager)mCtx.getApplicationContext().getSystemService(Context.WIFI_SERVICE)).createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF,"AstOS:link");wifiLock.acquire();
+    }catch(Exception e){Log.i("network wake lock: "+e.getMessage());}}
+    private void discoverListen(){new Thread(()->{try{
+      java.net.DatagramSocket socket=new java.net.DatagramSocket(58519);discovery=socket;byte[] bytes=new byte[512];
+      while(mRunning){java.net.DatagramPacket p=new java.net.DatagramPacket(bytes,bytes.length);socket.receive(p);
+       if(!new String(p.getData(),p.getOffset(),p.getLength(),"UTF-8").equals("ASTOS_DISCOVER_V1"))continue;
+       byte[] reply=LinkJson.write(new LinkJson.Obj().put("service","astos").put("port",TCP_PORT).put("name",nz(readGlobal("astos_name"))).put("secure",true)).getBytes("UTF-8");socket.send(new java.net.DatagramPacket(reply,reply.length,p.getAddress(),p.getPort()));}
+    }catch(Exception e){if(mRunning)Log.i("LAN discovery: "+e.getMessage());}},"astlink-discovery").start();}
+    private static String readFrame(BufferedReader reader,int limit)throws Exception{StringBuilder s=new StringBuilder();int ch;while((ch=reader.read())!=-1){if(ch=='\n')break;if(ch!='\r')s.append((char)ch);if(s.length()>limit)throw new Exception("frame too large");}return ch==-1&&s.length()==0?null:s.toString();}
     private void serve(final InputStream in, final OutputStream out, final String via) {
         new Thread(new Runnable() {
             @Override public void run() {
                 BufferedReader r = new BufferedReader(new InputStreamReader(in));
                 try {
+                    LinkCrypto crypto=null;
+                    if("wifi".equals(via)) {
+                        String challenge=java.util.UUID.randomUUID().toString();
+                        java.security.KeyPairGenerator gen=java.security.KeyPairGenerator.getInstance("EC");gen.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"));java.security.KeyPair dh=gen.generateKeyPair();
+                        out.write((LinkJson.write(new LinkJson.Obj().put("challenge",challenge).put("publicKey",Base64.encodeToString(dh.getPublic().getEncoded(),Base64.NO_WRAP)).put("secure",true))+"\n").getBytes("UTF-8"));out.flush();
+                        String intro=readFrame(r,256);if(intro==null||intro.length()>256)throw new Exception("bad handshake");
+                        LinkJson.Obj introduction=LinkJson.parseObj(intro);boolean pairing=introduction.bool("pair",false);
+                        byte[] raw=Base64.decode(introduction.str("publicKey",""),Base64.NO_WRAP);if(raw.length!=65||raw[0]!=4)throw new Exception("bad public key");
+                        byte[] prefix=new byte[]{0x30,0x59,0x30,0x13,0x06,0x07,0x2a,(byte)0x86,0x48,(byte)0xce,0x3d,0x02,0x01,0x06,0x08,0x2a,(byte)0x86,0x48,(byte)0xce,0x3d,0x03,0x01,0x07,0x03,0x42,0x00};
+                        byte[] encoded=new byte[prefix.length+raw.length];System.arraycopy(prefix,0,encoded,0,prefix.length);System.arraycopy(raw,0,encoded,prefix.length,raw.length);
+                        javax.crypto.KeyAgreement agreement=javax.crypto.KeyAgreement.getInstance("ECDH");agreement.init(dh.getPrivate());agreement.doPhase(java.security.KeyFactory.getInstance("EC").generatePublic(new java.security.spec.X509EncodedKeySpec(encoded)),true);
+                        StringBuilder shared=new StringBuilder();for(byte b:agreement.generateSecret())shared.append(String.format(java.util.Locale.US,"%02x",b&255));
+                        String secret=pairing?pairCode():token();if(secret==null||secret.isEmpty())throw new Exception("pair first");
+                        crypto=new LinkCrypto(secret,challenge,shared.toString());
+                    }
                     String line;
-                    while (mRunning && (line = r.readLine()) != null) {
+                    while (mRunning && (line = readFrame(r,1048576)) != null) {
                         if (line.trim().isEmpty()) continue;
-                        String resp = handle(line, via);
+                        if(line.length()>1048576)throw new Exception("frame too large");
+                        String request=crypto==null?line:crypto.open(line);
+                        String resp = handle(request, via);
+                        if(crypto!=null&&resp!=null)resp=crypto.seal(resp);
                         if (resp != null) {
                             out.write((resp + "\n").getBytes("UTF-8"));
                             out.flush();
@@ -316,7 +353,7 @@ public final class LinkServer {
     private String pairCode() {
         String c = readGlobal("astos_link_code");
         if (c == null || c.isEmpty()) {
-            c = String.format(Locale.US, "%06d", (int) (Math.random() * 1000000));
+            c = String.format(Locale.US, "%06d", new java.security.SecureRandom().nextInt(1000000));
             writeGlobal("astos_link_code", c);
         }
         return c;
@@ -324,7 +361,7 @@ public final class LinkServer {
 
     private void rotatePairCode() {
         writeGlobal("astos_link_code",
-                String.format(Locale.US, "%06d", (int) (Math.random() * 1000000)));
+                String.format(Locale.US, "%06d", new java.security.SecureRandom().nextInt(1000000)));
     }
 
     /** The 6-digit code the user reads off the tablet. */
@@ -507,7 +544,7 @@ public final class LinkServer {
     private LinkJson.Obj pcState = new LinkJson.Obj();
     public synchronized LinkJson.Obj pcPlaybackState() { return pcReady() && pcState.bool("available", false) ? pcState : null; }
     public synchronized boolean pcReady() {
-        return spotifyReady && SystemClock.elapsedRealtime() - pcSeen < 8000;
+        return spotifyReady && SystemClock.elapsedRealtime() - pcSeen < 45000;
     }
     public synchronized void sendPc(String action, String query, boolean sticky, PcCallback cb) {
         if (!pcReady()) { cb.done("PC Spotify is disconnected. Open Companion and the AstOS Spotify extension."); return; }
@@ -515,14 +552,14 @@ public final class LinkServer {
         String id = java.util.UUID.randomUUID().toString();
         PcCommand c = new PcCommand();
         c.body = new LinkJson.Obj().put("id", id).put("action", action).put("query", query).put("sticky", sticky);
-        c.callback = cb; c.expires = SystemClock.elapsedRealtime() + 12000;
+        c.callback = cb; c.expires = SystemClock.elapsedRealtime() + 35000;
         pcCommands.put(id, c);
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             synchronized (LinkServer.this) {
                 PcCommand expired = pcCommands.remove(id);
                 if (expired != null) expired.callback.done("PC Spotify did not acknowledge the command");
             }
-        }, 12500);
+        }, 35500);
     }
     private synchronized Res pcPoll(LinkJson.Obj args) {
         pcSeen = SystemClock.elapsedRealtime(); spotifyReady = args.bool("spotify", false);
@@ -530,10 +567,14 @@ public final class LinkServer {
         pcState = state == null ? new LinkJson.Obj() : new LinkJson.Obj()
             .put("available", state.bool("available", false))
             .put("title", state.str("title", "")).put("artist", state.str("artist", ""))
+            .put("artUrl", state.str("artUrl", ""))
             .put("playing", state.bool("playing", false)).put("uri", state.str("uri", ""))
             .put("positionMs", Math.max(0, state.lng("positionMs", 0)))
             .put("durationMs", Math.max(0, state.lng("durationMs", 0)))
             .put("volume", Math.max(0, Math.min(100, state.lng("volume", 0))));
+        LinkJson.Arr levels=new LinkJson.Arr();LinkJson.Arr incoming=state==null?null:state.arr("bands");
+        if(incoming!=null)for(int i=0;i<Math.min(9,incoming.size());i++){Object n=incoming.at(i);double value=n instanceof Number?((Number)n).doubleValue():0;levels.add(Double.isNaN(value)||Double.isInfinite(value)?0:Math.max(0,Math.min(1,value)));}
+        pcState.put("bands",levels);
         LinkJson.Arr commands = new LinkJson.Arr();
         for (PcCommand c : pcCommands.values())
             if (c.expires > pcSeen) commands.add(c.body);
@@ -552,16 +593,8 @@ public final class LinkServer {
         WifiManager w;
         try { w = WifiSupport.station(mCtx); }
         catch (Exception e) { return err(e.getMessage()); }
-        try {
-            if (!w.startScan()) return err("Wi-Fi scan refused; check location permission and retry");
-            Thread.sleep(2500);
-        } catch (Exception e) { return err("Wi-Fi scan failed: " + e.getMessage()); }
-        List<ScanResult> all = w.getScanResults();
-        for (int t = 0; (all == null || all.isEmpty()) && t < 3; t++) {
-            try { Thread.sleep(1200); } catch (Exception ignored) {}
-            try { w.startScan(); } catch (Exception ignored) {}
-            all = w.getScanResults();
-        }
+        List<ScanResult> all;
+        try { all=WifiSupport.scan(mCtx); } catch(Exception e){return err(e.getMessage());}
         LinkJson.Arr a = new LinkJson.Arr();
         if (all == null) return ok(a);
         HashSet<String> seen = new HashSet<String>();
@@ -588,6 +621,7 @@ public final class LinkServer {
         // report the first reachable state (max ~18s)
         for (int i = 0; i < 30; i++) {
             try { Thread.sleep(1500); } catch (Exception ignored) {}
+            if(!WifiSupport.failure().isEmpty()){mHost.onWifiJoined(false,ssid,"");return err(WifiSupport.failure());}
             LinkJson.Obj st = wifiState();
             if (st.bool("connected", false) && ssid.equals(st.str("ssid", ""))
                     && ((WifiManager) mCtx.getSystemService(Context.WIFI_SERVICE)).getConnectionInfo().getNetworkId() == networkId) {
@@ -596,7 +630,7 @@ public final class LinkServer {
             }
         }
         mHost.onWifiJoined(false, ssid, "");
-        return err("Could not join " + ssid + "; check 2.4 GHz WPA2 mode, password and router DHCP");
+        return err("Could not join " + ssid + " (radio: " + wifiState().str("supplicant", "unknown") + "). Check 2.4 GHz WPA2 mode and router DHCP; password was preserved.");
     }
 
     @SuppressWarnings("deprecation")
@@ -613,6 +647,7 @@ public final class LinkServer {
             String ip = ipInt == 0 ? "" : String.format(Locale.US, "%d.%d.%d.%d",
                     ipInt & 0xff, (ipInt >> 8) & 0xff, (ipInt >> 16) & 0xff, (ipInt >> 24) & 0xff);
             return new LinkJson.Obj()
+                    .put("supplicant", i == null ? "unavailable" : i.getSupplicantState().name())
                     .put("connected", ipInt != 0 && i.getSupplicantState() == android.net.wifi.SupplicantState.COMPLETED)
                     .put("ssid", ssid)
                     .put("ip", ip);
@@ -1061,7 +1096,7 @@ public final class LinkServer {
             int dot = v.indexOf('.', v.indexOf('.') + 1);   // "3.1" or "3.1.0"
             return dot > 0 ? v.substring(0, dot) : v;
         }
-        return "3.3";       // keep in sync with scripts/VERSION
+        return "3.4";       // keep in sync with scripts/VERSION
     }
 
     private String readGlobal(String key) {

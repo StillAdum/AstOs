@@ -137,7 +137,7 @@ public class PixelKeyboard extends ScrollView {
                 || "?123".equals(key) || "ABC".equals(key);
         boolean accent = "ENTER".equals(key);
         k.setBackgroundDrawable(Ui.d(c, accent ? "keyAccent" : (mod ? "keyMod" : "key")));
-        if (accent) k.setTextColor(Ui.cur.micink);
+        if (accent) k.setTextColor(Ui.onAccent());
         else if (mod) k.setTextColor(Ui.cur.ink);
         else k.setTextColor(Ui.cur.ink);
         k.setText(keyLabel(key));
