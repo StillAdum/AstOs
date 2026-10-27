@@ -49,6 +49,7 @@ public final class Kiosk {
 
     /** The full lockdown bundle — call on boot and on every home resume. */
     public static void apply(Context c) {
+        for(String key:new String[]{"window_animation_scale","transition_animation_scale"})try{Settings.Global.putFloat(c.getContentResolver(),key,0f);}catch(Exception ignored){}
         hideSystemBars(c);
         disableShade(c);
         disableKeyguard(c);

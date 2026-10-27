@@ -34,18 +34,19 @@ fi
 NOTES="$(cat <<EOF
 AstOs ${ASTOS_VERSION} for the Lenovo Tab 3 Essential (TB3-710F)
 
-v3.3 — setup recovery, dashboard, AI providers and PC media sync
+v3.4 — cable-free pairing, pixel UI and real media feedback
 
-* All six themes and per-screen refresh; persistent Back/Home navigation.
-* Built-in touch keyboard for setup, typed prompts and provider configuration.
-* Device-state-driven companion setup, saved pairing resume and manual Bluetooth COM selection.
-* PC Spotify metadata/progress sync and playback/volume controls.
-* Editable dashboard cards with automatic width reflow.
-* Seven AI provider presets, native Anthropic/Gemini APIs, model discovery and explicit opt-in fallback.
-* Visible live offline transcripts and clearer microphone/model/API errors.
+* Direct encrypted LAN discovery/pairing/reconnection; optional USB bootstrap.
+* Native Windows Bluetooth RFCOMM, independent of virtual COM ports.
+* Cross-app Wi-Fi configuration permission and scan/association/error-state corrections.
+* Close/minimize Companion to tray; background-safe Spotify long polling.
+* PC-first song requests, actual cover art, optional real PC audio levels and local audio-session capture.
+* Theme-aware pixel keyboard/dialogs, improved text contrast, keyboard-icon prompt and expandable timed response line.
+* Persistent custom backdrop builder and disabled window entrance animations.
+* ROM navigation boot-property conflict fixed, with AstOS pixel Back/Home icons.
 
-Automated tests and APK builds are not physical-device validation.
-See VALIDATION-3.3.md for the five verification passes and remaining hardware tests.
+Tests/builds do not certify physical tablet radios, audio or live Spotify behavior.
+Read FOLLOWUP-3.4.md for required matching versions, setup and validation limits.
 Back up in TWRP before flashing.
 
 sha256: ${SUM}
@@ -65,7 +66,7 @@ Same boot.img as inside the ROM zip. Flash via TWRP Install Image ->
 Boot partition for quick testing or rescue (FLASH.md Troubleshooting)."
 fi
 
-ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md" "docs/COMPANION.md" "docs/PLUGINS.md" "docs/PC-PLAYBACK.md" "docs/FIX-VALIDATION.md" "docs/AI-PROVIDERS.md" "docs/VALIDATION-3.3.md" "spicetify/astos.js")
+ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md" "docs/COMPANION.md" "docs/PLUGINS.md" "docs/PC-PLAYBACK.md" "docs/FIX-VALIDATION.md" "docs/AI-PROVIDERS.md" "docs/VALIDATION-3.3.md" "docs/FOLLOWUP-3.4.md" "spicetify/astos.js")
 if [ -n "$BOOT" ]; then
     ASSETS=("$BOOT" "${ASSETS[@]}")
 fi

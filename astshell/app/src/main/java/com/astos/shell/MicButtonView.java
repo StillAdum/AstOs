@@ -28,6 +28,7 @@ public class MicButtonView extends View {
         setClickable(true);
     }
 
+    protected int iconResource(){return R.drawable.ic_mic;}
     public void setListening(boolean on) {
         mListening = on;
         invalidate();
@@ -37,7 +38,7 @@ public class MicButtonView extends View {
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
         if (mIcon == null) {
-            mIcon = getResources().getDrawable(R.drawable.ic_mic);
+            mIcon = getResources().getDrawable(iconResource());
         }
     }
 

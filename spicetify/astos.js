@@ -30,7 +30,9 @@
   function snapshot() {
     const player = Spicetify.Player, item = player.data?.item;
     const metadata = item?.metadata || {};
-    return {available: !!item, uri: item?.uri || '', title: item?.name || metadata.title || '',
+    let art=metadata.image_xlarge_url || metadata.image_large_url || metadata.image_url || item?.album?.images?.[0]?.url || '';
+    if(art.startsWith('spotify:image:'))art='https://i.scdn.co/image/'+art.split(':').pop();
+    return {artUrl:art,available: !!item, uri: item?.uri || '', title: item?.name || metadata.title || '',
       artist: item?.artists?.map(a => a.name).join(', ') || metadata.artist_name || '',
       playing: typeof player.isPlaying === 'function' ? player.isPlaying() : !player.data?.isPaused,
       positionMs: typeof player.getProgress === 'function' ? player.getProgress() : 0,
@@ -38,7 +40,7 @@
       volume: typeof player.getVolume === 'function' ? Math.round(player.getVolume()*100) : 0};
   }
   async function publish() { if (token) await request('/state', snapshot()); }
-  for (const event of ['songchange','onplaypause']) Spicetify.Player.addEventListener?.(event, () => { publish().catch(() => {}); });
+  for (const event of ['songchange','onplaypause','onprogress']) Spicetify.Player.addEventListener?.(event, () => { publish().catch(() => {}); });
   async function execute(c) {
     if (['volup','voldown','volset'].includes(c.action)) {
       if (typeof Spicetify.Player.setVolume !== 'function') throw new Error('Spotify volume API unavailable');
@@ -58,17 +60,15 @@
     } else throw new Error('Unknown playback action');
     sticky = !!c.sticky;
   }
-  setInterval(async () => {
-    if (sticky && Date.now() - lastOk > 15000) {
-      sticky = false; await Spicetify.Player.pause();
-      Spicetify.showNotification('AstOS disconnected — PC playback paused');
-    }
+  let lastPublished=0;
+  async function poll() {
     if (!token || busy) return;
     busy = true;
     try {
-      await publish();
-      const state = await request('/poll');
+      if(Date.now()-lastPublished>1000){await publish();lastPublished=Date.now();}
+      const state = await request('/events');
       if (state.tabletConnected) lastOk = Date.now();
+      else if(sticky && Date.now()-lastOk>45000){sticky=false;await Spicetify.Player.pause();Spicetify.showNotification('AstOS disconnected — PC playback paused');}
       for (const c of state.commands) {
         let result = results.get(c.id);
         if (!result) {
@@ -79,7 +79,11 @@
         }
         await request('/result', result);
       }
-    } catch (e) { /* Offline is normal. Never replay unacknowledged actions. */ }
+    } catch (e) { if(window.document)await new Promise(r=>setTimeout(r,2000)); }
     finally { busy = false; }
-  }, 750);
+  }
+  setInterval(poll,750);
+  // Network-completion-driven long polling keeps commands alive when Chromium
+  // throttles background timers. Retry delays are only used while offline.
+  if(window.document)(async()=>{while(true){await poll();if(!token||busy)await new Promise(r=>setTimeout(r,1000));}})();
 })();

@@ -41,8 +41,11 @@ public class PixelBackdrop extends View {
             if (mAnimating && isAttachedToWindowCompat()) {
                 long t = System.currentTimeMillis() - mStart;
                 for (Mote m : mMotes) {
-                    m.y += m.k * (t % 64) / 64f * 0.35f;
-                    m.x += Math.sin((t + m.ph) / 4200f) * 0.22f;
+                    int mode=AppSettings.backdropMode(getContext());float speed=mode==5?getContext().getSharedPreferences("backdrop",0).getInt("speed",100)/100f:mode==1?0.4f:mode==3?2f:mode==4?3f:1f;
+                    int direction=mode==5?getContext().getSharedPreferences("backdrop",0).getInt("direction",0):mode==4?1:0;
+                    if(direction!=2)m.y += m.k * (t % 64) / 64f * 0.35f * speed;
+                    else m.x+=m.k*0.5f*speed;
+                    if(direction==0)m.x += Math.sin((t + m.ph) / 4200f) * 0.22f * speed;
                     if (m.y > getHeight() + 8) { m.y = -8; m.x = mRnd.nextFloat() * getWidth(); }
                     if (m.x < -8) m.x = getWidth() + 8;
                     if (m.x > getWidth() + 8) m.x = -8;
@@ -68,7 +71,7 @@ public class PixelBackdrop extends View {
 
     private void seed() {
         mMotes.clear();
-        for (int i = 0; i < MOTES; i++) {
+        for (int i = 0; i < 64; i++) {
             Mote m = new Mote();
             m.x = mRnd.nextFloat();
             m.y = mRnd.nextFloat();
@@ -121,11 +124,15 @@ public class PixelBackdrop extends View {
             for (int x = g / 2; x < w; x += g)
                 c.drawRect(x - 1, y - 1, x + 1, y + 1, mDot);
 
+        if(!AppSettings.backdropAnim(getContext())||AppSettings.backdropMode(getContext())==0)return;
         // motes
-        int s = Ui.dp(getContext(), 3);
+        android.content.SharedPreferences prefs=getContext().getSharedPreferences("backdrop",0);
+        boolean custom=AppSettings.backdropMode(getContext())==5;int count=custom?prefs.getInt("density",22):22,index=0;
+        int s = Ui.dp(getContext(), custom?prefs.getInt("size",3):3);
         int big = s * 2;
         for (Mote m : mMotes) {
-            mMote.setColor(m.layer == 1 ? Ui.cur.accent : Ui.cur.soft);
+            if(index++>=count)break;int color=custom?prefs.getInt("color",0):0;
+            mMote.setColor(color==1?Ui.cur.accent:color==2?Ui.cur.ink:m.layer == 1 ? Ui.cur.accent : Ui.cur.soft);
             int sz = (m.ph % 7) < 1 ? big : s;
             c.drawRect(m.x, m.y, m.x + sz, m.y + sz, mMote);
         }

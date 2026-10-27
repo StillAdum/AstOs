@@ -136,6 +136,7 @@ public class MediaControlService extends NotificationListenerService {
         return t == null ? "" : t;
     }
 
+    public static android.graphics.Bitmap artwork(){if(sActive==null||sActive.getMetadata()==null)return null;android.media.MediaMetadata m=sActive.getMetadata();android.graphics.Bitmap b=m.getBitmap(android.media.MediaMetadata.METADATA_KEY_ALBUM_ART);return b!=null?b:m.getBitmap(android.media.MediaMetadata.METADATA_KEY_ART);}
     public static String artist() {
         if (sActive == null) return "";
         android.media.MediaMetadata md = sActive.getMetadata();
