@@ -3,7 +3,7 @@ const {app,BrowserWindow,ipcMain}=require('electron');
 const path=require('path');let setupDone=true,scans=0;
 ipcMain.handle('resume-pairing',()=>({ok:true,info:{name:'Test tablet'}}));
 ipcMain.handle('disconnect-tablet',()=>{setupDone=false;return {ok:true};});
-ipcMain.handle('find-tablet',()=>({ok:true,info:{name:'Test tablet'}}));
+ipcMain.handle('find-tablet',(_e,kind,host,code)=>({ok:true,info:{name:'Test tablet'}}));
 ipcMain.handle('spotify-info',()=>({token:'test-token',connected:true}));
 ipcMain.handle('rpc',(_e,cmd)=>{
  if(cmd==='wifi.list')return ++scans>1?{ok:false,error:'scan unavailable'}:{ok:true,result:[{ssid:'<img src=x onerror=alert(1)>',secure:true,level:-40}]};

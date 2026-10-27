@@ -9,10 +9,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('astos', {
   version: () => process.env.npm_package_version || 'dev',
 
-  findTablet: (kind, port) => ipcRenderer.invoke('find-tablet', kind, port),
+  findTablet: (kind, port, code) => ipcRenderer.invoke('find-tablet', kind, port, code),
   resume: () => ipcRenderer.invoke('resume-pairing'),
   disconnect: () => ipcRenderer.invoke('disconnect-tablet'),
   auth: (code) => ipcRenderer.invoke('auth', code),
+  bluetoothSettings: () => ipcRenderer.invoke('bluetooth-settings'),
+  audioVisualizer: (on) => ipcRenderer.invoke('audio-visualizer',on),
   spotifyInfo: () => ipcRenderer.invoke('spotify-info'),
 
   rpc: (cmd, args, timeoutMs) => ipcRenderer.invoke('rpc', cmd, args, timeoutMs),

@@ -6,7 +6,6 @@
         <item>restart</item>
     </string-array>
 
-    <!-- Kiosk: never show the Android navigation bar (also enforced via
-         qemu.hw.mainkeys=1 in vendor/astos/configs/astos.rc) -->
-    <bool name="config_showNavigationBar">false</bool>
+    <!-- Keep an always-available navigation path. SystemUI icons are AstOS pixels. -->
+    <bool name="config_showNavigationBar">true</bool>
 </resources>
