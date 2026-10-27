@@ -27,7 +27,25 @@
       return await response.json();
     } finally { clearTimeout(timer); }
   }
+  function snapshot() {
+    const player = Spicetify.Player, item = player.data?.item;
+    const metadata = item?.metadata || {};
+    return {available: !!item, uri: item?.uri || '', title: item?.name || metadata.title || '',
+      artist: item?.artists?.map(a => a.name).join(', ') || metadata.artist_name || '',
+      playing: typeof player.isPlaying === 'function' ? player.isPlaying() : !player.data?.isPaused,
+      positionMs: typeof player.getProgress === 'function' ? player.getProgress() : 0,
+      durationMs: typeof player.getDuration === 'function' ? player.getDuration() : Number(metadata.duration || 0),
+      volume: typeof player.getVolume === 'function' ? Math.round(player.getVolume()*100) : 0};
+  }
+  async function publish() { if (token) await request('/state', snapshot()); }
+  for (const event of ['songchange','onplaypause']) Spicetify.Player.addEventListener?.(event, () => { publish().catch(() => {}); });
   async function execute(c) {
+    if (['volup','voldown','volset'].includes(c.action)) {
+      if (typeof Spicetify.Player.setVolume !== 'function') throw new Error('Spotify volume API unavailable');
+      const current = Spicetify.Player.getVolume();
+      await Spicetify.Player.setVolume(Math.max(0,Math.min(1,c.action === 'volset' ? Number(c.query)/100 : current + (c.action === 'volup' ? 0.05 : -0.05))));
+      return;
+    }
     if (c.action === 'pause') { await Spicetify.Player.pause(); sticky = false; return; }
     if (c.action === 'next') await Spicetify.Player.next();
     else if (c.action === 'previous') await Spicetify.Player.back();
@@ -48,6 +66,7 @@
     if (!token || busy) return;
     busy = true;
     try {
+      await publish();
       const state = await request('/poll');
       if (state.tabletConnected) lastOk = Date.now();
       for (const c of state.commands) {

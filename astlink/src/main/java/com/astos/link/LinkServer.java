@@ -504,6 +504,8 @@ public final class LinkServer {
     private final java.util.LinkedHashMap<String, PcCommand> pcCommands = new java.util.LinkedHashMap<>();
     private long pcSeen;
     private boolean spotifyReady;
+    private LinkJson.Obj pcState = new LinkJson.Obj();
+    public synchronized LinkJson.Obj pcPlaybackState() { return pcReady() && pcState.bool("available", false) ? pcState : null; }
     public synchronized boolean pcReady() {
         return spotifyReady && SystemClock.elapsedRealtime() - pcSeen < 8000;
     }
@@ -524,6 +526,14 @@ public final class LinkServer {
     }
     private synchronized Res pcPoll(LinkJson.Obj args) {
         pcSeen = SystemClock.elapsedRealtime(); spotifyReady = args.bool("spotify", false);
+        LinkJson.Obj state = args.obj("state");
+        pcState = state == null ? new LinkJson.Obj() : new LinkJson.Obj()
+            .put("available", state.bool("available", false))
+            .put("title", state.str("title", "")).put("artist", state.str("artist", ""))
+            .put("playing", state.bool("playing", false)).put("uri", state.str("uri", ""))
+            .put("positionMs", Math.max(0, state.lng("positionMs", 0)))
+            .put("durationMs", Math.max(0, state.lng("durationMs", 0)))
+            .put("volume", Math.max(0, Math.min(100, state.lng("volume", 0))));
         LinkJson.Arr commands = new LinkJson.Arr();
         for (PcCommand c : pcCommands.values())
             if (c.expires > pcSeen) commands.add(c.body);
@@ -1051,7 +1061,7 @@ public final class LinkServer {
             int dot = v.indexOf('.', v.indexOf('.') + 1);   // "3.1" or "3.1.0"
             return dot > 0 ? v.substring(0, dot) : v;
         }
-        return "3.2";       // keep in sync with scripts/VERSION
+        return "3.3";       // keep in sync with scripts/VERSION
     }
 
     private String readGlobal(String key) {
