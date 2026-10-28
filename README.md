@@ -1,3 +1,5 @@
+> **AstOS 3.5:** Playback/AI tools are promoted into the ROM. Use Companion 1.5.0 and the matching Spicetify extension. See [release/update instructions and validation limits](docs/RELEASE-3.5.md).
+
 <div align="center">
 
 # AstOs

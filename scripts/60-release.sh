@@ -34,19 +34,18 @@ fi
 NOTES="$(cat <<EOF
 AstOs ${ASTOS_VERSION} for the Lenovo Tab 3 Essential (TB3-710F)
 
-v3.4 — cable-free pairing, pixel UI and real media feedback
+v3.5 — playback + AI tools promoted, remembered-PC and mod-install repair
 
-* Direct encrypted LAN discovery/pairing/reconnection; optional USB bootstrap.
-* Native Windows Bluetooth RFCOMM, independent of virtual COM ports.
-* Cross-app Wi-Fi configuration permission and scan/association/error-state corrections.
-* Close/minimize Companion to tray; background-safe Spotify long polling.
-* PC-first song requests, actual cover art, optional real PC audio levels and local audio-session capture.
-* Theme-aware pixel keyboard/dialogs, improved text contrast, keyboard-icon prompt and expandable timed response line.
-* Persistent custom backdrop builder and disabled window entrance animations.
-* System navigation buttons remain disabled; AstOS supplies in-app and invisible edge navigation.
+* Production music search/play/control/state and reminders, alarms and timers.
+* Checked private mod uploads, SD file picker and corrected native DEX installer.
+* Remembered-PC identity, code-free trusted reconnect, 40 attempts / 4 seconds, native in-app Bluetooth pairing.
+* Strict setup-only Companion gating until the real shell handoff.
+* Silence-ended PCM speech; opt-in Whisper large v3 accuracy or turbo speed, with offline captions when available.
+* Fixed custom backdrop timing; system navigation buttons and window entrance animations remain off.
 
-Tests/builds do not certify physical tablet radios, audio or live Spotify behavior.
-Read FOLLOWUP-3.4.md for required matching versions, setup and validation limits.
+Use the matching Companion 1.5.0 and replace/reapply spicetify/astos.js.
+Tests/builds do not certify physical radios, microphone, SD or live Spotify behavior.
+Read RELEASE-3.5.md for install steps and validation limits.
 Back up in TWRP before flashing.
 
 sha256: ${SUM}
@@ -66,7 +65,7 @@ Same boot.img as inside the ROM zip. Flash via TWRP Install Image ->
 Boot partition for quick testing or rescue (FLASH.md Troubleshooting)."
 fi
 
-ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md" "docs/COMPANION.md" "docs/PLUGINS.md" "docs/PC-PLAYBACK.md" "docs/FIX-VALIDATION.md" "docs/AI-PROVIDERS.md" "docs/VALIDATION-3.3.md" "docs/FOLLOWUP-3.4.md" "spicetify/astos.js")
+ASSETS=("$ZIP" "docs/FLASH.md" "docs/SETUP.md" "docs/COMPANION.md" "docs/PLUGINS.md" "docs/PC-PLAYBACK.md" "docs/FIX-VALIDATION.md" "docs/AI-PROVIDERS.md" "docs/VALIDATION-3.3.md" "docs/FOLLOWUP-3.4.md" "docs/RELEASE-3.5.md" "spicetify/astos.js")
 if [ -n "$BOOT" ]; then
     ASSETS=("$BOOT" "${ASSETS[@]}")
 fi
@@ -95,7 +94,7 @@ fi
 
 gh release create "$TAG" \
     "${ASSETS[@]}" \
-    --title "AstOs ${ASTOS_VERSION} — setup + providers + media — $TAG" \
+    --title "AstOs ${ASTOS_VERSION} — playback tools + connection repair — $TAG" \
     --notes "$NOTES" \
     --target "${GITHUB_SHA:-HEAD}"
 

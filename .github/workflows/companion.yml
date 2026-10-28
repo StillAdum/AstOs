@@ -59,6 +59,8 @@ jobs:
           python ../tests/static33.py
           python ../tests/ui34.py
           bash ../scripts/test-ai.sh
+          bash ../scripts/test-ai-tools.sh
+          bash ../scripts/test-runtime.sh
           npx electron test/renderer-smoke.js
 
       - name: Fetch adb (platform-tools)
@@ -84,7 +86,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # find the newest tag this repo has
-          LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+          LATEST=$(gh release list --exclude-pre-releases --limit 20 --json tagName --jq '[.[] | select(.tagName | startswith("v3.5"))][0].tagName // empty')
           if [ -z "$LATEST" ]; then
             echo "no release yet — the next full ROM build will carry the exe"
             exit 0

@@ -68,6 +68,8 @@ jobs:
           python ../tests/static33.py
           python ../tests/ui34.py
           bash ../scripts/test-ai.sh
+          bash ../scripts/test-ai-tools.sh
+          bash ../scripts/test-runtime.sh
           npx electron test/renderer-smoke.js
 
       # adb for the USB transport — bundled into resources/adb
@@ -95,6 +97,47 @@ jobs:
             companion/dist/AstOS-Companion-Setup-*.exe
             companion/dist/AstOS-Companion-Portable-*.exe
           if-no-files-found: error
+
+  app-update:
+    name: Signed AstShell app repair (no full ROM wait)
+    needs: companion
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - uses: android-actions/setup-android@v3
+      - name: Build and package production apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'python -c "import os,pathlib; p=pathlib.Path(os.environ[\"RUNNER_TEMP\"])/\"app-update.log\"; s=p.read_text(errors=\"replace\")[-6500:] if p.exists() else \"App update failed\"; print(\"::error::\"+s.replace(\"%\",\"%25\").replace(\"\n\",\"%0A\").replace(\"\r\",\"%0D\"))"' ERR
+          exec > >(tee "$RUNNER_TEMP/app-update.log") 2>&1
+          sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+          gradle --no-daemon -p astshell :app:assembleRelease
+          gradle --no-daemon -p astsetup :app:assembleRelease
+          bash scripts/test-ai-tools.sh
+          bash scripts/test-runtime.sh
+          bash scripts/package-app-update.sh app-update
+      - uses: actions/download-artifact@v4
+        with:
+          name: companion-win
+          path: app-update/companion
+      - uses: actions/upload-artifact@v4
+        with:
+          name: astos-3.5-app-repair
+          path: app-update/
+      - name: Publish app repair prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v3.5-app-${{ github.run_number }}" --target "$GITHUB_SHA" --prerelease --title 'AstOS 3.5 app repair + Companion 1.5.0 (not the full ROM)' --notes-file docs/RELEASE-3.5.md app-update/*.apk app-update/*.astpl app-update/astos.js app-update/RELEASE-3.5.md app-update/SHA256SUMS.txt app-update/companion/*.exe
 
   build:
     name: AstOs ROM (TB3-710F)
