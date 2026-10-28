@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build already-compiled AstShell into a signed, data-preserving app repair mod.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"; OUT="${1:-$ROOT/app-update}";mkdir -p "$OUT"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"; OUT="${1:-$ROOT/app-update}";mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 bash "$ROOT/mods/playback-tools-preview/sign.sh" "$ROOT/astshell/app/build/outputs/apk/release/app-release-unsigned.apk" "$OUT/AstShell-3.5.apk"
 bash "$ROOT/mods/playback-tools-preview/sign.sh" "$ROOT/astsetup/app/build/outputs/apk/release/app-release-unsigned.apk" "$OUT/AstSetup-3.5.apk"
 bash "$ROOT/mods/playback-tools-preview/build-installer.sh" "$OUT/installer.jar"

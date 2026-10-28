@@ -116,7 +116,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          trap 'python -c "import os,pathlib; p=pathlib.Path(os.environ[\"RUNNER_TEMP\"])/\"app-update.log\"; s=p.read_text(errors=\"replace\")[-6500:] if p.exists() else \"App update failed\"; print(\"::error::\"+s.replace(\"%\",\"%25\").replace(\"\n\",\"%0A\").replace(\"\r\",\"%0D\"))"' ERR
+          trap 'python -c "import os,pathlib; p=pathlib.Path(os.environ[\"RUNNER_TEMP\"])/\"app-update.log\"; s=p.read_text(errors=\"replace\")[-3300:] if p.exists() else \"App update failed\"; print(\"::error::\"+s.replace(\"%\",\"%25\").replace(\"\n\",\"%0A\").replace(\"\r\",\"%0D\"))"' ERR
           exec > >(tee "$RUNNER_TEMP/app-update.log") 2>&1
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-34' 'build-tools;34.0.0'
           gradle --no-daemon -p astshell :app:assembleRelease
