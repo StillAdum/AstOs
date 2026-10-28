@@ -13,7 +13,9 @@ shutil.copytree(root,out,ignore=shutil.ignore_patterns('.git','node_modules','bu
 for rel in json.loads((mod/'baseline.json').read_text()):
     f=out/rel
     if f.is_file():f.write_bytes(f.read_bytes().replace(b'\r\n',b'\n'))
-for patch in sorted((mod/'patches').glob('*.patch')):
+for source in sorted((mod/'patches').glob('*.patch')):
+    patch=out/source.relative_to(root)
+    patch.write_bytes(source.read_bytes().replace(b'\r\n',b'\n'))
     subprocess.run(['git','apply','--check',str(patch)],cwd=out,check=True)
     subprocess.run(['git','apply',str(patch)],cwd=out,check=True)
 print('Preview materialized:',out)
