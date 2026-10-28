@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: companion-only
@@ -51,12 +52,14 @@ jobs:
         run: dotnet publish companion/audio-helper/AstAudio.csproj -c Release -o companion/resources/audio
 
       - name: Bundle verified PC music engine
-        run: python companion/scripts/fetch-music.py
+        shell: bash
+        run: python companion/scripts/fetch-music.py 2>&1 | tee "$RUNNER_TEMP/music-deps.log"
 
       - name: Install + test
         shell: bash
         working-directory: companion
         run: |
+          exec > >(tee "$RUNNER_TEMP/companion-tests.log") 2>&1
           npm ci --no-audit --no-fund
           npm test
           python ../tests/static33.py
@@ -101,3 +104,12 @@ jobs:
             dist/AstOS-Companion-Setup-*.exe \
             dist/AstOS-Companion-Portable-*.exe \
             --clobber
+
+      - name: Publish authenticated build report
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_JOB: companion-fast
+          REPORT_RESULT: ${{ job.status }}
+        run: python .github/scripts/report-build.py

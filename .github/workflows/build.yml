@@ -6,6 +6,7 @@ on:
     branches: [ main ]
     paths-ignore:
       - 'mods/**'
+      - '.github/build-reports/**'
       - '.github/workflows/playback-preview.yml'
   # nightly rebuild is opt-in via workflow_dispatch only —
   # full ROM builds are heavy.
@@ -60,12 +61,14 @@ jobs:
         run: dotnet publish companion/audio-helper/AstAudio.csproj -c Release -o companion/resources/audio
 
       - name: Bundle verified PC music engine
-        run: python companion/scripts/fetch-music.py
+        shell: bash
+        run: python companion/scripts/fetch-music.py 2>&1 | tee "$RUNNER_TEMP/music-deps.log"
 
       - name: Install + test
         shell: bash
         working-directory: companion
         run: |
+          exec > >(tee "$RUNNER_TEMP/companion-tests.log") 2>&1
           npm ci --no-audit --no-fund
           npm test
           python ../tests/static33.py
@@ -102,6 +105,15 @@ jobs:
             companion/dist/AstOS-Companion-Setup-*.exe
             companion/dist/AstOS-Companion-Portable-*.exe
           if-no-files-found: error
+
+      - name: Publish authenticated build report
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_JOB: companion
+          REPORT_RESULT: ${{ job.status }}
+        run: python .github/scripts/report-build.py
 
   app-update:
     name: Signed AstShell app repair (no full ROM wait)
@@ -144,6 +156,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "v3.5-app-${{ github.run_number }}" --target "$GITHUB_SHA" --prerelease --title 'AstOS 3.5 app repair + Companion 1.5.1 (not the full ROM)' --notes-file docs/RELEASE-3.5.md app-update/*.apk app-update/*.astpl app-update/astos.js app-update/RELEASE-3.5.md app-update/SHA256SUMS.txt app-update/companion/*.exe
+
+      - name: Publish authenticated build report
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_JOB: app-update
+          REPORT_RESULT: ${{ job.status }}
+        run: python .github/scripts/report-build.py
 
   build:
     name: AstOs ROM (TB3-710F)
@@ -231,3 +252,12 @@ jobs:
             /home/runner/.gradle
             /home/runner/jdk17
           key: astos-caches-v1-${{ github.run_id }}
+
+      - name: Publish authenticated build report
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_JOB: rom
+          REPORT_RESULT: ${{ job.status }}
+        run: python .github/scripts/report-build.py
