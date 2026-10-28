@@ -576,7 +576,7 @@ public final class LinkServer {
         sendPcData(action,query,sticky,(data,error)->cb.done(error));
     }
     public synchronized void sendPcData(String action, String query, boolean sticky, PcDataCallback cb) {
-        if (!pcReady()) { cb.done(null,"PC Spotify is disconnected. Open Companion and the AstOS Spotify extension."); return; }
+        if (!pcReady()) { cb.done(null,"PC playback is disconnected. Open the current AstOS Companion or choose tablet output."); return; }
         if (pcCommands.size() >= 16) { cb.done(null,"PC command queue is busy"); return; }
         String id = java.util.UUID.randomUUID().toString();
         PcCommand c = new PcCommand();
@@ -586,7 +586,7 @@ public final class LinkServer {
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             synchronized (LinkServer.this) {
                 PcCommand expired = pcCommands.remove(id);
-                if (expired != null) expired.callback.done(null,"PC Spotify did not acknowledge the command");
+                if (expired != null) expired.callback.done(null,"PC did not acknowledge playback");
             }
         }, 35500);
     }
@@ -594,7 +594,7 @@ public final class LinkServer {
         pcSeen = SystemClock.elapsedRealtime(); spotifyReady = args.bool("spotify", false);
         LinkJson.Obj state = args.obj("state");
         pcState = state == null ? new LinkJson.Obj() : new LinkJson.Obj()
-            .put("available", state.bool("available", false))
+            .put("available", state.bool("available", false)).put("source",state.str("source","spotify"))
             .put("title", state.str("title", "")).put("artist", state.str("artist", ""))
             .put("artUrl", state.str("artUrl", ""))
             .put("playing", state.bool("playing", false)).put("stale",state.bool("stale",false)).put("uri", state.str("uri", ""))
