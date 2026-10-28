@@ -459,7 +459,7 @@ public class HomeActivity extends Activity
         org.json.JSONObject pc = PcPlayback.state();
         if (pc != null && (!MusicEngine.isPlaying() || pc.optBoolean("playing", false) || PcPlayback.selected())) {
             mTrack.setText(pc.optString("title", "Spotify on PC"));
-            mArtist.setText(pc.optString("artist", "")); mSrc.setText("PC · Spotify");
+            mArtist.setText(pc.optString("artist", "")); mSrc.setText(pc.optString("source", "").equals("pc-audio")?"PC · AUDIO":"PC · Spotify");
             setPlaying(pc.optBoolean("playing", false));
             int position = pc.optInt("positionMs",0), duration = pc.optInt("durationMs",0);
             mProgBar.setLevel(duration > 0 ? Math.round(position * 36f / duration) : 0);
@@ -1073,8 +1073,10 @@ public class HomeActivity extends Activity
             return;
         }
         if ("play".equals(action) || "pause".equals(action) || "toggle".equals(action)) {
-            if (MusicEngine.isPlaying() || MusicEngine.current() != null) MusicEngine.toggle(this);
-            else MediaControlService.toggle();
+            if(MusicEngine.isBusy()||MusicEngine.current()!=null){
+                if("toggle".equals(action))MusicEngine.toggle(this);else MusicEngine.control(this,"pause".equals(action)?"pause":"resume");
+            }else if("pause".equals(action))MediaControlService.pause();
+            else if("play".equals(action))MediaControlService.play();else MediaControlService.toggle();
         } else if ("next".equals(action)) {
             if (MusicEngine.current() != null) MusicEngine.next(this);
             else MediaControlService.next();
@@ -1318,8 +1320,11 @@ public class HomeActivity extends Activity
 
     // ------------------------------------------------------------ MusicEngine.Listener
 
+    private String lastMusicStatus="";
     @Override public void onMusicUpdate() {
-        mHandler.post(new Runnable() { @Override public void run() { updateMedia(); } });
+        mHandler.post(new Runnable() { @Override public void run() { updateMedia();
+            String status=MusicEngine.searchStatus();if(!status.isEmpty()&&!status.equals(lastMusicStatus)){lastMusicStatus=status;typeLine(status);keepLine(15000);}
+        } });
     }
 
     // ------------------------------------------------------------ misc
