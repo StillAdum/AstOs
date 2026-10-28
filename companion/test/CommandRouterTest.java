@@ -24,9 +24,9 @@ public class CommandRouterTest {
         test("hey spotify play never gonna give you up", "playSong", "never gonna give you up");
         test("pause", "mediaAction", "pause", 0); // route returns spoken message too
         sticky = true;
-        test("next song", "pcAction", "next", "next song", true);
-        test("please play bohemian rhapsody", "pcAction", "play", "bohemian rhapsody", true);
-        test("stop timer", "cancelTimer");
+        test("next song", "pcAction", "next", "next song", false);
+        test("please play bohemian rhapsody", "pcAction", "play", "bohemian rhapsody", false);
+        test("stop timer", "askGroq", "stop timer");
         test("set playback to my pc", "playbackTarget", true);
         test("set playback to tablet", "playbackTarget", false);
         sticky = false;

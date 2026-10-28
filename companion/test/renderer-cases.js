@@ -14,6 +14,9 @@ module.exports = async function cases(run) {
  await run("document.getElementById('btnExisting').click();document.getElementById('wifiHost').value='192.168.1.5';document.getElementById('wifiPairCode').value='123456';document.getElementById('btnWifi').click()");
  // Fixture now represents an unfinished tablet: Existing must still go to setup.
  await wait("!!document.querySelector('#v-setup.on #netList .netrow')");
+ await check("['dash','mods','update','tools'].every(v=>document.querySelector('.tab[data-view='+v+']').disabled)",'Unfinished setup exposed other tabs');
+ await run("document.querySelector('.tab[data-view=mods]').dispatchEvent(new Event('click'))");
+ await check("!!document.querySelector('#v-setup.on')",'Setup-only programmatic guard');
  await check("!document.querySelector('#netList img')",'SSID injected HTML');
  await run("document.querySelector('#netList .netrow').click()");
  await check("document.getElementById('wifiSsid').value==='<img src=x onerror=alert(1)>'",'SSID selection');

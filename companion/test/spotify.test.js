@@ -2,7 +2,8 @@
 const assert = require('node:assert/strict');
 const {SpotifyBridge} = require('../src/spotify-bridge');
 (async () => {
-  const bridge = new SpotifyBridge('test-only-not-a-secret', 0);
+  let clock=1000;
+  const bridge = new SpotifyBridge('test-only-not-a-secret', 0,()=>clock);
   await bridge.start();
   const base = `http://127.0.0.1:${bridge.server.address().port}`;
   const headers = {Authorization: 'Bearer test-only-not-a-secret'};
@@ -14,7 +15,7 @@ const {SpotifyBridge} = require('../src/spotify-bridge');
     assert.equal(state.tabletConnected, false);
     assert.equal((await fetch(base+'/state',{method:'POST',body:'{}'})).status,401);
     await fetch(base+'/state',{method:'POST',headers,body:JSON.stringify({available:true,title:'Track',artist:'Artist',playing:true,positionMs:1234,durationMs:8000,volume:150})});
-    assert.equal(bridge.state.title,'Track'); assert.equal(bridge.state.volume,100); assert.equal(bridge.state.positionMs,1234);
+    assert.equal(bridge.state.title,'Track'); assert.equal(bridge.state.volume,100); assert.equal(bridge.state.positionMs,1234);clock+=2000;assert.equal(bridge.state.positionMs,3234,'Bridge timeline extrapolates while renderer is backgrounded');
     assert.equal((await fetch(base+'/state',{method:'POST',headers,body:'invalid'})).status,400);
     const events=fetch(base+'/events',{headers});
     await new Promise(r=>setTimeout(r,30));
@@ -28,8 +29,8 @@ const {SpotifyBridge} = require('../src/spotify-bridge');
     assert.equal(state.commands[0].action, 'next');
     // Unacknowledged commands stay available; caller deduplicates IDs.
     assert.equal((await (await fetch(base + '/poll', {headers})).json()).commands[0].id, 'c1');
-    await fetch(base + '/result', {method:'POST', headers, body:JSON.stringify({id:'c1',ok:true})});
-    await job;
+    await fetch(base + '/result', {method:'POST', headers, body:JSON.stringify({id:'c1',ok:true,data:{tracks:[{uri:'spotify:track:result'}]}})});
+    assert.equal((await job).tracks[0].uri,'spotify:track:result','Structured tool results propagate');
     assert.deepEqual((await (await fetch(base + '/poll', {headers})).json()).commands, []);
     await assert.rejects(bridge.execute({id:'x',action:'shell'}), /Unsupported/);
     const failed = bridge.execute({id:'c2',action:'play'});

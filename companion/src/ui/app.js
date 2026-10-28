@@ -41,6 +41,7 @@ function spawnLogoBlocks() {
 }
 
 function showView(name) {
+  if(connected&&setupRequired)name='setup';
   if (connected && (name === 'welcome' || name === 'connect')) name = setupRequired ? 'setup' : 'dash';
   document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
   $('v-' + name).classList.add('on');
@@ -56,7 +57,7 @@ function enableTabs(paired) {
   $('btnDisconnect').classList.toggle('hidden', !paired);
   ['dash', 'setup', 'mods', 'update', 'tools'].forEach(v => {
     const b = document.querySelector(`.tab[data-view="${v}"]`);
-    if (b) b.disabled = !paired;
+    if (b) b.disabled = !paired || (setupRequired && v!=='setup');
   });
   const pill = $('linkPill');
   if (paired) {
@@ -158,7 +159,7 @@ async function onPaired(info) {
   THE_TABLET.name = state.name || info?.name || '';
   THE_TABLET.ver = state.ver || info?.ver || '';
   // Device state is authoritative, not whichever welcome button was clicked.
-  setupRequired = state.setupDone !== true;
+  setupRequired = state.setupDone !== true || state.app === "astsetup";
   enableTabs(true);
   showView(setupRequired ? 'setup' : 'dash');
   if (setupRequired) await loadSetup(); else await loadDash();
@@ -302,7 +303,7 @@ $('btnJoin').addEventListener('click', async () => {
     }
     status('setupStatus', 'finishing setup…', 'ok');
     await rpc('setup.finish', { ssid, pass });
-    setupRequired = false; showView('dash'); await loadDash();
+    await waitForSetupHandoff();
     status('setupStatus', 'done — watch the tablet finish by itself', 'ok');
   } catch (e) {
     status('setupStatus', e.message, 'err');
@@ -323,13 +324,19 @@ $('btnFinishNoWifi').addEventListener('click', async () => {
       keepScreen: $('keepScreen').checked
     });
     await rpc('setup.finish', {});
-    setupRequired = false; showView('dash'); await loadDash();
+    await waitForSetupHandoff();
     status('setupStatus', 'done — the tablet finishes on its own', 'ok');
   } catch (e) {
     status('setupStatus', e.message, 'err');
   }
 });
 
+async function waitForSetupHandoff(){
+ setupRequired=true;enableTabs(true);showView('setup');
+ status('setupStatus','Tablet is finishing setup. Keep Companion running; it will reconnect automatically.','ok');
+ for(let i=0;i<150;i++){await new Promise(r=>setTimeout(r,4000));try{const state=await rpc('info');if(state.setupDone===true&&state.app!=='astsetup'){await onPaired(state);return;}}catch{}}
+ status('setupStatus','Still waiting for the tablet. Check its setup progress; other tabs remain locked.');
+}
 // ------------------------------------------------------------ mods
 
 document.querySelector('.tab[data-view="mods"]').addEventListener('click', loadMods);
@@ -527,4 +534,8 @@ if (window.astos.resume) window.astos.resume().then(r => { if (r.ok && r.needCod
 
 if(window.astos.audioVisualizer){window.astos.audioVisualizer().then(s=>{$('audioVisualizer').checked=s.enabled;}).catch(()=>{});$('audioVisualizer').onchange=async()=>{const state=await window.astos.audioVisualizer($('audioVisualizer').checked);if(state.error)$('btProgress').textContent=state.error;};}
 
-$('btnBluetoothSettings').onclick=()=>window.astos.bluetoothSettings?.();
+$('btnBluetoothSettings').onclick=async()=>{
+ const button=$('btnBluetoothSettings');button.disabled=true;status('btProgress','Searching nearby Bluetooth devices…');
+ try{const r=await window.astos.discoverBluetooth();if(!r.ok)throw Error(r.error);const select=$('btDevices');select.replaceChildren();for(const d of r.devices){const o=document.createElement('option');o.value='bt:'+d.address;o.textContent=(d.name||'Unnamed device')+' · '+d.address+(d.paired?' · paired':'');select.append(o);}select.hidden=!r.devices.length;if(r.devices.length){$('btPort').value=select.value;status('btProgress','Choose your tablet, then connect. Confirm matching numbers on both devices.');}else status('btProgress','No devices found. On tablet open Settings → Connect / pair new PC.','err');}catch(e){status('btProgress',e.message,'err');}finally{button.disabled=false;}
+};
+$('btDevices').onchange=()=>{$('btPort').value=$('btDevices').value;};

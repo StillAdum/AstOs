@@ -72,13 +72,12 @@
       <div class="card" id="btCard">
         <div class="radar bt"><div class="outline"></div><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="core"></div></div>
         <h3>BLUETOOTH <span class="vt accent">wireless</span></h3>
-        <p>Pair the tablet once in Windows Bluetooth settings (it appears as
-          <b>AstSetup_xxxx</b> during setup). The app probes every Bluetooth
-          serial port for AstOS. No cables on the couch.</p>
-        <label>Outgoing Bluetooth serial port (optional)</label>
-        <input id="btPort" placeholder="Auto-detect, or COM7 from Windows Bluetooth ports">
-        <button class="ghost" id="btnBluetoothSettings">Pair tablet with Windows</button>
-        <button class="bigbtn" id="btnBt">scan bluetooth</button>
+        <p>Open “Connect / pair new PC” on the tablet. Find it below and confirm the matching numbers on both screens. Remembered PCs reconnect without another code.</p>
+        <select id="btDevices" aria-label="Nearby Bluetooth tablets" hidden></select>
+        <label>Tablet selection / advanced COM port (optional)</label>
+        <input id="btPort" placeholder="Find nearby tablets, or type COM7">
+        <button class="ghost" id="btnBluetoothSettings">Find nearby tablets</button>
+        <button class="bigbtn" id="btnBt">Connect Bluetooth</button>
         <div class="scanline" id="btProgress"></div>
       </div>
     </div>
