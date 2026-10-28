@@ -304,7 +304,7 @@ public final class LinkServer {
                 } catch (Exception ignored) {
                     // connection dropped — normal
                 } finally {
-                    close(in); close(out);connections.remove(in);connections.remove(out);bondedConnection.remove();remoteHost.remove();connAuthed.remove();
+                    close(in); close(out);connections.remove(in);connections.remove(out);pcConnectionClosed(Thread.currentThread());bondedConnection.remove();remoteHost.remove();connAuthed.remove();
                 }
             }
         }, "astlink-conn-" + via).start();
@@ -566,6 +566,13 @@ public final class LinkServer {
     }
     private final java.util.LinkedHashMap<String, PcCommand> pcCommands = new java.util.LinkedHashMap<>();
     private long pcSeen;
+    private Thread pcOwner;
+    private synchronized void pcConnectionClosed(Thread owner){
+        if(pcOwner!=owner)return;
+        pcOwner=null;pcSeen=0;spotifyReady=false;pcState=new LinkJson.Obj();
+        java.util.List<PcCommand> abandoned=new java.util.ArrayList<>(pcCommands.values());pcCommands.clear();
+        for(PcCommand command:abandoned)command.callback.done(null,"PC disconnected; use tablet playback or reconnect Companion");
+    }
     private boolean spotifyReady;
     private LinkJson.Obj pcState = new LinkJson.Obj();
     public synchronized LinkJson.Obj pcPlaybackState() { return pcReady() && pcState.bool("available", false) ? pcState : null; }
@@ -591,7 +598,7 @@ public final class LinkServer {
         }, 35500);
     }
     private synchronized Res pcPoll(LinkJson.Obj args) {
-        pcSeen = SystemClock.elapsedRealtime(); spotifyReady = args.bool("spotify", false);
+        pcOwner=Thread.currentThread();pcSeen = SystemClock.elapsedRealtime(); spotifyReady = args.bool("spotify", false);
         LinkJson.Obj state = args.obj("state");
         pcState = state == null ? new LinkJson.Obj() : new LinkJson.Obj()
             .put("available", state.bool("available", false)).put("source",state.str("source","spotify"))
