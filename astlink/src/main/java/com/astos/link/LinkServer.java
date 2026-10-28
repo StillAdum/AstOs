@@ -120,7 +120,9 @@ public final class LinkServer {
     private final Context mCtx;
     private final Host mHost;
     private volatile boolean mRunning;
+    private volatile int runEpoch;
     private BluetoothServerSocket mBt;
+    private final java.util.Set<Closeable> connections=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<Closeable,Boolean>());
     private ServerSocket mTcp;
     private final ConcurrentHashMap<String, Xfer> mXfers = new ConcurrentHashMap<String, Xfer>();
 
@@ -131,21 +133,26 @@ public final class LinkServer {
 
     public synchronized void start() {
         if (mRunning) return;
-        mRunning = true;
+        mRunning = true;final int epoch=++runEpoch;
         btListen();
         tcpListen();
         discoverListen();
         holdNetwork();
+        pairingPrompts=new PairingPrompts(mCtx,()->pairingOpen());pairingPrompts.start();
+        startPresence();
         new Thread(() -> {
-            while (mRunning) {
-                try { Thread.sleep(2000); ensureBluetooth(); } catch (InterruptedException e) { return; }
+            while (mRunning&&epoch==runEpoch) {
+                try { Thread.sleep(2000); if(epoch!=runEpoch)return;ensureBluetooth(); } catch (InterruptedException e) { return; }
             }
         }, "astlink-bt-retry").start();
         Log.i("link up (" + mHost.appName() + ")");
     }
 
     public synchronized void stop() {
-        mRunning = false;
+        mRunning = false;runEpoch++;
+        for(Closeable c:connections)close(c);connections.clear();
+        if(presence!=null)presence.close();
+        if(pairingPrompts!=null){pairingPrompts.close();pairingPrompts=null;}
         if(discovery!=null)discovery.close();
         if(cpuLock!=null&&cpuLock.isHeld())cpuLock.release();
         if(wifiLock!=null&&wifiLock.isHeld())wifiLock.release();
@@ -185,7 +192,7 @@ public final class LinkServer {
                 while (mRunning) {
                     try {
                         BluetoothSocket s = srv.accept();
-                        serve(s.getInputStream(), s.getOutputStream(), "bt");
+                        serve(s.getInputStream(), s.getOutputStream(), "bt",s.getRemoteDevice().getBondState()==android.bluetooth.BluetoothDevice.BOND_BONDED,s.getRemoteDevice().getAddress());
                     } catch (Exception e) {
                         if (mRunning) Log.i("bt accept: " + e);
                         close(srv);
@@ -211,7 +218,7 @@ public final class LinkServer {
                 while (mRunning) {
                     try {
                         Socket s = srv.accept();
-                        serve(s.getInputStream(), s.getOutputStream(), s.getInetAddress().isLoopbackAddress() ? "usb" : "wifi");
+                        serve(s.getInputStream(), s.getOutputStream(), s.getInetAddress().isLoopbackAddress() ? "usb" : "wifi",false,s.getInetAddress().getHostAddress());
                     } catch (Exception e) {
                         if (mRunning) Log.i("tcp accept: " + e);
                         try { srv.close(); } catch (Exception ignored) {}
@@ -256,10 +263,15 @@ public final class LinkServer {
        byte[] reply=LinkJson.write(new LinkJson.Obj().put("service","astos").put("port",TCP_PORT).put("name",nz(readGlobal("astos_name"))).put("secure",true)).getBytes("UTF-8");socket.send(new java.net.DatagramPacket(reply,reply.length,p.getAddress(),p.getPort()));}
     }catch(Exception e){if(mRunning)Log.i("LAN discovery: "+e.getMessage());}},"astlink-discovery").start();}
     private static String readFrame(BufferedReader reader,int limit)throws Exception{StringBuilder s=new StringBuilder();int ch;while((ch=reader.read())!=-1){if(ch=='\n')break;if(ch!='\r')s.append((char)ch);if(s.length()>limit)throw new Exception("frame too large");}return ch==-1&&s.length()==0?null:s.toString();}
-    private void serve(final InputStream in, final OutputStream out, final String via) {
+    private final ThreadLocal<Boolean> bondedConnection=new ThreadLocal<Boolean>(){protected Boolean initialValue(){return false;}};
+    private final ThreadLocal<String> remoteHost=new ThreadLocal<String>(){protected String initialValue(){return "";}};
+    private void serve(final InputStream in, final OutputStream out, final String via){serve(in,out,via,false,"");}
+    private void serve(final InputStream in, final OutputStream out, final String via,final boolean bonded,final String address) {
+        connections.add(in);connections.add(out);
         new Thread(new Runnable() {
             @Override public void run() {
-                BufferedReader r = new BufferedReader(new InputStreamReader(in));
+                bondedConnection.set(bonded);remoteHost.set(address);
+                BufferedReader r = new BufferedReader(new InputStreamReader(in,java.nio.charset.StandardCharsets.UTF_8));
                 try {
                     LinkCrypto crypto=null;
                     if("wifi".equals(via)) {
@@ -273,7 +285,8 @@ public final class LinkServer {
                         byte[] encoded=new byte[prefix.length+raw.length];System.arraycopy(prefix,0,encoded,0,prefix.length);System.arraycopy(raw,0,encoded,prefix.length,raw.length);
                         javax.crypto.KeyAgreement agreement=javax.crypto.KeyAgreement.getInstance("ECDH");agreement.init(dh.getPrivate());agreement.doPhase(java.security.KeyFactory.getInstance("EC").generatePublic(new java.security.spec.X509EncodedKeySpec(encoded)),true);
                         StringBuilder shared=new StringBuilder();for(byte b:agreement.generateSecret())shared.append(String.format(java.util.Locale.US,"%02x",b&255));
-                        String secret=pairing?pairCode():token();if(secret==null||secret.isEmpty())throw new Exception("pair first");
+                        if(pairing&&!pairingOpen())throw new Exception("Open Pair new PC on the tablet");
+                        String secret=pairing?pairCode():peerToken(introduction.str("clientId",""));if(secret==null||secret.isEmpty())throw new Exception("pair first");
                         crypto=new LinkCrypto(secret,challenge,shared.toString());
                     }
                     String line;
@@ -291,7 +304,7 @@ public final class LinkServer {
                 } catch (Exception ignored) {
                     // connection dropped — normal
                 } finally {
-                    close(in); close(out);
+                    close(in); close(out);connections.remove(in);connections.remove(out);bondedConnection.remove();remoteHost.remove();connAuthed.remove();
                 }
             }
         }, "astlink-conn-" + via).start();
@@ -365,7 +378,21 @@ public final class LinkServer {
     }
 
     /** The 6-digit code the user reads off the tablet. */
-    public String displayCode() { return pairCode(); }
+    public String displayCode() {return pairingOpen()?pairCode():"------";}
+    public boolean pairingOpen(){return readGlobalInt("astos_setup_done",0)!=1||readExpiry()>System.currentTimeMillis();}
+    private long readExpiry(){try{return Long.parseLong(nz(readGlobal("astos_link_pair_until")));}catch(Exception e){return 0;}}
+    public synchronized String beginPairing(){rotatePairCode();writeGlobal("astos_link_pair_until",String.valueOf(System.currentTimeMillis()+300000));ensureBluetooth();return pairCode();}
+    private synchronized LinkJson.Obj peers(){try{return LinkJson.parseObj(nz(readGlobal("astos_link_peers")));}catch(Exception e){return new LinkJson.Obj();}}
+    private String peerToken(String id){LinkJson.Obj row=peers().obj(id);return row==null?token():row.str("token","");}
+    private synchronized void savePeer(String id,String secret,String name){if(!id.matches("[A-Za-z0-9-]{8,64}"))return;LinkJson.Obj all=peers();all.put(id,new LinkJson.Obj().put("token",secret).put("name",name.substring(0,Math.min(80,name.length()))));writeGlobal("astos_link_peers",LinkJson.write(all));}
+    private synchronized String trustPeer(LinkJson.Obj args){byte[] b=new byte[32];new java.security.SecureRandom().nextBytes(b);StringBuilder s=new StringBuilder();for(byte x:b)s.append(String.format(Locale.US,"%02x",x&255));String value=s.toString();if(token()==null||token().isEmpty())writeGlobal("astos_link_token",value);savePeer(args.str("clientId",""),value,args.str("pcName","PC"));if(!value.equals(peerToken(args.str("clientId",""))))throw new IllegalStateException("Cannot save PC trust; check system permissions");return value;}
+    private PairingPrompts pairingPrompts;
+    private java.net.DatagramSocket presence;
+    private void rememberHost(){String host=remoteHost.get();if(host==null||!host.matches("[0-9.]{7,15}")||host.startsWith("127."))return;writeGlobal("astos_pc_host",host);}
+    private void startPresence(){final int epoch=runEpoch;new Thread(()->{try(java.net.DatagramSocket socket=new java.net.DatagramSocket()){presence=socket;socket.setBroadcast(true);for(int attempt=0;attempt<40&&mRunning&&epoch==runEpoch;attempt++){
+        if(token()!=null&&!token().isEmpty()){byte[] bytes="ASTOS_PRESENT_V1".getBytes(java.nio.charset.StandardCharsets.UTF_8);String host=nz(readGlobal("astos_pc_host"));if(!host.isEmpty())try{socket.send(new java.net.DatagramPacket(bytes,bytes.length,InetAddress.getByName(host),58520));}catch(Exception ignored){}socket.send(new java.net.DatagramPacket(bytes,bytes.length,InetAddress.getByName("255.255.255.255"),58520));}
+        Thread.sleep(4000);
+    }}catch(Exception e){if(mRunning)Log.i("Presence: "+e.getMessage());}},"astos-pc-rendezvous").start();}
 
     private String token() { return readGlobal("astos_link_token"); }
 
@@ -384,6 +411,7 @@ public final class LinkServer {
             return err("need-code");
         }
 
+        if("astsetup".equals(mHost.appName())&&!cmd.matches("info|setup\\..*|wifi\\..*|ha\\.test"))return err("Finish tablet setup before using this feature");
         if ("pc.poll".equals(cmd)) return pcPoll(args);
         if ("pc.result".equals(cmd)) return pcResult(args);
         if ("info".equals(cmd))           return info();
@@ -418,11 +446,14 @@ public final class LinkServer {
 
     private Res hello(LinkJson.Obj args, String via) {
         String t = args.str("token", "");
-        String want = token();
+        String want = peerToken(args.str("clientId",""));
         if (want != null && !want.isEmpty() && want.equals(t)) {
-            connAuthed.set(Boolean.TRUE);
+            connAuthed.set(Boolean.TRUE);rememberHost();savePeer(args.str("clientId",""),want,args.str("pcName","PC"));
             mHost.onPaired(via);
             return ok(idObj().put("paired", true));
+        }
+        if("bt".equals(via)&&bondedConnection.get()&&pairingOpen()&&args.str("clientId","").matches("[A-Za-z0-9-]{8,64}")){
+            String value=trustPeer(args);connAuthed.set(true);rememberHost();writeGlobal("astos_link_pair_until","0");rotatePairCode();mHost.onPaired(via);return ok(idObj().put("paired",true).put("token",value));
         }
         connAuthed.set(Boolean.FALSE);
         // reply carries what the user must compare on the tablet screen
@@ -431,16 +462,9 @@ public final class LinkServer {
 
     private Res auth(LinkJson.Obj args, String via) {
         String code = args.str("code", "");
-        if (code.length() == 6 && code.equals(pairCode())) {
-            byte[] b = new byte[18];
-            new java.security.SecureRandom().nextBytes(b);
-            StringBuilder sb = new StringBuilder();
-            for (byte x : b) sb.append(String.format(Locale.US, "%02x", x));
-            writeGlobal("astos_link_token", sb.toString());
-            rotatePairCode();
-            connAuthed.set(Boolean.TRUE);
-            mHost.onPaired(via);
-            return ok(idObj().put("paired", true).put("token", sb.toString()));
+        if (pairingOpen() && code.length() == 6 && code.equals(pairCode())) {
+            String value=trustPeer(args);rotatePairCode();writeGlobal("astos_link_pair_until","0");connAuthed.set(Boolean.TRUE);rememberHost();mHost.onPaired(via);
+            return ok(idObj().put("paired",true).put("token",value));
         }
         return err("bad-code");
     }
@@ -528,15 +552,17 @@ public final class LinkServer {
     }
 
     private Res setupFinish(LinkJson.Obj args) {
-        boolean done = mHost.completeSetup(mCtx.getContentResolver());
+        // Wizard completion may still download assets. Only finishSetup marks it provisioned.
+        boolean done = "astsetup".equals(mHost.appName()) || mHost.completeSetup(mCtx.getContentResolver());
         mHost.onSetupFinish(args);
         return done ? ok(new LinkJson.Obj().put("provisioned", true))
                     : err("provisioning refused (not platform-signed?)");
     }
 
     public interface PcCallback { void done(String error); }
+    public interface PcDataCallback { void done(LinkJson.Obj data,String error); }
     private static final class PcCommand {
-        LinkJson.Obj body; PcCallback callback; long expires;
+        LinkJson.Obj body; PcDataCallback callback; long expires;
     }
     private final java.util.LinkedHashMap<String, PcCommand> pcCommands = new java.util.LinkedHashMap<>();
     private long pcSeen;
@@ -547,8 +573,11 @@ public final class LinkServer {
         return spotifyReady && SystemClock.elapsedRealtime() - pcSeen < 45000;
     }
     public synchronized void sendPc(String action, String query, boolean sticky, PcCallback cb) {
-        if (!pcReady()) { cb.done("PC Spotify is disconnected. Open Companion and the AstOS Spotify extension."); return; }
-        if (pcCommands.size() >= 16) { cb.done("PC command queue is busy"); return; }
+        sendPcData(action,query,sticky,(data,error)->cb.done(error));
+    }
+    public synchronized void sendPcData(String action, String query, boolean sticky, PcDataCallback cb) {
+        if (!pcReady()) { cb.done(null,"PC Spotify is disconnected. Open Companion and the AstOS Spotify extension."); return; }
+        if (pcCommands.size() >= 16) { cb.done(null,"PC command queue is busy"); return; }
         String id = java.util.UUID.randomUUID().toString();
         PcCommand c = new PcCommand();
         c.body = new LinkJson.Obj().put("id", id).put("action", action).put("query", query).put("sticky", sticky);
@@ -557,7 +586,7 @@ public final class LinkServer {
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             synchronized (LinkServer.this) {
                 PcCommand expired = pcCommands.remove(id);
-                if (expired != null) expired.callback.done("PC Spotify did not acknowledge the command");
+                if (expired != null) expired.callback.done(null,"PC Spotify did not acknowledge the command");
             }
         }, 35500);
     }
@@ -568,7 +597,7 @@ public final class LinkServer {
             .put("available", state.bool("available", false))
             .put("title", state.str("title", "")).put("artist", state.str("artist", ""))
             .put("artUrl", state.str("artUrl", ""))
-            .put("playing", state.bool("playing", false)).put("uri", state.str("uri", ""))
+            .put("playing", state.bool("playing", false)).put("stale",state.bool("stale",false)).put("uri", state.str("uri", ""))
             .put("positionMs", Math.max(0, state.lng("positionMs", 0)))
             .put("durationMs", Math.max(0, state.lng("durationMs", 0)))
             .put("volume", Math.max(0, Math.min(100, state.lng("volume", 0))));
@@ -582,7 +611,7 @@ public final class LinkServer {
     }
     private synchronized Res pcResult(LinkJson.Obj args) {
         PcCommand c = pcCommands.remove(args.str("id", ""));
-        if (c != null) c.callback.done(args.bool("ok", false) ? null : args.str("error", "Spotify command failed"));
+        if (c != null) c.callback.done(args.obj("data"), args.bool("ok", false) ? null : args.str("error", "Spotify command failed"));
         return ok();
     }
 
@@ -731,15 +760,19 @@ public final class LinkServer {
         if ("rom".equals(t.target)) dir = new File(Environment.getExternalStorageDirectory(), "AstOs/updates");
         else if ("plugin".equals(t.target)) dir = new File(Environment.getExternalStorageDirectory(), "AstOs/plugins");
         else dir = new File(Environment.getExternalStorageDirectory(), "AstOs/files");
-        dir.mkdirs();
-        t.file = new File(dir, sanitize(args.str("name", "file.bin")));
+        if("plugin".equals(t.target))dir=new File(mCtx.getFilesDir(),"link-inbox/"+t.target);
+        if(!dir.isDirectory()&&!dir.mkdirs())return err("Cannot create upload folder; free tablet storage and retry");
+        String filename=sanitize(args.str("name","file.bin"));if(filename.isEmpty())return err("Invalid filename");
+        t.file = new File(dir, filename);
+        if(t.size<=0||t.size>2147483647L)return err("Invalid file size");
+        if(dir.getUsableSpace()<t.size+1048576L)return err("Not enough tablet storage for upload");
         long resumeAt = 0;
         if (args.has("offset")) {
             long want = args.lng("offset", 0);
             if (want > 0 && t.file.exists() && t.file.length() >= want) resumeAt = want;
-        } else if (t.file.exists()) {
-            resumeAt = t.file.length();
         }
+        if(resumeAt>t.size || (resumeAt%8192!=0&&resumeAt!=t.size))resumeAt=0;
+        try{if(resumeAt==0)new FileOutputStream(t.file,false).close();}catch(Exception e){return err("Cannot create upload file: "+e.getMessage());}
         t.written = resumeAt;
         mXfers.put(id, t);
         return ok(new LinkJson.Obj().put("offset", resumeAt).put("path", t.file.getAbsolutePath()));
@@ -756,6 +789,7 @@ public final class LinkServer {
         } catch (Exception e) {
             return err("bad b64");
         }
+        if(data.length==0||data.length>8192||t.written+data.length>t.size)return err("Invalid upload chunk length");
         long expected = seq * 8192L;
         if (expected != t.written) {
             return err("gap: want seq " + (t.written / 8192L) + " got " + seq);
@@ -1096,7 +1130,7 @@ public final class LinkServer {
             int dot = v.indexOf('.', v.indexOf('.') + 1);   // "3.1" or "3.1.0"
             return dot > 0 ? v.substring(0, dot) : v;
         }
-        return "3.4";       // keep in sync with scripts/VERSION
+        return "3.5";       // keep in sync with scripts/VERSION
     }
 
     private String readGlobal(String key) {
