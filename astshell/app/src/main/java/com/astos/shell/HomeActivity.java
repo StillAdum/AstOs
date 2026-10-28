@@ -215,6 +215,7 @@ public class HomeActivity extends Activity
         if (!setupDone()) return;
         try { LinkHostShell.ensure(this); } catch (Throwable ignored) {}
         sAppContext = getApplicationContext();
+        PluginHost.init(this).setListener(this);renderPluginCards();
         Kiosk.apply(this); // self-heal lockdown
         if (mRenderedTheme != null && !mRenderedTheme.equals(AppSettings.themeKey(this))) {
             recreate();
@@ -246,6 +247,7 @@ public class HomeActivity extends Activity
     @Override
     protected void onDestroy() {
         PcPlayback.clearListener();
+        if(PluginHost.get()!=null)PluginHost.get().clearListener(this);
         MusicEngine.unlisten(this);
         VoiceEngine.get().stopListening();
         mHandler.removeCallbacks(mTick);
