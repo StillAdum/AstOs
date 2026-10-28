@@ -1,0 +1,15 @@
+{
+  "sha": "43616fc14698fe0f18a3ea7f56c59d6f64218e79",
+  "run": "40733651192",
+  "url": "https://github.com/StillAdum/AstOs/actions/runs/40733651192",
+  "job": "companion",
+  "result": "cancelled",
+  "jobs": [
+    {
+      "name": "AstOS Companion (Windows x64)",
+      "status": "in_progress",
+      "conclusion": null,
+      "steps": []
+    }
+  ]
+}
