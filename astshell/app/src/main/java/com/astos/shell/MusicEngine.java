@@ -59,6 +59,43 @@ public class MusicEngine extends Service {
         }
     }
 
+    public interface Completion {void done(SongSearch.Track track,String error);}
+    private static final java.util.concurrent.ConcurrentHashMap<String,Completion> requests=new java.util.concurrent.ConcurrentHashMap<>();
+    private Completion pendingCompletion;
+    private String requestId="";
+    private int searchEpoch;
+    private boolean retried;
+    private int resumeAt;
+    private Runnable prepareTimeout;
+    public static String playConfirmed(Context c,String query,Completion cb){
+        String id=java.util.UUID.randomUUID().toString();requests.put(id,cb);
+        try{c.startService(new Intent(c,MusicEngine.class).setAction(ACTION_PLAY_QUERY).putExtra(EXTRA_QUERY,query).putExtra("requestId",id));}
+        catch(Throwable e){requests.remove(id);cb.done(null,"Could not start tablet music: "+e.getMessage());}
+        return id;
+    }
+    public static void cancelRequest(String id){
+        requests.remove(id);MusicEngine service=sInstance;if(service==null)return;
+        service.mMain.post(()->{if(id.equals(service.requestId)){service.searchEpoch++;service.complete("Playback request timed out and was cancelled");service.releasePlayer();service.mPreparing=false;}});
+    }
+    private void complete(String error){Completion cb=pendingCompletion;pendingCompletion=null;requestId="";if(cb!=null)cb.done(error==null?mCurrent:null,error);}
+    public static void control(Context c,String action){send(c,action.toUpperCase(java.util.Locale.US));}
+    public static void controlConfirmed(String action,Completion cb){
+        MusicEngine service=sInstance;if(service==null){cb.done(null,"No tablet song is selected");return;}
+        service.mMain.post(()->{
+            try{
+                if("pause".equals(action)){service.searchEpoch++;service.complete("Playback cancelled");service.pause();cb.done(service.mCurrent,null);}
+                else if("resume".equals(action)){
+                    if(service.mPlayer==null||service.mPreparing)throw new Exception("No prepared tablet song to resume");service.resume();cb.done(service.mCurrent,null);
+                }else if("next".equals(action)){
+                    if(service.mQueue.isEmpty())throw new Exception("No next song queued; ask to play a song by name");service.complete("Replaced by next song");service.pendingCompletion=cb;service.skipNext();
+                }else if("previous".equals(action)){
+                    if(service.mCurrent==null)throw new Exception("No tablet song selected");
+                    if(service.mPlayer!=null&&positionMs()>3000){service.mPlayer.seekTo(0);cb.done(service.mCurrent,null);}
+                    else{service.complete("Restarting song");service.pendingCompletion=cb;service.playCurrent();}
+                }else throw new Exception("Unsupported playback action");
+            }catch(Exception error){cb.done(null,error.getMessage());}
+        });
+    }
     private MediaPlayer mPlayer;
     private MediaSession mSession;
     private final Deque<SongSearch.Track> mQueue = new ArrayDeque<SongSearch.Track>();
@@ -90,14 +127,16 @@ public class MusicEngine extends Service {
         try { c.startService(i); } catch (Throwable ignored) {}
     }
 
+    private static boolean safePlaying(MediaPlayer p){try{return p.isPlaying();}catch(Exception e){return false;}}
+
     public static boolean isPlaying() {
         MusicEngine s = sInstance;
-        return s != null && s.mPlayer != null && s.mPlayer.isPlaying();
+        return s != null && s.mPlayer != null && safePlaying(s.mPlayer);
     }
 
     public static boolean isBusy() {
         MusicEngine s = sInstance;
-        return s != null && (s.mPreparing || (s.mPlayer != null && s.mPlayer.isPlaying()));
+        return s != null && (s.mPreparing || (s.mPlayer != null && safePlaying(s.mPlayer)));
     }
 
     public static SongSearch.Track current() {
@@ -165,10 +204,17 @@ public class MusicEngine extends Service {
         String action = intent == null ? null : intent.getAction();
         if (ACTION_PLAY_QUERY.equals(action)) {
             String q = intent.getStringExtra(EXTRA_QUERY);
-            if (q != null && !q.trim().isEmpty()) searchAndPlay(q.trim());
+            if(q!=null&&!q.trim().isEmpty()){
+                complete("Replaced by a newer song request");requestId=intent.getStringExtra("requestId");
+                pendingCompletion=requestId==null?null:requests.remove(requestId);searchAndPlay(q.trim());
+            }
         } else if ("com.astos.shell.TOGGLE".equals(action)) {
-            if (isPlaying()) pause(); else if (mPlayer != null) resume();
+            if (mPreparing || isPlaying()) pause(); else if (mPlayer != null) resume();
             else if (mCurrent != null) playCurrent(); else startLocalShuffle();
+        } else if ("com.astos.shell.PAUSE".equals(action)) {
+            searchEpoch++;complete("Playback cancelled");pause();
+        } else if ("com.astos.shell.RESUME".equals(action)) {
+            resume();
         } else if ("com.astos.shell.NEXT".equals(action)) {
             skipNext();
         } else if ("com.astos.shell.PREV".equals(action)) {
@@ -186,6 +232,7 @@ public class MusicEngine extends Service {
 
     @Override
     public void onDestroy() {
+        searchEpoch++;complete("Tablet music stopped");
         releasePlayer();
         if (mSession != null) { mSession.setActive(false); mSession.release(); }
         sInstance = null;
@@ -198,21 +245,14 @@ public class MusicEngine extends Service {
     // ---- search + queue ------------------------------------------------------------
 
     private void searchAndPlay(final String query) {
-        mSearchStatus = "Searching \"" + query + "\" ...";
-        fireUpdate();
-        SongSearch.resolve(this, query, new SongSearch.Callback() {
-            @Override public void onResult(SongSearch.Track t, String error) {
-                if (error != null && !t.hasAny()) {
-                    mSearchStatus = error;
-                    Speak.say(MusicEngine.this, error);
-                    fireUpdate();
-                    return;
-                }
-                mQueue.clear();
-                mQueue.add(t);
-                mSearchStatus = "";
-                skipNext();
+        final int epoch=++searchEpoch;retried=false;resumeAt=0;mPreparing=true;
+        mSearchStatus="Searching \""+query+"\"…";fireUpdate();
+        SongSearch.resolve(this,query,(track,error)->{
+            if(epoch!=searchEpoch)return;
+            if(error!=null||track==null||!track.hasAny()){
+                mPreparing=false;mSearchStatus=error==null?"No playable audio found":error;complete(mSearchStatus);fireUpdate();return;
             }
+            mQueue.clear();mQueue.add(track);skipNext();
         });
     }
 
@@ -247,6 +287,7 @@ public class MusicEngine extends Service {
     }
 
     private void stopAll() {
+        searchEpoch++;complete("Playback stopped");
         releasePlayer();
         mQueue.clear();
         mCurrent = null;
@@ -258,41 +299,22 @@ public class MusicEngine extends Service {
     // ---- playback ------------------------------------------------------------------
 
     private void playCurrent() {
-        if (mCurrent == null) return;
-        final SongSearch.Track t = mCurrent;
-        releasePlayer();
-        mPreparing = true;
-        fireUpdate();
-        new Thread(new Runnable() { @Override public void run() {
-            String playUrl = null;
-            Throwable streamErr = null;
-            if (t.streamUrl != null && !t.streamUrl.isEmpty()) {
-                playUrl = t.streamUrl;
-            } else if (t.previewUrl != null && !t.previewUrl.isEmpty()) {
-                playUrl = t.previewUrl;
-                t.source = "preview";
-            }
-            if (playUrl != null) {
-                try {
-                    final String url = playUrl;
-                    mMain.post(new Runnable() { @Override public void run() { startStream(url); }});
-                } catch (final Throwable e) {
-                    streamErr = e;
-                }
-            }
-            if (streamErr != null || playUrl == null) {
-                if (t.localFile != null && t.localFile.exists()) {
-                    t.source = "local";
-                    mMain.post(new Runnable() { @Override public void run() { startLocalFile(); }});
-                } else {
-                    mMain.post(new Runnable() { @Override public void run() {
-                        mSearchStatus = "Could not play " + (t.title.isEmpty() ? t.query : t.title);
-                        mPreparing = false;
-                        fireUpdate();
-                    }});
-                }
-            }
-        }}, "music-start").start();
+        if(mCurrent==null)return;releasePlayer();mPreparing=true;
+        mSearchStatus="Loading "+mCurrent.title+"…";fireUpdate();
+        if(mCurrent.localFile!=null){startLocalFile();return;}
+        if(mCurrent.streamUrl!=null&&!mCurrent.streamUrl.isEmpty()){startStream(mCurrent.streamUrl);return;}
+        mPreparing=false;mSearchStatus="No audio stream for "+mCurrent.title;complete(mSearchStatus);fireUpdate();
+    }
+    private void prepared(MediaPlayer player){
+        if(player!=mPlayer)return;
+        if(prepareTimeout!=null)mMain.removeCallbacks(prepareTimeout);
+        try{
+            mPreparing=false;if(resumeAt>0){player.seekTo(resumeAt);resumeAt=0;}player.start();
+            mSearchStatus="Playing "+mCurrent.title;complete(null);publishAll();
+        }catch(Throwable error){onPlayError();}
+    }
+    private void prepareDeadline(){
+        final MediaPlayer player=mPlayer;prepareTimeout=()->{if(player==mPlayer&&mPreparing)onPlayError();};mMain.postDelayed(prepareTimeout,15000);
     }
 
     private void startStream(String url) {
@@ -304,24 +326,23 @@ public class MusicEngine extends Service {
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build());
-            mPlayer.setDataSource(url);
+            mPlayer.setDataSource(this,android.net.Uri.parse(url),mCurrent.headers);
             mPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override public void onPrepared(MediaPlayer mp) {
-                    mPreparing = false;
-                    mp.start();
-                    publishAll();
+                    prepared(mp);
                 }
             });
             mPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                @Override public void onCompletion(MediaPlayer mp) { skipNext(); }
+                @Override public void onCompletion(MediaPlayer mp) { if(mp==mPlayer)skipNext(); }
             });
             mPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
                 @Override public boolean onError(MediaPlayer mp, int what, int extra) {
-                    onPlayError();
+                    if(mp==mPlayer)onPlayError();
                     return true;
                 }
             });
             mPlayer.prepareAsync();
+            prepareDeadline();
             publishMetadata();
         } catch (Throwable e) {
             onPlayError();
@@ -342,21 +363,20 @@ public class MusicEngine extends Service {
             mPlayer.setDataSource(t.localFile.getAbsolutePath());
             mPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override public void onPrepared(MediaPlayer mp) {
-                    mPreparing = false;
-                    mp.start();
-                    publishAll();
+                    prepared(mp);
                 }
             });
             mPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-                @Override public void onCompletion(MediaPlayer mp) { skipNext(); }
+                @Override public void onCompletion(MediaPlayer mp) { if(mp==mPlayer)skipNext(); }
             });
             mPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
                 @Override public boolean onError(MediaPlayer mp, int what, int extra) {
-                    onPlayError();
+                    if(mp==mPlayer)onPlayError();
                     return true;
                 }
             });
             mPlayer.prepareAsync();
+            prepareDeadline();
             publishMetadata();
         } catch (Throwable e) {
             mPreparing = false;
@@ -364,31 +384,31 @@ public class MusicEngine extends Service {
         }
     }
 
-    /** Stream failed: try preview, else skip to next. */
+    /** Refresh an expired network stream once; never silently switch songs or previews. */
     private void onPlayError() {
-        SongSearch.Track t = mCurrent;
-        releasePlayer();
-        mPreparing = false;
-        if (t != null && "stream".equals(t.source)
-                && t.previewUrl != null && !t.previewUrl.isEmpty()) {
-            t.source = "preview";
-            t.status = "30s PREVIEW (stream failed)";
-            startStream(t.previewUrl);
-        } else {
-            mSearchStatus = "Skipping " + (t == null ? "" : t.title);
-            skipNext();
-        }
+        final SongSearch.Track failed=mCurrent;final int epoch=searchEpoch;
+        resumeAt=positionMs();releasePlayer();mPreparing=false;
+        if(!retried&&failed!=null&&failed.localFile==null){
+            retried=true;mPreparing=true;mSearchStatus="Reconnecting audio…";fireUpdate();
+            SongSearch.resolve(this,failed.watchUrl.isEmpty()?failed.query:failed.watchUrl,(track,error)->{
+                if(epoch!=searchEpoch||mCurrent!=failed)return;
+                if(error==null&&track!=null&&track.hasAny()){mCurrent=track;playCurrent();}
+                else playbackFailed(error==null?"Audio source unavailable":error);
+            });
+        }else playbackFailed("Audio playback failed. Try another source or check Wi-Fi.");
     }
+    private void playbackFailed(String error){mPreparing=false;mSearchStatus=error;complete(error);publishState();fireUpdate();}
 
     private void pause() {
-        if (mPlayer != null && mPlayer.isPlaying()) { mPlayer.pause(); publishAll(); }
+        if(mPreparing){searchEpoch++;mPreparing=false;complete("Playback cancelled");releasePlayer();mSearchStatus="Playback cancelled";fireUpdate();return;}
+        try{if(mPlayer!=null&&safePlaying(mPlayer)){mPlayer.pause();publishAll();}}catch(Exception error){playbackFailed("Could not pause tablet audio");}
     }
-
     private void resume() {
-        if (mPlayer != null && !mPlayer.isPlaying()) { mPlayer.start(); publishAll(); }
+        try{if(mPlayer!=null&&!mPreparing&&!safePlaying(mPlayer)){mPlayer.start();publishAll();}}catch(Exception error){playbackFailed("Could not resume tablet audio");}
     }
 
     private void releasePlayer() {
+        if(prepareTimeout!=null){mMain.removeCallbacks(prepareTimeout);prepareTimeout=null;}
         if (mPlayer != null) {
             try { mPlayer.stop(); } catch (Throwable ignored) {}
             try { mPlayer.release(); } catch (Throwable ignored) {}
@@ -470,6 +490,7 @@ public class MusicEngine extends Service {
                 if (art == null) return;
                 mMain.post(new Runnable() { @Override public void run() {
                     try {
+                        if(mCurrent!=t)return;
                         MediaMetadata.Builder b2 = new MediaMetadata.Builder()
                                 .putString(MediaMetadata.METADATA_KEY_TITLE,
                                         mCurrent == null ? "" : mCurrent.title)
