@@ -55,7 +55,7 @@
      try {
        const response = await fetch(base + path, {
          method: data ? 'POST' : 'GET',
-@@ -27,38 +34,71 @@
+@@ -27,38 +34,77 @@
        return await response.json();
      } finally { clearTimeout(timer); }
    }
@@ -67,22 +67,28 @@
      if(art.startsWith('spotify:image:'))art='https://i.scdn.co/image/'+art.split(':').pop();
 +    const raw = Number(player.getProgress?.() || 0), playing = typeof player.isPlaying === 'function' ? player.isPlaying() : !player.data?.isPaused;
 +    const now = clock(), uri = item?.uri || '';
-+    if (!anchor || forcePosition || anchor.uri !== uri || anchor.playing !== playing || anchor.raw !== raw)
-+      anchor = {uri, raw, playing, at:now};
++    if (!anchor || forcePosition || anchor.uri !== uri || anchor.raw !== raw)
++      anchor = {uri, raw, base:raw, playing, at:now};
++    else if (anchor.playing !== playing) {
++      // A background client's raw position can remain frozen across pause/resume.
++      // Preserve the estimated cursor, not the stale raw position, at that boundary.
++      const cursor=anchor.base+(anchor.playing?now-anchor.at:0);
++      anchor={uri,raw,base:cursor,playing,at:now};
++    }
 +    const duration = Number(player.getDuration?.() || metadata.duration || 0);
-+    const position = Math.max(0, Math.min(duration || 86400000, raw + (playing ? now-anchor.at : 0)));
++    const position = Math.max(0, Math.min(duration || 86400000, anchor.base + (playing ? now-anchor.at : 0)));
      return {artUrl:art,available: !!item, uri: item?.uri || '', title: item?.name || metadata.title || '',
        artist: item?.artists?.map(a => a.name).join(', ') || metadata.artist_name || '',
 -      playing: typeof player.isPlaying === 'function' ? player.isPlaying() : !player.data?.isPaused,
 -      positionMs: typeof player.getProgress === 'function' ? player.getProgress() : 0,
-+      playing, positionMs: position, estimated:playing && now-anchor.at>2000,
++      playing, positionMs: position, estimated:Math.abs(anchor.base-anchor.raw)>1 || (playing && now-anchor.at>2000),
        durationMs: typeof player.getDuration === 'function' ? player.getDuration() : Number(metadata.duration || 0),
        volume: typeof player.getVolume === 'function' ? Math.round(player.getVolume()*100) : 0};
    }
 -  async function publish() { if (token) await request('/state', snapshot()); }
 -  for (const event of ['songchange','onplaypause','onprogress']) Spicetify.Player.addEventListener?.(event, () => { publish().catch(() => {}); });
 +  async function publish(force = false) { if (token) await request('/state', snapshot(force)); }
-+  for (const event of ['songchange','onplaypause','onprogress']) Spicetify.Player.addEventListener?.(event, () => { publish(event !== 'onprogress').catch(() => {}); });
++  for (const event of ['songchange','onplaypause','onprogress']) Spicetify.Player.addEventListener?.(event, () => { publish(event === 'songchange').catch(() => {}); });
 +  function trackUri(query) {
 +    const value = String(query || '').trim();
 +    if (/^spotify:track:[A-Za-z0-9]+$/.test(value)) return value;
@@ -145,7 +151,7 @@
    }
    let lastPublished=0;
    async function poll() {
-@@ -68,11 +108,11 @@
+@@ -68,11 +114,11 @@
        if(Date.now()-lastPublished>1000){await publish();lastPublished=Date.now();}
        const state = await request('/events');
        if (state.tabletConnected) lastOk = Date.now();
@@ -159,7 +165,7 @@
            catch (e) { result = {id: c.id, ok: false, error: e.message}; }
            results.set(c.id, result);
            if (results.size > 128) results.delete(results.keys().next().value);
-@@ -80,7 +120,7 @@
+@@ -80,7 +126,7 @@
          await request('/result', result);
        }
      } catch (e) {
