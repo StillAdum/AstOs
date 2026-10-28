@@ -38,19 +38,19 @@ public class PixelBackdrop extends View {
 
     private final Runnable mFrame = new Runnable() {
         @Override public void run() {
-            if (mAnimating && isAttachedToWindowCompat()) {
-                long t = System.currentTimeMillis() - mStart;
+            if (mAnimating && getWindowVisibility()==VISIBLE && isAttachedToWindowCompat()) {
+                long now=android.os.SystemClock.elapsedRealtime();float dt=Math.min(0.25f,Math.max(0,now-mStart)/1000f);long t=now;
                 for (Mote m : mMotes) {
                     int mode=AppSettings.backdropMode(getContext());float speed=mode==5?getContext().getSharedPreferences("backdrop",0).getInt("speed",100)/100f:mode==1?0.4f:mode==3?2f:mode==4?3f:1f;
                     int direction=mode==5?getContext().getSharedPreferences("backdrop",0).getInt("direction",0):mode==4?1:0;
-                    if(direction!=2)m.y += m.k * (t % 64) / 64f * 0.35f * speed;
-                    else m.x+=m.k*0.5f*speed;
-                    if(direction==0)m.x += Math.sin((t + m.ph) / 4200f) * 0.22f * speed;
+                    if(direction!=2)m.y += m.k * dt * Ui.dp(getContext(),10) * speed;
+                    else m.x+=m.k*dt*Ui.dp(getContext(),12)*speed;
+                    if(direction==0)m.x += Math.sin((t + m.ph) / 4200f) * dt * Ui.dp(getContext(),5) * speed;
                     if (m.y > getHeight() + 8) { m.y = -8; m.x = mRnd.nextFloat() * getWidth(); }
                     if (m.x < -8) m.x = getWidth() + 8;
                     if (m.x > getWidth() + 8) m.x = -8;
                 }
-                mStart = System.currentTimeMillis();
+                mStart = android.os.SystemClock.elapsedRealtime();
                 invalidate();
                 mHandler.postDelayed(this, 64);
             }
@@ -88,7 +88,7 @@ public class PixelBackdrop extends View {
 
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        mStart = System.currentTimeMillis();
+        mStart = android.os.SystemClock.elapsedRealtime();
         if (mAnimating) start();
     }
 
@@ -97,6 +97,7 @@ public class PixelBackdrop extends View {
         mHandler.removeCallbacks(mFrame);
     }
 
+    @Override protected void onWindowVisibilityChanged(int visibility){super.onWindowVisibilityChanged(visibility);if(visibility==VISIBLE&&mAnimating)start();else mHandler.removeCallbacks(mFrame);}
     private void start() {
         mHandler.removeCallbacks(mFrame);
         if (isAttachedToWindowCompat()) mHandler.postDelayed(mFrame, 32);
@@ -107,8 +108,8 @@ public class PixelBackdrop extends View {
         if (w != mLastW || h != mLastH) {
             mLastW = w; mLastH = h;
             for (Mote m : mMotes) {
-                if (m.x <= 1f) m.x *= w;   // first layout: normalize 0..1 -> px
-                if (m.y <= 1f) m.y *= h;
+                m.x=ow>0?m.x*w/ow:m.x*w;
+                m.y=oh>0?m.y*h/oh:m.y*h;
             }
         }
     }

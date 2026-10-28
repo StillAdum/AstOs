@@ -74,6 +74,8 @@ public class KioskService extends Service {
         f.addAction(Intent.ACTION_TIME_TICK);
         try { registerReceiver(mRecv, f); } catch (Throwable ignored) {}
         navigation=new EdgeNavigation(this);navigation.start();
+        PluginHost.init(this);
+        LinkHostShell.ensure(this);
         reassert();
         mH.postDelayed(mBeat, HEARTBEAT_MS);
     }

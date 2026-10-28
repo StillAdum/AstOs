@@ -144,28 +144,14 @@ public final class PluginHost {
             throw new IllegalArgumentException("bad manifest id '" + id + "' (a-z 0-9 _)");
         if (!mf.has("name")) throw new IllegalArgumentException("manifest has no name");
         File dir = new File(root(), id);
-        // wipe any previous install of this id
-        deleteRecursive(dir);
-        dir.mkdirs();
-        try (ZipFile z = new ZipFile(zipFile)) {
-            String main = mf.optString("main", "plugin.js");
-            boolean sawMain = false;
-            java.util.Enumeration<? extends ZipEntry> e = z.entries();
-            while (e.hasMoreElements()) {
-                ZipEntry en = e.nextElement();
-                String n = en.getName();
-                if (en.isDirectory() || n.contains("..")) continue;
-                File out = new File(dir, n);
-                if (n.contains("/")) out.getParentFile().mkdirs();
-                try (InputStream in = z.getInputStream(en);
-                     FileOutputStream fo = new FileOutputStream(out)) {
-                    byte[] b = new byte[16384]; int r;
-                    while ((r = in.read(b)) > 0) fo.write(b, 0, r);
-                }
-                if (n.equals(main)) sawMain = true;
-            }
-            if (!sawMain) throw new IllegalArgumentException("zip has no " + main);
-        }
+        File staging=new File(root(),id+".incoming"),backup=new File(root(),id+".previous");
+        deleteRecursive(staging);deleteRecursive(backup);
+        try{PluginArchive.extract(zipFile,staging,mf.optString("main","plugin.js"));
+            if(dir.exists()&&!dir.renameTo(backup))throw new java.io.IOException("Cannot preserve previous mod");
+            if(!staging.renameTo(dir)){if(backup.exists())backup.renameTo(dir);throw new java.io.IOException("Cannot commit mod update");}
+            Plugin previous=mPlugins.get(id);if(previous!=null)unloadQuietly(previous);
+            deleteRecursive(backup);
+        }finally{deleteRecursive(staging);}
         boolean hasSystem = false;
         JSONArray pa = mf.optJSONArray("permissions");
         if (pa != null) for (int i = 0; i < pa.length(); i++)
@@ -186,7 +172,7 @@ public final class PluginHost {
             BufferedReader r = new BufferedReader(new InputStreamReader(z.getInputStream(e), "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String l;
-            while ((l = r.readLine()) != null) sb.append(l);
+            while ((l = r.readLine()) != null) {sb.append(l);if(sb.length()>65536)throw new java.io.IOException("Manifest too large");}
             return new JSONObject(sb.toString());
         }
     }
@@ -229,7 +215,7 @@ public final class PluginHost {
                     BufferedReader r = new BufferedReader(new InputStreamReader(fi, "UTF-8"));
                     StringBuilder sb = new StringBuilder();
                     String l;
-                    while ((l = r.readLine()) != null) sb.append(l);
+                    while ((l = r.readLine()) != null) {sb.append(l);if(sb.length()>65536)throw new java.io.IOException("Manifest too large");}
                     Plugin p = new Plugin(d.getName(), d, new JSONObject(sb.toString()),
                             prefs().getBoolean("on_" + d.getName(), false) && prefs().getBoolean("trusted_" + d.getName(), false) && AppSettings.pluginsEnabled(mCtx));
                     mPlugins.put(p.id, p);
@@ -267,6 +253,9 @@ public final class PluginHost {
             @Override public void run(Context cx, ScriptableObject shared) throws Exception {
                 if (p.scope == null) {
                     Scriptable scope = cx.initStandardObjects();
+                    Scriptable packages=(Scriptable)ScriptableObject.getProperty(scope,"Packages");
+                    scope.put("dalvik",scope,ScriptableObject.getProperty(packages,"dalvik"));
+                    scope.put("android",scope,ScriptableObject.getProperty(packages,"android"));
                     File main = new File(p.dir, p.manifest.optString("main", "plugin.js"));
                     StringBuilder sb = new StringBuilder();
                     try (FileInputStream fi = new FileInputStream(main)) {

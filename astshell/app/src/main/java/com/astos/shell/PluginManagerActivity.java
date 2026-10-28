@@ -53,11 +53,13 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("plugins in /sdcard/AstOs/plugins (*.astpl)");
+        sub.setText("Install trusted .astpl packages from PC, internal storage or SD card.");
         sub.setTextSize(10f);
         sub.setTextColor(Ui.col("soft"));
         root.addView(sub);
 
+        Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->finish());root.addView(back,lp(8));
+        Button pick=new Button(this);pick.setText("Choose .astpl file (including SD card)");pick.setOnClickListener(v->{android.content.Intent i=new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(android.content.Intent.CATEGORY_OPENABLE);try{startActivityForResult(i,43);}catch(Exception e){toast("No file picker available: "+e.getMessage());}});root.addView(pick,lp(8));
         Button scan = new Button(this);
         scan.setText("scan + install from sdcard");
         scan.setAllCaps(false);
@@ -144,6 +146,7 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
     }
 
     private void scanInstall() {
+        if(checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE},44);return;}
         File dir = new File(Environment.getExternalStorageDirectory(), "AstOs/plugins");
         if (!dir.isDirectory()) {
             toast("no /sdcard/AstOs/plugins folder yet");
@@ -157,7 +160,7 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
                 if (!n.endsWith(".astpl") || !f.isFile()) continue;
                 try {
                     PluginHost.get().install(f);
-                    f.delete();       // keep the inbox clean
+                    // Preserve user-owned SD files; imports are copied, never moved.
                     installed++;
                 } catch (Exception e) {
                     failed++;
@@ -170,6 +173,10 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
         rebuild();
     }
 
+    @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){super.onRequestPermissionsResult(code,permissions,results);if(code==44&&results.length>0&&results[0]==0)scanInstall();}
+    @Override protected void onActivityResult(int request,int result,android.content.Intent data){super.onActivityResult(request,result,data);if(request!=43||result!=RESULT_OK||data==null||data.getData()==null)return;
+        final android.net.Uri uri=data.getData();new Thread(()->{File temp=null;try{temp=File.createTempFile("import-",".astpl",getCacheDir());try(java.io.InputStream in=getContentResolver().openInputStream(uri);java.io.FileOutputStream out=new java.io.FileOutputStream(temp)){if(in==null)throw new java.io.IOException("Cannot open selected file");byte[] buf=new byte[8192];long total=0;int n;while((n=in.read(buf))!=-1){total+=n;if(total>256L*1024*1024)throw new java.io.IOException("Package exceeds 256 MB");out.write(buf,0,n);}}PluginHost.get().install(temp);mH.post(()->{toast("Mod installed; review trust before enabling");rebuild();});}catch(Exception e){mH.post(()->toast("Import failed: "+e.getMessage()));}finally{if(temp!=null)temp.delete();}},"ast-mod-import").start();
+    }
     private void rebuild() {
         if (mList == null) return;
         mList.removeAllViews();

@@ -120,15 +120,6 @@ public final class LinkHostShell implements LinkServer.Host {
 
     @Override public void onPaired(String via) {
         PluginHost.Log.i("companion paired via " + via);
-        final String note = "usb".equals(via)
-                ? "PC companion connected (USB)"
-                : "PC companion connected (Bluetooth)";
-        new Handler(Looper.getMainLooper()).post(new Runnable() {
-            @Override public void run() {
-                HomeActivity.requestRefresh();
-                android.widget.Toast.makeText(
-                        HomeActivity.sAppContext, note, android.widget.Toast.LENGTH_SHORT).show();
-            }
-        });
+        // Authentication must not reload active mods or bring Home over the current app.
     }
 }
