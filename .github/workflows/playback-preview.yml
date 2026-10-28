@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   tablet:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -24,11 +24,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - uses: android-actions/setup-android@v3
       - name: Build isolated preview and rollback mods
         shell: bash
         run: |
           set -euo pipefail
+          trap 'python -c "import os,pathlib; p=pathlib.Path(os.environ["RUNNER_TEMP"])/"preview-stage.log"; s=p.read_text(errors="replace")[-6500:] if p.exists() else "Preview failed before log setup"; print("::error::"+s.replace("%","%25").replace("\n","%0A").replace("\r","%0D"))"' ERR
+          exec > >(tee "$RUNNER_TEMP/preview-stage.log") 2>&1
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
           python mods/playback-tools-preview/prepare.py --output "$RUNNER_TEMP/astos-preview"
           bash mods/playback-tools-preview/test-tools.sh "$RUNNER_TEMP/astos-preview"
@@ -69,6 +71,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'python -c "import os,pathlib; p=pathlib.Path(os.environ["RUNNER_TEMP"])/"preview-stage.log"; s=p.read_text(errors="replace")[-6500:] if p.exists() else "Preview failed before log setup"; print("::error::"+s.replace("%","%25").replace("\n","%0A").replace("\r","%0D"))"' ERR
+          exec > >(tee "$RUNNER_TEMP/preview-stage.log") 2>&1
           cd "$(cygpath -u "$RUNNER_TEMP")/astos-preview/companion"
           dotnet publish audio-helper/AstAudio.csproj -c Release -o resources/audio
           npm ci --no-audit --no-fund
@@ -85,7 +89,7 @@ jobs:
           if-no-files-found: error
   publish:
     needs: [tablet, companion]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

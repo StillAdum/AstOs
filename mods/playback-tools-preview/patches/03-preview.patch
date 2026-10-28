@@ -1,12 +1,21 @@
 --- a/companion/test/spotify.test.js
 +++ b/companion/test/spotify.test.js
-@@ -14,7 +14,8 @@
+@@ -2,7 +2,8 @@
+ const assert = require('node:assert/strict');
+ const {SpotifyBridge} = require('../src/spotify-bridge');
+ (async () => {
+-  const bridge = new SpotifyBridge('test-only-not-a-secret', 0);
++  let clock=1000;
++  const bridge = new SpotifyBridge('test-only-not-a-secret', 0,()=>clock);
+   await bridge.start();
+   const base = `http://127.0.0.1:${bridge.server.address().port}`;
+   const headers = {Authorization: 'Bearer test-only-not-a-secret'};
+@@ -14,7 +15,7 @@
      assert.equal(state.tabletConnected, false);
      assert.equal((await fetch(base+'/state',{method:'POST',body:'{}'})).status,401);
      await fetch(base+'/state',{method:'POST',headers,body:JSON.stringify({available:true,title:'Track',artist:'Artist',playing:true,positionMs:1234,durationMs:8000,volume:150})});
 -    assert.equal(bridge.state.title,'Track'); assert.equal(bridge.state.volume,100); assert.equal(bridge.state.positionMs,1234);
-+    assert.equal(bridge.state.title,'Track'); assert.equal(bridge.state.volume,100); assert(bridge.state.positionMs>=1234&&bridge.state.positionMs<1300);
-+    await new Promise(r=>setTimeout(r,80));assert(bridge.state.positionMs>=1300,'Bridge timeline extrapolates while renderer is backgrounded');
++    assert.equal(bridge.state.title,'Track'); assert.equal(bridge.state.volume,100); assert.equal(bridge.state.positionMs,1234);clock+=2000;assert.equal(bridge.state.positionMs,3234,'Bridge timeline extrapolates while renderer is backgrounded');
      assert.equal((await fetch(base+'/state',{method:'POST',headers,body:'invalid'})).status,400);
      const events=fetch(base+'/events',{headers});
      await new Promise(r=>setTimeout(r,30));
