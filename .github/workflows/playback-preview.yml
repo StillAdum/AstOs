@@ -40,7 +40,8 @@ jobs:
           bash mods/playback-tools-preview/sign.sh astshell/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/signed/rollback.apk"
           gradle --no-daemon -p "$RUNNER_TEMP/astos-preview/astshell" :app:assembleRelease
           bash mods/playback-tools-preview/sign.sh "$RUNNER_TEMP/astos-preview/astshell/app/build/outputs/apk/release/app-release-unsigned.apk" "$RUNNER_TEMP/signed/preview.apk"
-          python mods/playback-tools-preview/package.py --preview "$RUNNER_TEMP/signed/preview.apk" --rollback "$RUNNER_TEMP/signed/rollback.apk" --out preview-artifacts
+          bash mods/playback-tools-preview/build-installer.sh "$RUNNER_TEMP/signed/installer.jar"
+          python mods/playback-tools-preview/package.py --installer-jar "$RUNNER_TEMP/signed/installer.jar" --preview "$RUNNER_TEMP/signed/preview.apk" --rollback "$RUNNER_TEMP/signed/rollback.apk" --out preview-artifacts
           cp "$RUNNER_TEMP/astos-preview/spicetify/astos.js" preview-artifacts/astos.js
           cp mods/playback-tools-preview/README.md preview-artifacts/README.md
           (cd preview-artifacts && sha256sum *.astpl astos.js > SHA256SUMS.txt)
