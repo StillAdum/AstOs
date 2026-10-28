@@ -18,3 +18,7 @@ astshell/app/src/main/assets/model/
 astshell/app/libs/
 local.properties
 __pycache__/
+
+# Generated, publisher-verified music runtime assets
+companion/resources/music/
+companion/src/player/hls.min.js

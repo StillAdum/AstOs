@@ -29,7 +29,11 @@ public class CommandRouterTest {
         test("stop timer", "askGroq", "stop timer");
         test("set playback to my pc", "playbackTarget", true);
         test("set playback to tablet", "playbackTarget", false);
+        test("play run it back", "pcAction", "play", "run it back", false);
+        test("play https://youtu.be/AbC123_XyZ", "pcAction", "play", "https://youtu.be/AbC123_XyZ", false);
         sticky = false;
+        test("play run it back", "playSong", "run it back");
+        test("play https://youtu.be/AbC123_XyZ", "playSong", "https://youtu.be/AbC123_XyZ");
         test("could you play despacito", "playSong", "despacito");
         test("android settings", "openSettings");
         System.out.println("COMMAND ROUTER PASS");

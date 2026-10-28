@@ -50,6 +50,9 @@ jobs:
         shell: bash
         run: dotnet publish companion/audio-helper/AstAudio.csproj -c Release -o companion/resources/audio
 
+      - name: Bundle verified PC music engine
+        run: python companion/scripts/fetch-music.py
+
       - name: Install + test
         shell: bash
         working-directory: companion
@@ -61,7 +64,9 @@ jobs:
           bash ../scripts/test-ai.sh
           bash ../scripts/test-ai-tools.sh
           bash ../scripts/test-runtime.sh
+          bash ../scripts/test-music.sh
           npx electron test/renderer-smoke.js
+          npx electron test/native-audio-smoke.js
 
       - name: Fetch adb (platform-tools)
         shell: bash

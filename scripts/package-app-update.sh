@@ -8,8 +8,8 @@ bash "$ROOT/mods/playback-tools-preview/build-installer.sh" "$OUT/installer.jar"
 python3 - "$ROOT" "$OUT" <<'PY'
 import sys,pathlib,json,zipfile
 root,out=map(pathlib.Path,sys.argv[1:]);ident='astos35_update'
-manifest={'id':ident,'name':'AstOS 3.5 app repair','version':'1.0.0','author':'AstOS','main':'plugin.js','permissions':['ui','system'],'description':'Installs the signed AstShell 3.5 app update after your confirmation, preserving data. Full ROM is still needed for AstSetup and system changes.'}
-code='var MOD_ID='+json.dumps(ident)+';var MOD_TITLE="Install AstShell 3.5";\n'+(root/'mods/playback-tools-preview/installer.js').read_text()
+manifest={'id':ident,'name':'AstOS 3.5.1 music repair','version':'1.1.0','author':'AstOS','main':'plugin.js','permissions':['ui','system'],'description':'Installs the signed AstShell 3.5.1 music update after your confirmation, preserving data. Full ROM is still needed for AstSetup and system changes.'}
+code='var MOD_ID='+json.dumps(ident)+';var MOD_TITLE="Install AstShell 3.5.1";\n'+(root/'mods/playback-tools-preview/installer.js').read_text()
 with zipfile.ZipFile(out/'AstOS-3.5-App-Repair.astpl','w',zipfile.ZIP_DEFLATED) as z:
  z.writestr('manifest.json',json.dumps(manifest));z.writestr('plugin.js',code);z.write(out/'installer.jar','installer.jar');z.write(out/'AstShell-3.5.apk','AstShell.apk')
 PY

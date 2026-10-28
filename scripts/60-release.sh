@@ -34,7 +34,7 @@ fi
 NOTES="$(cat <<EOF
 AstOs ${ASTOS_VERSION} for the Lenovo Tab 3 Essential (TB3-710F)
 
-v3.5 — playback + AI tools promoted, remembered-PC and mod-install repair
+v3.5.1 — independent PC and standalone-tablet music playback
 
 * Production music search/play/control/state and reminders, alarms and timers.
 * Checked private mod uploads, SD file picker and corrected native DEX installer.
@@ -43,7 +43,10 @@ v3.5 — playback + AI tools promoted, remembered-PC and mod-install repair
 * Silence-ended PCM speech; opt-in Whisper large v3 accuracy or turbo speed, with offline captions when available.
 * Fixed custom backdrop timing; system navigation buttons and window entrance animations remain off.
 
-Use the matching Companion 1.5.0 and replace/reapply spicetify/astos.js.
+Use matching Companion 1.5.1. Song-name PC playback no longer needs Spotify.
+* Bot-style YouTube/SoundCloud resolution and background PC audio, including HLS.
+* Fixed tablet bitrate scoring, standalone AI music tools and visible playback errors.
+* Spicetify remains optional for explicitly requested Spotify track links.
 Tests/builds do not certify physical radios, microphone, SD or live Spotify behavior.
 Read RELEASE-3.5.md for install steps and validation limits.
 Back up in TWRP before flashing.
@@ -94,7 +97,7 @@ fi
 
 gh release create "$TAG" \
     "${ASSETS[@]}" \
-    --title "AstOs ${ASTOS_VERSION} — playback tools + connection repair — $TAG" \
+    --title "AstOs ${ASTOS_VERSION} — standalone + PC music repair — $TAG" \
     --notes "$NOTES" \
     --target "${GITHUB_SHA:-HEAD}"
 

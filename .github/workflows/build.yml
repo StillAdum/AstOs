@@ -59,6 +59,9 @@ jobs:
         shell: bash
         run: dotnet publish companion/audio-helper/AstAudio.csproj -c Release -o companion/resources/audio
 
+      - name: Bundle verified PC music engine
+        run: python companion/scripts/fetch-music.py
+
       - name: Install + test
         shell: bash
         working-directory: companion
@@ -70,7 +73,9 @@ jobs:
           bash ../scripts/test-ai.sh
           bash ../scripts/test-ai-tools.sh
           bash ../scripts/test-runtime.sh
+          bash ../scripts/test-music.sh
           npx electron test/renderer-smoke.js
+          npx electron test/native-audio-smoke.js
 
       # adb for the USB transport — bundled into resources/adb
       - name: Fetch adb (platform-tools)
@@ -123,6 +128,7 @@ jobs:
           gradle --no-daemon -p astsetup :app:assembleRelease
           bash scripts/test-ai-tools.sh
           bash scripts/test-runtime.sh
+          bash scripts/test-music.sh
           node companion/test/legacy-upload.test.js
           bash scripts/package-app-update.sh app-update
       - uses: actions/download-artifact@v4
@@ -137,7 +143,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v3.5-app-${{ github.run_number }}" --target "$GITHUB_SHA" --prerelease --title 'AstOS 3.5 app repair + Companion 1.5.0 (not the full ROM)' --notes-file docs/RELEASE-3.5.md app-update/*.apk app-update/*.astpl app-update/astos.js app-update/RELEASE-3.5.md app-update/SHA256SUMS.txt app-update/companion/*.exe
+          gh release create "v3.5-app-${{ github.run_number }}" --target "$GITHUB_SHA" --prerelease --title 'AstOS 3.5 app repair + Companion 1.5.1 (not the full ROM)' --notes-file docs/RELEASE-3.5.md app-update/*.apk app-update/*.astpl app-update/astos.js app-update/RELEASE-3.5.md app-update/SHA256SUMS.txt app-update/companion/*.exe
 
   build:
     name: AstOs ROM (TB3-710F)
