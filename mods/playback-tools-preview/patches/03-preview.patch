@@ -1,0 +1,161 @@
+--- a/companion/test/spotify.test.js
++++ b/companion/test/spotify.test.js
+@@ -14,7 +14,8 @@
+     assert.equal(state.tabletConnected, false);
+     assert.equal((await fetch(base+'/state',{method:'POST',body:'{}'})).status,401);
+     await fetch(base+'/state',{method:'POST',headers,body:JSON.stringify({available:true,title:'Track',artist:'Artist',playing:true,positionMs:1234,durationMs:8000,volume:150})});
+-    assert.equal(bridge.state.title,'Track'); assert.equal(bridge.state.volume,100); assert.equal(bridge.state.positionMs,1234);
++    assert.equal(bridge.state.title,'Track'); assert.equal(bridge.state.volume,100); assert(bridge.state.positionMs>=1234&&bridge.state.positionMs<1300);
++    await new Promise(r=>setTimeout(r,80));assert(bridge.state.positionMs>=1300,'Bridge timeline extrapolates while renderer is backgrounded');
+     assert.equal((await fetch(base+'/state',{method:'POST',headers,body:'invalid'})).status,400);
+     const events=fetch(base+'/events',{headers});
+     await new Promise(r=>setTimeout(r,30));
+@@ -28,8 +29,8 @@
+     assert.equal(state.commands[0].action, 'next');
+     // Unacknowledged commands stay available; caller deduplicates IDs.
+     assert.equal((await (await fetch(base + '/poll', {headers})).json()).commands[0].id, 'c1');
+-    await fetch(base + '/result', {method:'POST', headers, body:JSON.stringify({id:'c1',ok:true})});
+-    await job;
++    await fetch(base + '/result', {method:'POST', headers, body:JSON.stringify({id:'c1',ok:true,data:{tracks:[{uri:'spotify:track:result'}]}})});
++    assert.equal((await job).tracks[0].uri,'spotify:track:result','Structured tool results propagate');
+     assert.deepEqual((await (await fetch(base + '/poll', {headers})).json()).commands, []);
+     await assert.rejects(bridge.execute({id:'x',action:'shell'}), /Unsupported/);
+     const failed = bridge.execute({id:'c2',action:'play'});
+--- a/spicetify/astos.js
++++ b/spicetify/astos.js
+@@ -5,6 +5,13 @@
+   }
+   const base = 'http://127.0.0.1:58518';
+   let token = localStorage.getItem('astos.bridge.token') || '';
++  let disconnectPause = localStorage.getItem("astos.pauseOnDisconnect") === "true";
++  new Spicetify.Menu.Item("AstOS: pause on tablet disconnect (optional)", disconnectPause, item => {
++    disconnectPause = !disconnectPause; item.setState?.(disconnectPause);
++    localStorage.setItem("astos.pauseOnDisconnect", String(disconnectPause));
++  }).register();
++  const clock = () => window.performance?.now ? window.performance.now() : Date.now();
++  let anchor = null;
+   let sticky = false, lastOk = Date.now(), busy = false;
+   const results = new Map();
+   new Spicetify.Menu.Item('AstOS: pair PC companion', false, () => {
+@@ -16,7 +23,7 @@
+   }).register();
+   async function request(path, data) {
+     const controller = new AbortController();
+-    const timer = setTimeout(() => controller.abort(), 4000);
++    const timer = setTimeout(() => controller.abort(), path === '/events' ? 30000 : 8000);
+     try {
+       const response = await fetch(base + path, {
+         method: data ? 'POST' : 'GET',
+@@ -27,38 +34,71 @@
+       return await response.json();
+     } finally { clearTimeout(timer); }
+   }
+-  function snapshot() {
++  function snapshot(forcePosition = false) {
+     const player = Spicetify.Player, item = player.data?.item;
+     const metadata = item?.metadata || {};
+     let art=metadata.image_xlarge_url || metadata.image_large_url || metadata.image_url || item?.album?.images?.[0]?.url || '';
+     if(art.startsWith('spotify:image:'))art='https://i.scdn.co/image/'+art.split(':').pop();
++    const raw = Number(player.getProgress?.() || 0), playing = typeof player.isPlaying === 'function' ? player.isPlaying() : !player.data?.isPaused;
++    const now = clock(), uri = item?.uri || '';
++    if (!anchor || forcePosition || anchor.uri !== uri || anchor.playing !== playing || anchor.raw !== raw)
++      anchor = {uri, raw, playing, at:now};
++    const duration = Number(player.getDuration?.() || metadata.duration || 0);
++    const position = Math.max(0, Math.min(duration || 86400000, raw + (playing ? now-anchor.at : 0)));
+     return {artUrl:art,available: !!item, uri: item?.uri || '', title: item?.name || metadata.title || '',
+       artist: item?.artists?.map(a => a.name).join(', ') || metadata.artist_name || '',
+-      playing: typeof player.isPlaying === 'function' ? player.isPlaying() : !player.data?.isPaused,
+-      positionMs: typeof player.getProgress === 'function' ? player.getProgress() : 0,
++      playing, positionMs: position, estimated:playing && now-anchor.at>2000,
+       durationMs: typeof player.getDuration === 'function' ? player.getDuration() : Number(metadata.duration || 0),
+       volume: typeof player.getVolume === 'function' ? Math.round(player.getVolume()*100) : 0};
+   }
+-  async function publish() { if (token) await request('/state', snapshot()); }
+-  for (const event of ['songchange','onplaypause','onprogress']) Spicetify.Player.addEventListener?.(event, () => { publish().catch(() => {}); });
++  async function publish(force = false) { if (token) await request('/state', snapshot(force)); }
++  for (const event of ['songchange','onplaypause','onprogress']) Spicetify.Player.addEventListener?.(event, () => { publish(event !== 'onprogress').catch(() => {}); });
++  function trackUri(query) {
++    const value = String(query || '').trim();
++    if (/^spotify:track:[A-Za-z0-9]+$/.test(value)) return value;
++    const match = value.match(/^https:\/\/open\.spotify\.com\/(?:intl-[^/]+\/)?track\/([A-Za-z0-9]+)/);
++    return match ? 'spotify:track:' + match[1] : null;
++  }
++  async function bounded(promise, label) {
++    let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label+' timed out')),12000);})]);}finally{clearTimeout(timer);}
++  }
++  async function search(query) {
++    if (!String(query || '').trim()) throw new Error('Enter a song title and optionally an artist');
++    let data;
++    try { data = await bounded(Spicetify.CosmosAsync.get('https://api.spotify.com/v1/search?type=track&limit=5&q=' + encodeURIComponent(query)), 'Spotify search'); }
++    catch (e) { throw new Error('Spotify search failed: ' + String(e?.message || e) + '. Try a Spotify track link, or update Spicetify and sign in to Spotify again.'); }
++    if (data?.error) throw new Error('Spotify search: ' + (data.error.message || data.error.status));
++    const tracks = (data?.tracks?.items || []).filter(t => t?.uri && t.is_playable !== false).slice(0,5).map(t => ({uri:t.uri,title:t.name || '',artist:(t.artists || []).map(a=>a.name).join(', '),durationMs:t.duration_ms || 0}));
++    if (!tracks.length) throw new Error('No playable Spotify tracks found for ' + query);
++    return {tracks};
++  }
++  async function playUri(uri) {
++    if (typeof Spicetify.Player.playUri === 'function') await Spicetify.Player.playUri(uri);
++    else if (Spicetify.Platform?.PlayerAPI?.play) await Spicetify.Platform.PlayerAPI.play({uri}, {}, {});
++    else throw new Error('Spotify playback API unavailable: update Spicetify');
++  }
+   async function execute(c) {
++    if(c.expiresAt && Date.now()>c.expiresAt)throw new Error("Playback command expired; not replayed");
++    const p = Spicetify.Player;
++    if (c.action === 'search') return await search(c.query);
++    if (c.action === 'state') return snapshot();
+     if (['volup','voldown','volset'].includes(c.action)) {
+-      if (typeof Spicetify.Player.setVolume !== 'function') throw new Error('Spotify volume API unavailable');
+-      const current = Spicetify.Player.getVolume();
+-      await Spicetify.Player.setVolume(Math.max(0,Math.min(1,c.action === 'volset' ? Number(c.query)/100 : current + (c.action === 'volup' ? 0.05 : -0.05))));
+-      return;
++      if (typeof p.setVolume !== 'function') throw new Error('Spotify volume API unavailable');
++      const current = p.getVolume(), amount = Number(c.query);
++      if(c.action === 'volset' && (!Number.isFinite(amount) || amount<0 || amount>100)) throw new Error('Volume must be 0–100');
++      await p.setVolume(Math.max(0,Math.min(1,c.action === 'volset' ? amount/100 : current + (c.action === 'volup' ? 0.05 : -0.05))));
++      return {accepted:true};
+     }
+-    if (c.action === 'pause') { await Spicetify.Player.pause(); sticky = false; return; }
+-    if (c.action === 'next') await Spicetify.Player.next();
+-    else if (c.action === 'previous') await Spicetify.Player.back();
+-    else if (c.action === 'resume' || (c.action === 'play' && !c.query)) await Spicetify.Player.play();
++    if (c.action === 'pause') { await p.pause(); sticky = false; return {accepted:true}; }
++    if (c.action === 'next') await p.next();
++    else if (c.action === 'previous') await p.back();
++    else if (c.action === 'resume' || (c.action === 'play' && !c.query)) { await p.play(); sticky = !!c.sticky; }
+     else if (c.action === 'play') {
+-      const data = await Spicetify.CosmosAsync.get('https://api.spotify.com/v1/search?type=track&limit=1&q=' + encodeURIComponent(c.query));
+-      const track = data?.tracks?.items?.[0];
+-      if (!track?.uri) throw new Error('No Spotify track found');
+-      await Spicetify.Player.playUri(track.uri);
++      const uri = trackUri(c.query) || (await search(c.query)).tracks[0].uri;
++      await playUri(uri); sticky = !!c.sticky;
++      return {accepted:true,uri};
+     } else throw new Error('Unknown playback action');
+-    sticky = !!c.sticky;
++    return {accepted:true};
+   }
+   let lastPublished=0;
+   async function poll() {
+@@ -68,11 +108,11 @@
+       if(Date.now()-lastPublished>1000){await publish();lastPublished=Date.now();}
+       const state = await request('/events');
+       if (state.tabletConnected) lastOk = Date.now();
+-      else if(sticky && Date.now()-lastOk>45000){sticky=false;await Spicetify.Player.pause();Spicetify.showNotification('AstOS disconnected — PC playback paused');}
++      else if(disconnectPause && sticky && Date.now()-lastOk>45000){sticky=false;await Spicetify.Player.pause();Spicetify.showNotification('AstOS disconnected — PC playback paused');}
+       for (const c of state.commands) {
+         let result = results.get(c.id);
+         if (!result) {
+-          try { await execute(c); result = {id: c.id, ok: true}; }
++          try { const data = await execute(c); result = {id: c.id, ok: true, data}; }
+           catch (e) { result = {id: c.id, ok: false, error: e.message}; }
+           results.set(c.id, result);
+           if (results.size > 128) results.delete(results.keys().next().value);
+@@ -80,7 +120,7 @@
+         await request('/result', result);
+       }
+     } catch (e) {
+-      if(sticky&&Date.now()-lastOk>45000){sticky=false;await Spicetify.Player.pause();Spicetify.showNotification('AstOS disconnected — PC playback paused');}
++      if(disconnectPause&&sticky&&Date.now()-lastOk>45000){sticky=false;await Spicetify.Player.pause();Spicetify.showNotification('AstOS disconnected — PC playback paused');}
+       if(window.document)await new Promise(r=>setTimeout(r,2000));
+     }
+     finally { busy = false; }
