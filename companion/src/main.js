@@ -24,7 +24,7 @@ let pcTimer;
 let pcBusy = false,lastPcPoll=0;
 let pairBusy = false;
 let pendingPair = {};
-let retryCount=0,nextRetry=0,presenceSocket;
+let retryCount=0,nextRetry=0,presenceSocket,lastPresenceAt=0;
 let clientId='',linkGeneration=0;
 function identity(extra={}){return {clientId,pcName:require('os').hostname(),...extra};}
 const handledPc = new Map();
@@ -233,8 +233,11 @@ function startPresenceListener(){
  presenceSocket.on('error',e=>console.warn('Tablet presence listener:',e.message));
  presenceSocket.on('message',(bytes,remote)=>{if(bytes.toString()!=='ASTOS_PRESENT_V1'||!autoConnect||!paired.token||authenticated)return;
   // The beacon is only a hint. The encrypted saved-secret handshake authenticates the tablet.
-  if(!/^\d+\.\d+\.\d+\.\d+$/.test(remote.address)||Date.now()<nextRetry)return;
-  paired.host=remote.address;retryCount=0;reconnectWifi(true);
+  if(!/^\d+\.\d+\.\d+\.\d+$/.test(remote.address))return;
+  const fresh=Date.now()-lastPresenceAt>12000;lastPresenceAt=Date.now();paired.host=remote.address;
+  // Continuous beacons must not reset the forty-attempt budget. A new presence after a gap may wake passive waiting.
+  if(Date.now()<nextRetry||retryCount>=40&&!fresh)return;
+  if(retryCount>=40)retryCount=0;reconnectWifi();
  });presenceSocket.bind(58520);
 }
 ipcMain.handle('resume-pairing',async()=>{

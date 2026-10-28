@@ -15,9 +15,9 @@ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),os=r
  vm.runInNewContext(fs.readFileSync(path.join(base,'main.js'),'utf8'),{require:req,__dirname:base,process,console,Buffer,Date:class extends Date{static now(){return now;}},setInterval:(fn,ms)=>{intervals.push({fn,ms});return 1;},clearInterval(){},setTimeout,clearTimeout});await new Promise(r=>setImmediate(r));
  const retry=intervals.find(x=>x.fn.name==='reconnectWifi');assert.equal(retry.ms,4000);
  await handlers['resume-pairing']();assert.equal(attempts,1);await retry.fn();assert.equal(attempts,1,'Do not retry before four seconds');
- for(let i=1;i<50;i++){now+=4000;await retry.fn();}assert.equal(attempts,40,'Exactly forty attempts, then passive wait');assert.equal(btAttempts,20,'Remembered Bluetooth is retried too');
+ for(let i=1;i<50;i++){now+=4000;await retry.fn();beacon.emit('message',Buffer.from('ASTOS_PRESENT_V1'),{address:'192.168.1.9'});await new Promise(r=>setImmediate(r));}assert.equal(attempts,40,'Exactly forty attempts despite continuous presence beacons, then passive wait');assert.equal(btAttempts,20,'Remembered Bluetooth is retried too');
  beacon.emit('message',Buffer.from('untrusted garbage'),{address:'192.168.1.9'});await new Promise(r=>setImmediate(r));assert.equal(attempts,40);
- allow=true;beacon.emit('message',Buffer.from('ASTOS_PRESENT_V1'),{address:'192.168.1.9'});await new Promise(r=>setImmediate(r));assert.equal(attempts,41);assert.ok(sent.some(x=>x[0]==='paired'));
+ now+=16000;allow=true;beacon.emit('message',Buffer.from('ASTOS_PRESENT_V1'),{address:'192.168.1.9'});await new Promise(r=>setImmediate(r));assert.equal(attempts,41);assert.ok(sent.some(x=>x[0]==='paired'));
  const saved=JSON.parse(fs.readFileSync(path.join(dir,'pairing.bin')));assert.equal(saved.clientId,savedId,'Stable client identity persisted');
  await handlers['disconnect-tablet']();now+=5000;beacon.emit('message',Buffer.from('ASTOS_PRESENT_V1'),{address:'192.168.1.9'});await retry.fn();assert.equal(attempts,41,'User disconnect must suppress beacon and timer reconnect');
  app.quit();console.log('RECONNECT PASS: forty attempts/4s cadence, Wi-Fi + remembered BT, passive wait, authenticated wake, stable PC identity, no USB fallback, explicit-disconnect consent');
