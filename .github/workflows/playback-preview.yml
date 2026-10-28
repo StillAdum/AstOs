@@ -1,0 +1,101 @@
+name: Playback + AI tools preview mod
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'mods/playback-tools-preview/**'
+      - '.github/workflows/playback-preview.yml'
+permissions:
+  contents: write
+concurrency:
+  group: playback-tools-preview
+  cancel-in-progress: true
+jobs:
+  tablet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - uses: android-actions/setup-android@v3
+      - name: Build isolated preview and rollback mods
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+          python mods/playback-tools-preview/prepare.py --output "$RUNNER_TEMP/astos-preview"
+          bash mods/playback-tools-preview/test-tools.sh "$RUNNER_TEMP/astos-preview"
+          bash scripts/test-ai.sh
+          gradle --no-daemon -p astshell :app:assembleRelease
+          mkdir -p "$RUNNER_TEMP/signed" preview-artifacts
+          bash mods/playback-tools-preview/sign.sh astshell/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/signed/rollback.apk"
+          gradle --no-daemon -p "$RUNNER_TEMP/astos-preview/astshell" :app:assembleRelease
+          bash mods/playback-tools-preview/sign.sh "$RUNNER_TEMP/astos-preview/astshell/app/build/outputs/apk/release/app-release-unsigned.apk" "$RUNNER_TEMP/signed/preview.apk"
+          python mods/playback-tools-preview/package.py --preview "$RUNNER_TEMP/signed/preview.apk" --rollback "$RUNNER_TEMP/signed/rollback.apk" --out preview-artifacts
+          cp "$RUNNER_TEMP/astos-preview/spicetify/astos.js" preview-artifacts/astos.js
+          cp mods/playback-tools-preview/README.md preview-artifacts/README.md
+          (cd preview-artifacts && sha256sum *.astpl astos.js > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playback-tools-tablet
+          path: preview-artifacts/*
+          if-no-files-found: error
+  companion:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Materialize preview
+        shell: pwsh
+        run: python mods/playback-tools-preview/prepare.py --output "$env:RUNNER_TEMP/astos-preview"
+      - name: Build native helper and test companion
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$(cygpath -u "$RUNNER_TEMP")/astos-preview/companion"
+          dotnet publish audio-helper/AstAudio.csproj -c Release -o resources/audio
+          npm ci --no-audit --no-fund
+          npm test
+          npx electron test/renderer-smoke.js
+          mkdir -p resources/adb
+          curl -fLsS https://dl.google.com/android/repository/platform-tools-latest-windows.zip -o "$RUNNER_TEMP/pt.zip"
+          unzip -j -o "$RUNNER_TEMP/pt.zip" 'platform-tools/adb.exe' 'platform-tools/AdbWinApi.dll' 'platform-tools/AdbWinUsbApi.dll' -d resources/adb
+          npx electron-builder --win nsis portable --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playback-tools-companion
+          path: ${{ runner.temp }}/astos-preview/companion/dist/*.exe
+          if-no-files-found: error
+  publish:
+    needs: [tablet, companion]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: playback-tools-*
+          merge-multiple: true
+          path: preview-artifacts
+      - name: Publish test-only prerelease (no ROM promotion)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="playback-tools-preview-${{ github.run_number }}"
+          gh release create "$tag" --target "$GITHUB_SHA" --prerelease --title "Playback + AI Tools — test mod ${{ github.run_number }}" --notes-file mods/playback-tools-preview/README.md preview-artifacts/*
