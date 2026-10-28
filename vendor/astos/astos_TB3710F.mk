@@ -31,12 +31,13 @@ PRODUCT_COPY_FILES += \
 # platform key at build time)
 PRODUCT_PACKAGES += \
     AstShell \
-    AstSetup
+    AstSetup \
+    DocumentsUI
 
 # --- Behaviour tuning --------------------------------------------------------
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.astos.version=3.4.0 \
+    ro.astos.version=3.5.0 \
     ro.astos.device=TB3-710F \
     ro.config.low_ram=true
 

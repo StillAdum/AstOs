@@ -14,5 +14,5 @@ home=(r/'astshell/app/src/main/java/com/astos/shell/HomeActivity.java').read_tex
 for symbol in ['promptBtn','mRenderedTheme','Hearing: ','PcPlayback.state()','mediaAction("volset", pct)']:assert symbol in home,symbol
 setup=(r/'astsetup/app/src/main/java/com/astos/setup/SetupActivity.java').read_text(encoding='utf-8');assert 'TextEntry.show' in setup and 'ACTION_REQUEST_DISCOVERABLE' in setup
 assert 'pcPlaybackState()' in (r/'astlink/src/main/java/com/astos/link/LinkServer.java').read_text(encoding='utf-8')
-assert json.loads((r/'companion/package.json').read_text(encoding='utf-8'))['version']=='1.4.0'
+assert json.loads((r/'companion/package.json').read_text(encoding='utf-8'))['version']=='1.5.0'
 print('STATIC PASS: all Android XML, six themes, Back/Home retained, typed input, cards, transcripts, PC state and setup keyboard hooks')

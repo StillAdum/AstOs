@@ -1,3 +1,5 @@
+> **Promoted to AstOS 3.5.** This directory's baseline patches are historical. Do not reapply them to main or install the old preview/rollback APK over 3.5. The corrected native installer is reused by `scripts/package-app-update.sh`; use the matching ROM, Companion 1.5.0 and extension described in `docs/RELEASE-3.5.md`.
+
 # Playback + AI Tools preview mod 0.1
 
 **Test first; not merged into the ROM source.** This preview materializes a patch in a temporary build directory. The production `astshell/`, `astlink/`, `companion/` and `spicetify/` source files on main remain unchanged. Only main is used; no extra branch.

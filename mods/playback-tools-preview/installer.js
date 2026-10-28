@@ -5,7 +5,7 @@ var helper = null;
 function onLoad() {
   var optimized = new java.io.File(context.getCodeCacheDir(), MOD_ID);
   optimized.mkdirs();
-  var loader = new dalvik.system.DexClassLoader(new java.io.File(root,'installer.jar').getAbsolutePath(), optimized.getAbsolutePath(), null, context.getClassLoader());
+  var loader = new Packages.dalvik.system.DexClassLoader(new java.io.File(root,'installer.jar').getAbsolutePath(), optimized.getAbsolutePath(), null, context.getClassLoader());
   helper = loader.loadClass('com.astos.preview.ModInstaller').newInstance();
   helper.attach(context);
   astos.ui.card({id:'apply',title:MOD_TITLE,value:'tap to install; keep all settings',onTap:install});
