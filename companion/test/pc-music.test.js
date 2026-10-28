@@ -36,5 +36,12 @@ const fixture={title:'Run It Back',uploader:'Artist',webpage_url:'https://www.yo
  spotify.connected=true;await router.execute({id:'three',action:'play',query:'run it back'});assert.equal(nativeCalls.length,2,'A song name still uses native audio when Spotify happens to be open');
  await router.execute({id:'four',action:'play',query:'spotify:track:abc'});assert.equal(spotifyCalls.length,1);assert.equal(nativeCalls.at(-1).action,'pause');
  router.disconnect();router.close();
+ // A pause while an HLS manifest is loading must not start audio later.
+ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');let receive,manifest,playCount=0;
+ const element={paused:true,currentTime:0,volume:1,addEventListener(){},pause(){this.paused=true;},load(){},async play(){playCount++;this.paused=false;}};
+ class HlsFixture{static isSupported(){return true;}static Events={MANIFEST_PARSED:'manifest',ERROR:'error'};on(event,fn){if(event==='manifest')manifest=fn;}loadSource(){}attachMedia(){}destroy(){}}
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/player/player.js'),'utf8'),{window:{Hls:HlsFixture,pcAudio:{receive:f=>receive=f,send(){}}},Hls:HlsFixture,document:{getElementById:()=>element},setInterval(){}});
+ const loading=receive({id:'load',generation:1,action:'load',url:fixture.url,hls:true,volume:40});
+ await receive({id:'pause',generation:2,action:'pause'});manifest();await loading;assert.equal(playCount,0,'Paused manifest resolution must not restart audio');
  console.log('PC MUSIC PASS: exact run it back request, YouTube/SoundCloud fallback, bounded safe subprocess, URL restrictions, real player acknowledgement, failure propagation, pause/resume/volume, cancellation, no Spotify requirement, source selection and dedup');
 })().catch(e=>{console.error(e);process.exit(1)});

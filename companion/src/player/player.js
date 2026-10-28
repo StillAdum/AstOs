@@ -21,6 +21,7 @@ window.pcAudio.receive(async c=>{
      hls.loadSource(c.url);hls.attachMedia(audio);
     });
    }else{audio.src=c.url;audio.load();}
+   if(c.generation!==generation)throw Error("Playback request cancelled");
    await audio.play();
   }else if(c.action==='pause')audio.pause();
   else if(c.action==='resume')await audio.play();
