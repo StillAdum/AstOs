@@ -1,0 +1,23 @@
+{
+  "astlink/src/main/java/com/astos/link/LinkServer.java": "244269bf5e7e22350a86020c737177e23446a2a7fb76bdb8137a268c6e6cb901",
+  "astshell/app/build.gradle": "48f25896a51ac977dae23e90fd7c19dc673fca1f53271df4932cf70a52425b58",
+  "astshell/app/src/main/AndroidManifest.xml": "28b6ec0627d950271b33ccaee070d68180217d38a1371d3afa93d36b8bd92fb3",
+  "astshell/app/src/main/java/com/astos/shell/AiProtocol.java": "ffa6209fa967c40de97c16eb3acb61c0c03d78146ff30ebcb307c26f6e774ca3",
+  "astshell/app/src/main/java/com/astos/shell/AiProviders.java": "c7297762d7ad003e0f6b43e773e935f8df804fbf30b762a3e28629bc407fb182",
+  "astshell/app/src/main/java/com/astos/shell/AiToolProtocol.java": null,
+  "astshell/app/src/main/java/com/astos/shell/AssistantTools.java": null,
+  "astshell/app/src/main/java/com/astos/shell/CommandRouter.java": "c1273085f7c6fe72f44571010aace138ee875e5ed562b602474c0e53c94341ff",
+  "astshell/app/src/main/java/com/astos/shell/HomeActivity.java": "35755a2eb978cdf313fde6ffc1ae245fcf331c16a3685c947b3d8993371ea25f",
+  "astshell/app/src/main/java/com/astos/shell/ToolAlertActivity.java": null,
+  "astshell/app/src/main/java/com/astos/shell/ToolAlertService.java": null,
+  "astshell/app/src/main/java/com/astos/shell/ToolScheduleReceiver.java": null,
+  "astshell/app/src/main/java/com/astos/shell/ToolSchedules.java": null,
+  "companion/package-lock.json": "51f5c2c697dff8b67158749c90de733e954f58d696f9cd5c6b5547b2582cba40",
+  "companion/package.json": "64c58d4e9988f4da521052205998adb66de0e954a26da716914e5ba38683bff1",
+  "companion/src/main.js": "c792c07048bd51591dd7c39a7c0d5841a0dca71722c802f3979413805f6ab0e3",
+  "companion/src/spotify-bridge.js": "a1594dc6e04aa98b81312e57b2c07e925a859b09f565121fa756e95c592341d7",
+  "companion/test/CommandRouterTest.java": "8e4ac905ebc3798c34db267147ca2e670f105f3fe904fbe9726a475e6a1fbc3e",
+  "companion/test/spicetify.test.js": "9fecc12ebf93f3e7f41154206b7e6447ed24af8efb67b6ce1b4d89ae239faf45",
+  "companion/test/spotify.test.js": "31a3642c0224faf5a06d0600f1ccbf691b3f553eef4e4461706f6c8a2a470639",
+  "spicetify/astos.js": "2e676ffc8a754e5a39736b14f318e3f5f33d53bbc790232c38c583733a180cd8"
+}

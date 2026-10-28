@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'mods/**'
+      - '.github/workflows/playback-preview.yml'
   # nightly rebuild is opt-in via workflow_dispatch only —
   # full ROM builds are heavy.
 
