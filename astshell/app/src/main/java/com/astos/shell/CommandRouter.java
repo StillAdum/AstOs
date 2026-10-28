@@ -49,6 +49,8 @@ public final class CommandRouter {
 
     /** Returns a spoken/visual response, or null when the action speaks for itself. */
     public static String route(String raw, Actions a) {
+        String exactLink=null;
+        if(raw!=null){Matcher link=Pattern.compile("(?i)(https://(?:[a-z0-9.-]+\\.)?(?:youtube\\.com|youtu\\.be|soundcloud\\.com|spotify\\.com)/[^\\s]+|spotify:track:[a-zA-Z0-9]+)").matcher(raw);if(link.find())exactLink=link.group();}
         String s = normalize(raw);
         if (s.isEmpty()) return null;
 
@@ -77,7 +79,7 @@ public final class CommandRouter {
                     .replaceAll("until.*disconnect.*", "").trim();
                 query=query.replaceFirst("^(the )?(song|track)\\s+", "");
                 if (query.matches("(some |my )?(music|songs|song)?")) query = "";
-                a.pcAction(action, query, stickyPc);
+                a.pcAction(action, exactLink!=null&&"play".equals(action)?exactLink:query, stickyPc);
                 return null;
             }
         }
@@ -104,7 +106,7 @@ public final class CommandRouter {
         String songQuery = extractSongQuery(s);
         if (songQuery != null) {
             boolean justQueue = s.startsWith("queue ") || s.startsWith("add ");
-            a.playSong(justQueue ? songQuery : songQuery);
+            a.playSong(exactLink!=null?exactLink:songQuery);
             return null; // MusicEngine reports status
         }
 
