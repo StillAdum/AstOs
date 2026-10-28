@@ -84,7 +84,7 @@ public final class AiProtocol {
         }
         Collections.sort(out);return out;
     }
-    private static JSONObject http(JSONObject cfg,String url,JSONObject body) throws Exception {
+    static JSONObject http(JSONObject cfg,String url,JSONObject body) throws Exception {
         HttpURLConnection c=null;
         try{
             c=(HttpURLConnection)new URL(url).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(8000);c.setReadTimeout(25000);
