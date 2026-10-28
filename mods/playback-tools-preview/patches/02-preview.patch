@@ -277,7 +277,7 @@
          sticky = false;
 --- a/companion/test/spicetify.test.js
 +++ b/companion/test/spicetify.test.js
-@@ -1,33 +1,26 @@
+@@ -1,33 +1,27 @@
  'use strict';
 -const vm=require('node:vm');
 -const fs=require('node:fs');
@@ -323,8 +323,9 @@
 + let h=await harness();await h.run([{id:'1',action:'play',query:'a song',sticky:true}]);assert.equal(h.actions[0],'spotify:track:test');assert.equal(h.results.at(-1).data.uri,'spotify:track:test');
 + await h.run([{id:'1',action:'play',query:'a song'}]);assert.equal(h.actions.length,1,'Duplicate delivery must not restart playback');
 + h.advance(13000);await h.run([]);assert.equal(h.snapshots.at(-1).positionMs,53000,'Frozen Spotify progress must advance between native updates');assert.equal(h.snapshots.at(-1).artUrl,'https://i.scdn.co/image/abc');
-+ h.raw(2000);h.advance(2000);await h.run([]);assert.equal(h.snapshots.at(-1).positionMs,2000,'Seek must reset clock');h.playing(false);h.advance(2000);await h.run([]);h.advance(2000);await h.run([]);assert.equal(h.snapshots.at(-1).positionMs,2000,'Paused progress stays fixed');
++ h.raw(2000);h.advance(2000);await h.run([]);assert.equal(h.snapshots.at(-1).positionMs,2000,'Seek must reset clock');h.raw(4000);h.playing(false);h.advance(2000);await h.run([]);h.advance(2000);await h.run([]);assert.equal(h.snapshots.at(-1).positionMs,4000,'Paused progress stays fixed');
 + h.disconnect();h.advance(46000);await h.run([]);h.offline();h.advance(46000);await h.run([]);assert.equal(h.actions.includes('pause'),false,'Ordinary playback must NEVER auto-pause during link/bridge loss');assert(h.timeouts.includes(30000),'Long-poll deadline must exceed server hold time');
++ h=await harness();await h.run([]);h.advance(13000);await h.run([]);h.playing(false);h.events.onplaypause();await h.run([]);h.advance(2000);await h.run([]);assert.equal(h.snapshots.at(-1).positionMs,53000,'Pausing with a frozen native sample must preserve the cursor');h.playing(true);h.events.onplaypause();await h.run([]);h.advance(2000);await h.run([]);assert.equal(h.snapshots.at(-1).positionMs,55000,'Resume continues from the preserved cursor');
 + h=await harness(true);await h.run([{id:'1',action:'resume',sticky:true}]);h.disconnect();h.advance(46000);await h.run([]);assert.equal(h.actions.at(-1),'pause','Only explicit opt-in allows disconnect pause');
 + h=await harness();await h.run([{id:'s',action:'search',query:'find me'}]);assert.equal(h.results.at(-1).data.tracks[0].title,'A song');assert.equal(h.actions.length,0,'Search must not start playback');
 + await h.run([{id:'link',action:'play',query:'https://open.spotify.com/track/abc123?si=x'}]);assert.equal(h.actions.at(-1),'spotify:track:abc123');
