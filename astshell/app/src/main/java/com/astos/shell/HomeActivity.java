@@ -151,6 +151,7 @@ public class HomeActivity extends Activity
         try { LinkHostShell.ensure(this); } catch (Throwable ignored) {}
 
         // .astpl mods: load + watch for card changes
+        ToolSchedules.restore(this);
         PluginHost.init(this).setListener(this);
         PluginHost.get().reloadAll();
 
@@ -445,7 +446,10 @@ public class HomeActivity extends Activity
             mTimerText.setVisibility(View.VISIBLE);
             mTimerText.setText("TIMER " + formatLeft(left));
         } else if (mTimer == null) {
-            mTimerText.setVisibility(View.GONE);
+            long next=Long.MAX_VALUE;
+            try{org.json.JSONArray rows=ToolSchedules.list(this);for(int i=0;i<rows.length();i++){org.json.JSONObject row=rows.getJSONObject(i);if("timer".equals(row.optString("kind")))next=Math.min(next,row.optLong("at",Long.MAX_VALUE));}}catch(Exception ignored){}
+            if(next!=Long.MAX_VALUE&&next>System.currentTimeMillis()){mTimerText.setVisibility(View.VISIBLE);mTimerText.setText("TIMER "+formatLeft(next-System.currentTimeMillis()));}
+            else mTimerText.setVisibility(View.GONE);
         }
     }
 
@@ -457,7 +461,7 @@ public class HomeActivity extends Activity
             setPlaying(pc.optBoolean("playing", false));
             int position = pc.optInt("positionMs",0), duration = pc.optInt("durationMs",0);
             mProgBar.setLevel(duration > 0 ? Math.round(position * 36f / duration) : 0);
-            mT0.setText(formatLeft(position));mT1.setText(formatLeft(duration));
+            mT0.setText((pc.optBoolean("stale",false)?"~":"")+formatLeft(position));mT1.setText(formatLeft(duration));
             mArt.load(pc.optString("artUrl", ""),pc.optString("title", "Spotify"));
             mEq.useSession(-1);mEq.levels(pc.optJSONArray("bands"));
             return;
@@ -1063,7 +1067,7 @@ public class HomeActivity extends Activity
         if (pc != null && (!MusicEngine.isPlaying() || pc.optBoolean("playing", false) || PcPlayback.selected())) {
             String remote = "prev".equals(action) ? "previous" : "toggle".equals(action)
                 ? (pc.optBoolean("playing", false) ? "pause" : "resume") : "play".equals(action) ? "resume" : action;
-            PcPlayback.send(this, remote, String.valueOf(value), PcPlayback.selected());
+            PcPlayback.send(this, remote, String.valueOf(value), false);
             return;
         }
         if ("play".equals(action) || "pause".equals(action) || "toggle".equals(action)) {
@@ -1097,7 +1101,7 @@ public class HomeActivity extends Activity
     }
 
     @Override public void playSong(String query) {
-        if(PcPlayback.available() && !PcPlayback.localSelected(this)){PcPlayback.send(this,"play",query,true);return;}
+        if(PcPlayback.available() && !PcPlayback.localSelected(this)){PcPlayback.send(this,"play",query,false);return;}
         typeLine("finding " + query + "…");
         MusicEngine.playQuery(this, query);
     }
