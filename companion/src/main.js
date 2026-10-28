@@ -18,7 +18,7 @@ app.on('second-instance',()=>{if(win){win.show();win.focus();}});
 let authenticated = false;
 let session = null;          // LinkSession
 let paired = { token: '', name: '', ver: '' };
-let spotifyBridge;
+let spotifyBridge, pcMusic;
 const audioLevels=new (require("./audio-levels").AudioLevels)();
 let pcTimer;
 let pcBusy = false,lastPcPoll=0;
@@ -46,6 +46,8 @@ async function init() {
   }
   spotifyBridge = new (require('./spotify-bridge').SpotifyBridge)(token);
   try { await spotifyBridge.start(); } catch (e) { console.error('Spotify bridge unavailable:', e.message); }
+  const nativeAudio = new (require('./native-audio').NativeAudio)({BrowserWindow,ipcMain}, path.join(app.isPackaged ? process.resourcesPath : path.join(__dirname,'..','resources'), 'music'));
+  pcMusic = new (require('./pc-music').PcMusic)(nativeAudio,spotifyBridge);
   if(paired.audioVisualizer)audioLevels.start();
   createWindow();
   tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'..','build','icon.png')));
@@ -61,7 +63,7 @@ async function pollPc() {
   pcBusy = true;
   const active = session;
   try {
-    const commands = await active.call(null, 'pc.poll', {spotify: !!spotifyBridge?.connected, state: spotifyBridge?.connected ? {...spotifyBridge.state,bands:audioLevels.current} : {available:false}}, 5000);
+    const commands = await active.call(null, 'pc.poll', {spotify: !!pcMusic?.connected, pcAudio: !!pcMusic?.native.ready, state: pcMusic?.connected ? {...pcMusic.state,bands:audioLevels.current} : {available:false}}, 5000);
     spotifyBridge.tabletSeen = Date.now();
     for (const command of commands || []) {
       const result = handledPc.get(command.id);
@@ -69,7 +71,7 @@ async function pollPc() {
         await active.call(null, 'pc.result', result, 5000);
       } else if (!pendingPc.has(command.id)) {
         pendingPc.add(command.id);
-        spotifyBridge.execute(command).then(
+        pcMusic.execute(command).then(
           data => ({id: command.id, ok: true, data}),
           e => ({id: command.id, ok: false, error: e.message})
         ).then(result => {
@@ -110,7 +112,7 @@ function createWindow() {
 }
 
 app.whenReady().then(init);
-app.on('before-quit', () => { quitting=true; presenceSocket?.close(); clearInterval(reconnectTimer); clearInterval(pcTimer); audioLevels.stop(); spotifyBridge?.close(); session?.close(); });
+app.on('before-quit', () => { quitting=true; presenceSocket?.close(); clearInterval(reconnectTimer); clearInterval(pcTimer); audioLevels.stop(); pcMusic?.close(); session?.close(); });
 app.on('window-all-closed', () => {});
 
 // ------------------------------------------------------------ helpers

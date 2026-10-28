@@ -3,388 +3,119 @@ package com.astos.shell;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
-import org.schabi.newpipe.extractor.NewPipe;
-import org.schabi.newpipe.extractor.ServiceList;
-import org.schabi.newpipe.extractor.StreamingService;
-import org.schabi.newpipe.extractor.downloader.Downloader;
-import org.schabi.newpipe.extractor.downloader.Request;
-import org.schabi.newpipe.extractor.downloader.Response;
+import org.schabi.newpipe.extractor.*;
+import org.schabi.newpipe.extractor.downloader.*;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
-import org.schabi.newpipe.extractor.linkhandler.SearchQueryHandler;
 import org.schabi.newpipe.extractor.search.SearchInfo;
-import org.schabi.newpipe.extractor.stream.AudioStream;
-import org.schabi.newpipe.extractor.stream.StreamInfo;
-import org.schabi.newpipe.extractor.stream.StreamInfoItem;
+import org.schabi.newpipe.extractor.stream.*;
+import java.io.*;
+import java.net.*;
+import java.util.*;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-/**
- * Discord-bot-style song resolution for AstOs:
- *
- *   1. iTunes Search  -> which song you meant: title, artist, cover art,
- *                        duration, 30s preview (the bot's autocomplete step)
- *   2. NewPipeExtractor on-device -> YouTube music search + full audio-only
- *      stream URL (this is literally the yt-dlp of Android — same engine the
- *      Piped instances run, but running locally on the tablet's home IP)
- *   3. Piped REST instances -> fallback stream resolution if the local
- *      extractor is blocked
- *   4. iTunes 30s preview -> last-resort full-quality snippet
- *   5. local Music/ folder -> fuzzy title match
- *
- * No Spotify Premium. No account. Free on-demand playback.
+/** On-device YouTube -> SoundCloud search and full audio. No PC or Spotify needed.
+ * The desktop equivalent uses yt-dlp. Android uses the existing NewPipe library,
+ * which runs on this ROM without a Python/desktop binary. No public proxy API,
+ * mandatory catalog rewrite, or silent replacement with a 30-second preview.
  */
 public final class SongSearch {
-
-    /** A resolved (or resolving) track. */
     public static class Track {
-        public String query;        // what the user asked for
-        public String title = "";   // display title
-        public String artist = "";  // display artist
-        public String artUrl = "";  // 600x600 cover art
-        public String previewUrl = "";// 30s m4a snippet (always playable)
-        public String watchUrl = "";// youtube watch URL
-        public String streamUrl = "";// full audio-only stream URL
-        public String source = "";  // "stream" | "preview" | "local" | "piped"
-        public long durationMs;     // track length
-        public File localFile;      // local playback, if source == local
-        public String status = "";  // human status for the UI
-
-        public boolean hasAny() {
-            return (streamUrl != null && !streamUrl.isEmpty())
-                    || (previewUrl != null && !previewUrl.isEmpty())
-                    || localFile != null;
+        public String query="",title="",artist="",artUrl="",previewUrl="",watchUrl="",streamUrl="",source="",status="";
+        public long durationMs;public File localFile;
+        public Map<String,String> headers=new HashMap<>();
+        public boolean hasAny(){return !streamUrl.isEmpty()||localFile!=null;}
+    }
+    public interface Callback{void onResult(Track t,String error);}
+    private static boolean initialized;
+    private SongSearch(){}
+    private static synchronized void init(){if(!initialized){NewPipe.init(new HttpDownloader());initialized=true;}}
+    private static final class HttpDownloader extends Downloader{
+        @Override public Response execute(Request request)throws IOException,ReCaptchaException{
+            HttpURLConnection c=(HttpURLConnection)new URL(request.url()).openConnection();
+            c.setConnectTimeout(7000);c.setReadTimeout(10000);c.setRequestMethod(request.httpMethod());
+            try{
+                for(Map.Entry<String,List<String>> e:request.headers().entrySet())for(String v:e.getValue())c.addRequestProperty(e.getKey(),v);
+                byte[] body=request.dataToSend();
+                if(body!=null&&body.length>0){c.setDoOutput(true);try(OutputStream out=c.getOutputStream()){out.write(body);}}
+                int code=c.getResponseCode();if(code==429)throw new ReCaptchaException("Source rate-limited; try again later",request.url());
+                InputStream input=code>=400?c.getErrorStream():c.getInputStream();
+                ByteArrayOutputStream out=new ByteArrayOutputStream();
+                if(input!=null)try(InputStream in=input){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>12*1024*1024)throw new IOException("Music metadata is too large");out.write(b,0,n);}}
+                return new Response(code,c.getResponseMessage(),c.getHeaderFields(),out.toString("UTF-8"),c.getURL().toString());
+            }finally{c.disconnect();}
         }
     }
-
-    public interface Callback { void onResult(Track t, String error); }
-
-    private static boolean sNpInited = false;
-
-    private SongSearch() {}
-
-    private static void async(Runnable r) { new Thread(r, "song-search").start(); }
-    private static Handler main() { return new Handler(Looper.getMainLooper()); }
-
-    // ------------------------------------------------------------------ NewPipe init
-
-    private static synchronized void initNp() {
-        if (sNpInited) return;
-        try {
-            NewPipe.init(new HttpDownloader());
-            sNpInited = true;
-        } catch (Throwable ignored) {}
+    public static void resolve(Context context,String query,Callback cb){
+        new Thread(()->{
+            Track track=null;String error=null;
+            try{track=resolveSync(context,query);}catch(Throwable e){error="Couldn't play: "+message(e);}
+            final Track result=track;final String failure=error;
+            new Handler(Looper.getMainLooper()).post(()->cb.onResult(result,failure));
+        },"song-search").start();
     }
-
-    /** Plain HttpURLConnection downloader for NewPipeExtractor. */
-    private static class HttpDownloader extends Downloader {
-        @Override
-        public Response execute(Request req) throws java.io.IOException, ReCaptchaException {
-            String method = req.httpMethod();
-            String url = req.url();
-            Map<String, List<String>> headers = req.headers();
-            byte[] body = req.dataToSend();
-
-            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-            c.setConnectTimeout(10000);
-            c.setReadTimeout(15000);
-            c.setInstanceFollowRedirects(true);
-            c.setRequestMethod(method);
-            for (Map.Entry<String, List<String>> e : headers.entrySet()) {
-                for (String val : e.getValue()) c.addRequestProperty(e.getKey(), val);
-            }
-            if (body != null && body.length > 0) {
-                c.setDoOutput(true);
-                c.getOutputStream().write(body);
-            }
-            int code = c.getResponseCode();
-            if (code == 429) {
-                c.disconnect();
-                throw new ReCaptchaException("reCaptcha / rate-limit required", url);
-            }
-            BufferedReader rd = new BufferedReader(
-                    new InputStreamReader(code >= 400 ? c.getErrorStream() : c.getInputStream()));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = rd.readLine()) != null) sb.append(line);
-            rd.close();
-            Response resp = new Response(code, c.getResponseMessage(),
-                    c.getHeaderFields(), sb.toString(), url);
-            c.disconnect();
-            return resp;
-        }
+    private static String checked(String query)throws Exception{
+        String q=query==null?"":query.trim();if(q.isEmpty()||q.length()>512)throw new Exception("Enter a song title and optionally its artist");return q;
     }
-
-    // ------------------------------------------------------------------ main entry
-
-    /** Resolve a free-text query into a playable Track (async, main thread cb). */
-    public static void resolve(final Context ctx, final String rawQuery, final Callback cb) {
-        async(new Runnable() { @Override public void run() {
-            final Track t = new Track();
-            t.query = rawQuery == null ? "" : rawQuery.trim();
-            if (t.query.isEmpty()) {
-                post(cb, t, "What song?");
-                return;
-            }
-
-            // ---- step 1: iTunes catalog (metadata + art + preview) ---------------
-            try {
-                String q = URLEncoder.encode(t.query, "UTF-8");
-                JSONObject root = new JSONObject(get(
-                        "https://itunes.apple.com/search?term=" + q
-                                + "&media=music&entity=song&limit=5"));
-                JSONArray results = root.optJSONArray("results");
-                if (results != null && results.length() > 0) {
-                    JSONObject r = pickBest(results, t.query);
-                    t.title = r.optString("trackName", "");
-                    t.artist = r.optString("artistName", "");
-                    t.artUrl = r.optString("artworkUrl100", "")
-                            .replace("100x100bb", "600x600bb");
-                    t.durationMs = r.optLong("trackTimeMillis", 0);
-                    t.previewUrl = r.optString("previewUrl", "");
-                }
-            } catch (Exception ignored) {}
-
-            String yq = (t.title.isEmpty() || t.artist.isEmpty())
-                    ? t.query : (t.title + " " + t.artist);
-
-            // ---- step 2: on-device NewPipeExtractor (full stream) ----------------
-            String fullUrl = null;
-            try {
-                initNp();
-                fullUrl = npResolve(yq);
-            } catch (Throwable ignored) {}
-
-            // ---- step 3: Piped REST fallback --------------------------------------
-            if (fullUrl == null) {
-                try { fullUrl = pipedResolve(yq); } catch (Throwable ignored) {}
-            }
-
-            // ---- decide what we got ------------------------------------------------
-            if (fullUrl != null) {
-                t.streamUrl = fullUrl;
-                t.source = t.title.isEmpty() ? "stream" : "stream";
-                t.status = "FULL SONG - YOUTUBE AUDIO";
-                if (t.durationMs == 0 && t.watchUrl.isEmpty()) {
-                    // try to enrich duration from the watch page metadata cheaply
-                    try {
-                        JSONObject o = new JSONObject(get(
-                                "https://www.youtube.com/oembed?url="
-                                        + URLEncoder.encode(t.watchUrl, "UTF-8") + "&format=json"));
-                        if (t.title.isEmpty()) t.title = o.optString("title", "");
-                    } catch (Throwable ignored) {}
-                }
-                post(cb, t, null);
-            } else if (!t.previewUrl.isEmpty()) {
-                t.source = "preview";
-                t.status = "30s PREVIEW (full stream blocked - trying again next song)";
-                post(cb, t, null);
-            } else {
-                // ---- step 5: local fuzzy match -------------------------------------
-                File local = localMatch(ctx, t.query);
-                if (local != null) {
-                    t.localFile = local;
-                    t.source = "local";
-                    t.status = "LOCAL FILE";
-                    if (t.title.isEmpty()) t.title = stripExt(local.getName());
-                    post(cb, t, null);
-                } else {
-                    post(cb, t, "Couldn't find \"" + t.query + "\" (check wifi)");
-                }
-            }
-        }});
+    private static StreamingService service(String query)throws Exception{
+        if(!query.matches("(?i)^https?://.*"))return null;
+        URI uri=new URI(query);String host=uri.getHost();
+        if(!"https".equalsIgnoreCase(uri.getScheme())||host==null||uri.getUserInfo()!=null||uri.getPort()!=-1)throw new Exception("Use a YouTube or SoundCloud HTTPS link");
+        host=host.toLowerCase(Locale.US);
+        if(host.equals("youtu.be")||host.equals("youtube.com")||host.endsWith(".youtube.com"))return ServiceList.YouTube;
+        if(host.equals("soundcloud.com")||host.endsWith(".soundcloud.com"))return ServiceList.SoundCloud;
+        throw new Exception("Use a song name, YouTube link or SoundCloud link");
     }
-
-    private static void post(final Callback cb, final Track t, final String err) {
-        main().post(new Runnable() { @Override public void run() { cb.onResult(t, err); }});
-    }
-
-    // ------------------------------------------------------------------ NewPipe path
-
-    private static String npResolve(String query) throws Exception {
-        StreamingService yt = ServiceList.YouTube;
-        // music_songs = YouTube Music songs filter (exact like a music bot)
-        SearchQueryHandler h = yt.getSearchQHFactory().fromQuery(query,
-                Collections.singletonList(
-                        org.schabi.newpipe.extractor.services.youtube.linkHandler
-                                .YoutubeSearchQueryHandlerFactory.MUSIC_SONGS), "");
-        SearchInfo si = SearchInfo.getInfo(yt, h);
-        String watchUrl = null;
-        for (org.schabi.newpipe.extractor.InfoItem item : si.getRelatedItems()) {
-            if (item instanceof StreamInfoItem) {
-                StreamInfoItem s = (StreamInfoItem) item;
-                watchUrl = s.getUrl();
-                if (s.getDuration() > 30) break;    // skip very short results
-            }
-        }
-        if (watchUrl == null) return null;
-
-        StreamInfo info = StreamInfo.getInfo(watchUrl);
-        AudioStream best = null;
-        int bestScore = -1;
-        for (AudioStream a : info.getAudioStreams()) {
-            if (a == null || a.getUrl() == null) continue;
-            boolean progressive = a.isUrl()
-                    && a.getDeliveryMethod() == org.schabi.newpipe.extractor.stream.DeliveryMethod.PROGRESSIVE_HTTP;
-            boolean m4a = a.getFormat() != null
-                    && a.getFormat() == org.schabi.newpipe.extractor.MediaFormat.M4A;
-            int br = a.getAverageBitrate();
-            if (!progressive) continue;              // MediaPlayer can't do DASH
-            int score = (m4a ? 1000 : 0) - Math.abs(128000 - br);
-            if (score > bestScore) { bestScore = score; best = a; }
-        }
-        if (best == null) return null;
-        return best.getUrl();
-    }
-
-    // ------------------------------------------------------------------ Piped REST path
-
-    private static final String[] PIPED_INSTANCES = {
-            "https://api.piped.private.coffee",
-            "https://pipedapi.ducks.party",
-            "https://pipedapi.kavin.rocks",
-            "https://pipedapi.adminforge.de",
-    };
-
-    private static String pipedResolve(String query) throws Exception {
-        String id = null;
-        for (String inst : PIPED_INSTANCES) {
-            try {
-                JSONObject r = new JSONObject(get(inst + "/search?q="
-                        + URLEncoder.encode(query, "UTF-8") + "&filter=music_songs"));
-                JSONArray items = r.optJSONArray("items");
-                if (items != null && items.length() > 0) {
-                    String u = items.getJSONObject(0).optString("url", "");
-                    int eq = u.indexOf("v=");
-                    if (eq > 0) { id = u.substring(eq + 2); break; }
-                }
-            } catch (Throwable ignored) {}
-        }
-        if (id == null) return null;
-        for (String inst : PIPED_INSTANCES) {
-            try {
-                JSONObject r = new JSONObject(get(inst + "/streams/" + id));
-                JSONArray auds = r.optJSONArray("audioStreams");
-                if (auds == null) continue;
-                String best = null; int bestBr = 0;
-                for (int i = 0; i < auds.length(); i++) {
-                    JSONObject a = auds.getJSONObject(i);
-                    String mime = a.optString("mimeType", "");
-                    if (!mime.contains("mp4")) continue;   // m4a only for MediaPlayer
-                    int br = a.optInt("bitrate", 0);
-                    if (br > bestBr && br <= 192000) { bestBr = br; best = a.optString("url", ""); }
-                }
-                if (best != null && !best.isEmpty()) return best;
-            } catch (Throwable ignored) {}
-        }
-        return null;
-    }
-
-    // ------------------------------------------------------------------ local path
-
-    private static File localMatch(Context ctx, String query) {
-        try {
-            java.io.File dir = android.os.Environment
-                    .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC);
-            List<File> all = new ArrayList<File>();
-            collect(dir, all);
-            String q = query.toLowerCase();
-            File best = null; int bestScore = 0;
-            for (File f : all) {
-                String n = stripExt(f.getName()).toLowerCase();
-                int score = 0;
-                for (String tok : q.split("\\s+")) {
-                    if (tok.length() > 2 && n.contains(tok)) score += tok.length();
-                }
-                if (score > bestScore) { bestScore = score; best = f; }
-            }
-            return bestScore >= 4 ? best : null;
-        } catch (Throwable ignored) { return null; }
-    }
-
-    private static void collect(File dir, List<File> out) {
-        if (dir == null || !dir.isDirectory()) return;
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File f : files) {
-            if (f.isDirectory()) collect(f, out);
-            else {
-                String n = f.getName().toLowerCase();
-                if (n.endsWith(".mp3") || n.endsWith(".m4a") || n.endsWith(".ogg")
-                        || n.endsWith(".wav") || n.endsWith(".flac") || n.endsWith(".aac"))
-                    out.add(f);
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------ helpers
-
-    private static String stripExt(String n) {
-        int d = n.lastIndexOf('.');
-        return d > 0 ? n.substring(0, d) : n;
-    }
-
-    /** Prefer the result whose title+artist best matches the query. */
-    private static JSONObject pickBest(JSONArray results, String query) {
-        String q = query.toLowerCase();
-        JSONObject best = results.optJSONObject(0);
-        int bestScore = -1;
-        for (int i = 0; i < results.length() && i < 5; i++) {
-            JSONObject r = results.optJSONObject(i);
-            if (r == null) continue;
-            String hay = (r.optString("trackName", "") + " " + r.optString("artistName", ""))
-                    .toLowerCase();
-            int score = 0;
-            for (String tok : q.split("\\s+")) {
-                if (tok.length() > 2 && hay.contains(tok)) score += tok.length();
-            }
-            if (score > bestScore) { bestScore = score; best = r; }
-        }
-        return best;
-    }
-
-    static String get(String url) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setConnectTimeout(7000);
-        c.setReadTimeout(10000);
-        c.setRequestProperty("User-Agent",
-                "Mozilla/5.0 (Linux; Android 7.1; AstOs) AppleWebKit/537.36");
-        BufferedReader rd = new BufferedReader(new InputStreamReader(c.getInputStream()));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = rd.readLine()) != null) sb.append(line);
-        rd.close();
-        c.disconnect();
-        return sb.toString();
-    }
-
-    /** Search suggestions for the on-screen keyboard-less flow (like the bot's autocomplete). */
-    public static List<String> suggest(String partial) {
-        List<String> out = new ArrayList<String>();
-        if (partial == null || partial.trim().length() < 2) return out;
-        try {
-            JSONObject root = new JSONObject(get("https://itunes.apple.com/search?term="
-                    + URLEncoder.encode(partial.trim(), "UTF-8")
-                    + "&media=music&entity=song&limit=6"));
-            JSONArray rs = root.optJSONArray("results");
-            for (int i = 0; rs != null && i < rs.length() && out.size() < 5; i++) {
-                JSONObject r = rs.getJSONObject(i);
-                String s = r.optString("trackName", "") + " - " + r.optString("artistName", "");
-                if (!s.trim().equals("-")) out.add(s);
-            }
-        } catch (Throwable ignored) {}
+    private static List<StreamInfoItem> items(StreamingService source,String query)throws Exception{
+        SearchInfo info=SearchInfo.getInfo(source,source.getSearchQHFactory().fromQuery(query,Collections.emptyList(),""));
+        List<StreamInfoItem> out=new ArrayList<>();
+        for(InfoItem item:info.getRelatedItems())if(item instanceof StreamInfoItem){StreamInfoItem s=(StreamInfoItem)item;if(s.getDuration()!=0)out.add(s);if(out.size()>=5)break;}
         return out;
     }
+    public static List<Track> search(String raw)throws Exception{
+        String query=checked(raw);init();StreamingService direct=service(query);List<Track> out=new ArrayList<>();
+        if(direct!=null){StreamInfo info=StreamInfo.getInfo(direct,query);out.add(metadata(info,query));return out;}
+        List<String> errors=new ArrayList<>();
+        for(StreamingService source:new StreamingService[]{ServiceList.YouTube,ServiceList.SoundCloud}){
+            try{for(StreamInfoItem item:items(source,query)){
+                Track t=new Track();t.query=query;t.title=item.getName();t.artist=item.getUploaderName();t.watchUrl=item.getUrl();t.durationMs=Math.max(0,item.getDuration())*1000;
+                if(!item.getThumbnails().isEmpty())t.artUrl=item.getThumbnails().get(0).getUrl();out.add(t);
+            }if(!out.isEmpty())return out;}catch(Throwable e){errors.add(message(e));}
+        }
+        throw new Exception("No song results. "+String.join("; ",errors));
+    }
+    public static Track resolveSync(Context context,String raw)throws Exception{
+        String query=checked(raw);init();StreamingService direct=service(query);List<String> errors=new ArrayList<>();
+        for(StreamingService source:direct==null?new StreamingService[]{ServiceList.YouTube,ServiceList.SoundCloud}:new StreamingService[]{direct}){
+            try{
+                String url=direct!=null?query:null;
+                if(url==null){List<StreamInfoItem> found=items(source,query);if(found.isEmpty())throw new Exception("No matches");url=found.get(0).getUrl();}
+                StreamInfo info=StreamInfo.getInfo(source,url);Track t=metadata(info,query);AudioStream best=null;int score=Integer.MIN_VALUE;
+                for(AudioStream audio:info.getAudioStreams()){
+                    if(audio==null||!audio.isUrl())continue;
+                    int rank=AudioStreamChoice.score(audio.getDeliveryMethod()==DeliveryMethod.PROGRESSIVE_HTTP,audio.getDeliveryMethod()==DeliveryMethod.HLS,audio.getFormat()==MediaFormat.M4A,audio.getAverageBitrate());
+                    if(rank>score){best=audio;score=rank;}
+                }
+                if(best==null)throw new Exception("No compatible AAC/HLS or progressive audio stream");
+                t.streamUrl=best.getContent();t.source="stream";t.status=source==ServiceList.YouTube?"YOUTUBE AUDIO":"SOUNDCLOUD AUDIO";
+                t.headers.put("User-Agent","Mozilla/5.0");return t;
+            }catch(Throwable e){errors.add(message(e));}
+        }
+        File local=localMatch(context,query);if(local!=null){Track t=new Track();t.query=query;t.title=stripExt(local.getName());t.source="local";t.status="LOCAL FILE";t.localFile=local;return t;}
+        throw new Exception(String.join("; ",errors));
+    }
+    private static Track metadata(StreamInfo info,String query){
+        Track t=new Track();t.query=query;t.title=info.getName();t.artist=info.getUploaderName();t.watchUrl=info.getUrl();t.durationMs=Math.max(0,info.getDuration())*1000;
+        if(!info.getThumbnails().isEmpty())t.artUrl=info.getThumbnails().get(0).getUrl();return t;
+    }
+    private static String message(Throwable error){String m=error.getMessage();if(m==null||m.isEmpty())m=error.getClass().getSimpleName();return m.replaceAll("https?://\\S+","[source]").substring(0,Math.min(250,m.replaceAll("https?://\\S+","[source]").length()));}
+    private static File localMatch(Context c,String query){
+        List<File> files=new ArrayList<>();collect(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC),files,0);
+        File best=null;int score=0;for(File f:files){String name=stripExt(f.getName()).toLowerCase(Locale.US);int rank=0;for(String token:query.toLowerCase(Locale.US).split("\\s+"))if(token.length()>2&&name.contains(token))rank+=token.length();if(rank>score){score=rank;best=f;}}
+        return score>=4?best:null;
+    }
+    private static void collect(File dir,List<File> out,int depth){
+        if(dir==null||!dir.isDirectory()||depth>12||out.size()>10000)return;File[] files=dir.listFiles();if(files==null)return;
+        for(File f:files){if(f.isDirectory())collect(f,out,depth+1);else if(f.getName().toLowerCase(Locale.US).matches(".*\\.(mp3|m4a|ogg|wav|flac|aac)$"))out.add(f);}
+    }
+    private static String stripExt(String name){int i=name.lastIndexOf('.');return i>0?name.substring(0,i):name;}
+    public static List<String> suggest(String query){List<String> out=new ArrayList<>();try{for(Track t:search(query))out.add(t.title+" — "+t.artist);}catch(Exception ignored){}return out;}
 }
