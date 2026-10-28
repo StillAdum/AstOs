@@ -3,6 +3,14 @@ using NAudio.Dsp;
 using System.Text.Json;
 using InTheHand.Net;
 using InTheHand.Net.Sockets;
+using System.Runtime.InteropServices;
+if(args.Length==2 && args[0]=="--bluetooth-pair") {
+ try{NativePair.Pair(args[1]);Console.WriteLine("{\"paired\":true}");}catch(Exception e){Console.Error.WriteLine(e.Message);Environment.ExitCode=1;}return;
+}
+if(args.Length>0 && args[0]=="--bluetooth-discover") {
+ try{using var client=new BluetoothClient();var found=client.PairedDevices.Concat(client.DiscoverDevices(64)).GroupBy(d=>d.DeviceAddress.ToString()).Select(g=>g.First());Console.WriteLine(JsonSerializer.Serialize(found.Select(d=>new {address=d.DeviceAddress.ToString(),name=d.DeviceName,paired=d.Authenticated})));}
+ catch(Exception e){Console.Error.WriteLine("Bluetooth discovery: "+e.Message);Environment.ExitCode=1;}return;
+}
 if(args.Length>0 && args[0]=="--bluetooth-list") {
  try{using var client=new BluetoothClient();Console.WriteLine(JsonSerializer.Serialize(client.PairedDevices.Select(d=>new {address=d.DeviceAddress.ToString(),name=d.DeviceName})));}
  catch(Exception e){Console.Error.WriteLine("Bluetooth enumeration: "+e.Message);Environment.ExitCode=1;}return;
@@ -37,3 +45,12 @@ try {
  capture.RecordingStopped += (_,e)=>{if(e.Exception!=null){Console.Error.WriteLine("Audio capture stopped: "+e.Exception.GetType().Name);Environment.Exit(1);}};
  capture.StartRecording();await Task.Delay(Timeout.Infinite);
 } catch(Exception e){Console.Error.WriteLine("Audio capture unavailable: "+e.GetType().Name);Environment.ExitCode=1;}
+
+// Windows displays its native numeric comparison confirmation; no silent auto-accept callback.
+internal static class NativePair {
+ [StructLayout(LayoutKind.Sequential)] internal struct SystemTime {public ushort Year,Month,DayOfWeek,Day,Hour,Minute,Second,Milliseconds;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] internal struct DeviceInfo {public int Size;public ulong Address;public uint Class;[MarshalAs(UnmanagedType.Bool)]public bool Connected;[MarshalAs(UnmanagedType.Bool)]public bool Remembered;[MarshalAs(UnmanagedType.Bool)]public bool Authenticated;public SystemTime LastSeen,LastUsed;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=248)]public string Name;}
+ [DllImport("bthprops.cpl",ExactSpelling=true)] static extern uint BluetoothGetDeviceInfo(IntPtr radio,ref DeviceInfo info);
+ [DllImport("bthprops.cpl",ExactSpelling=true)] static extern uint BluetoothAuthenticateDeviceEx(IntPtr parent,IntPtr radio,ref DeviceInfo info,IntPtr oob,int requirement);
+ internal static void Pair(string address){var d=new DeviceInfo{Size=Marshal.SizeOf<DeviceInfo>(),Address=Convert.ToUInt64(address.Replace(":", "").Replace("-", ""),16),Name=""};BluetoothGetDeviceInfo(IntPtr.Zero,ref d);if(d.Authenticated)return;uint result=BluetoothAuthenticateDeviceEx(IntPtr.Zero,IntPtr.Zero,ref d,IntPtr.Zero,3);if(result!=0)throw new System.ComponentModel.Win32Exception((int)result,"Bluetooth pairing not completed; confirm matching numbers on PC and tablet");}
+}

@@ -89,9 +89,15 @@ public class SettingsActivity extends Activity {
                 bt = (ad != null && ad.isEnabled()) ? "on" : "off";
             } catch (Throwable ignored) {}
             ((TextView) findViewById(R.id.companionText)).setText(
-                    "PC companion · bluetooth " + bt + " · usb · pairing code " + code);
+                    "PC companion · bluetooth " + bt + " · Wi-Fi · new-PC code " + code);
         } catch (Throwable ignored) {}
 
+        TextView companion=(TextView)findViewById(R.id.companionText);
+        if(companion.getParent() instanceof LinearLayout){LinearLayout parent=(LinearLayout)companion.getParent();Button pair=new Button(this);pair.setText("Connect / pair new PC");Ui.press(pair,2);parent.addView(pair,parent.indexOfChild(companion)+1);new com.astos.link.PixelUi(this).control(pair);pair.setOnClickListener(v->{
+            com.astos.link.LinkServer link=com.astos.link.LinkServer.peek();if(link==null){LinkHostShell.ensure(this);link=com.astos.link.LinkServer.peek();}if(link==null){Toast.makeText(this,"Connection service is starting; retry",Toast.LENGTH_LONG).show();return;}
+            String code=link.beginPairing();com.astos.link.PairingPrompts.discoverable(this);companion.setText("New-PC pairing code: "+code+" · valid for 5 minutes");
+            new com.astos.link.PixelUi.Builder(this).setTitle("Pair new PC").setMessage("Open AstOS Companion on the same Wi-Fi, or choose this tablet in its Bluetooth picker.\nWi-Fi pairing code: "+code+"\nPreviously trusted PCs reconnect without a code. Confirm matching Bluetooth numbers on both devices.").setPositiveButton("Done",null).show();
+        });}
         pressAll();
     }
 
@@ -243,14 +249,14 @@ public class SettingsActivity extends Activity {
         });
         findViewById(R.id.audioOutputBtn).setOnClickListener(v -> AudioOutput.choose(this));
         findViewById(R.id.voiceModelBtn).setOnClickListener(v -> {
-            String[] options = {"Offline Vosk (continuous)", "Groq Whisper large v3 turbo (sends audio to Groq)"};
+            String[] options = {"Offline Vosk (continuous)", "Whisper large v3 — accuracy (sends audio to Groq)", "Whisper turbo — faster (sends audio to Groq)"};
             new com.astos.link.PixelUi.Builder(this).setTitle("Speech recognition")
                 .setItems(options, (d, which) -> {
-                    if (which == 1 && AiProviders.speechKey(this).isEmpty()) {
+                    if (which > 0 && AiProviders.speechKey(this).isEmpty()) {
                         Toast.makeText(this, "Save a Groq key first", Toast.LENGTH_LONG).show(); return;
                     }
                     VoiceEngine.get().stopListening();
-                    getSharedPreferences("voice", 0).edit().putBoolean("whisper", which == 1).apply();
+                    getSharedPreferences("voice", 0).edit().putBoolean("whisper", which > 0).putString("whisper_model",which==2?"whisper-large-v3-turbo":"whisper-large-v3").apply();
                     VoiceEngine.get().prepare(this, (ok, message) -> {
                         if (!ok) Toast.makeText(this, "Download the offline voice model from the dashboard", Toast.LENGTH_LONG).show();
                     });

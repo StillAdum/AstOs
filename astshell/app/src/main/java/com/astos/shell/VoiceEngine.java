@@ -56,7 +56,7 @@ public class VoiceEngine implements RecognitionListener {
     /** Loads Vosk from filesDir/model (downloaded by ModelDownloader). */
     public void prepare(final Context ctx, final ReadyListener ready) {
         mContext = ctx.getApplicationContext();
-        if (cloudMode() || mModel != null) { ready.onReady(true, null); return; }
+        if (mModel != null || (cloudMode() && !ModelDownloader.present(ctx))) { ready.onReady(true, null); return; }
         final Context app = ctx.getApplicationContext();
         new Thread(new Runnable() {
             @Override
@@ -101,7 +101,7 @@ public class VoiceEngine implements RecognitionListener {
                     mListening = false;
                     Callback cb = mCallback;
                     if (cb != null) { if (error != null) cb.onError(error); else cb.onResult(text); }
-                });
+                },mModel,partial->{Callback cb=mCallback;if(cb!=null)cb.onPartial(partial);});
             } catch (Exception e) { mListening = false; throw new IOException(e); }
             return;
         }
