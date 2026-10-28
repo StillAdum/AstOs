@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('astos', {
   resume: () => ipcRenderer.invoke('resume-pairing'),
   disconnect: () => ipcRenderer.invoke('disconnect-tablet'),
   auth: (code) => ipcRenderer.invoke('auth', code),
+  discoverBluetooth: () => ipcRenderer.invoke('bluetooth-discover'),
   bluetoothSettings: () => ipcRenderer.invoke('bluetooth-settings'),
   audioVisualizer: (on) => ipcRenderer.invoke('audio-visualizer',on),
   spotifyInfo: () => ipcRenderer.invoke('spotify-info'),

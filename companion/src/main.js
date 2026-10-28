@@ -24,6 +24,9 @@ let pcTimer;
 let pcBusy = false,lastPcPoll=0;
 let pairBusy = false;
 let pendingPair = {};
+let retryCount=0,nextRetry=0,presenceSocket;
+let clientId='',linkGeneration=0;
+function identity(extra={}){return {clientId,pcName:require('os').hostname(),...extra};}
 const handledPc = new Map();
 const pendingPc = new Set();
 function persistPair() {
@@ -33,6 +36,8 @@ function persistPair() {
 async function init() {
   fs.mkdirSync(app.getPath('userData'), {recursive:true});
   try { paired = JSON.parse(safeStorage.decryptString(fs.readFileSync(path.join(app.getPath('userData'), 'pairing.bin')))); } catch {}
+  clientId=paired.clientId||require('crypto').randomUUID();paired.clientId=clientId;persistPair();
+  startPresenceListener();
   const tokenPath = path.join(app.getPath('userData'), 'spotify-token');
   let token;
   try { token = fs.readFileSync(tokenPath, 'utf8'); } catch {
@@ -47,7 +52,7 @@ async function init() {
   tray.setToolTip('AstOS Companion — running in background');
   tray.setContextMenu(Menu.buildFromTemplate([{label:'Open AstOS Companion',click:()=>{win.show();win.focus();}},{label:'Reconnect tablet over Wi-Fi',click:()=>{autoConnect=true;reconnectWifi();}},{type:'separator'},{label:'Quit companion',click:()=>app.quit()}]));
   tray.on('double-click',()=>{win.show();win.focus();});
-  reconnectTimer=setInterval(reconnectWifi,5000);
+  reconnectTimer=setInterval(reconnectWifi,4000);
   pcTimer = setInterval(pollPc, 150);
 }
 async function pollPc() {
@@ -65,7 +70,7 @@ async function pollPc() {
       } else if (!pendingPc.has(command.id)) {
         pendingPc.add(command.id);
         spotifyBridge.execute(command).then(
-          () => ({id: command.id, ok: true}),
+          data => ({id: command.id, ok: true, data}),
           e => ({id: command.id, ok: false, error: e.message})
         ).then(result => {
           handledPc.set(command.id, result); pendingPc.delete(command.id);
@@ -105,7 +110,7 @@ function createWindow() {
 }
 
 app.whenReady().then(init);
-app.on('before-quit', () => { quitting=true; clearInterval(reconnectTimer); clearInterval(pcTimer); audioLevels.stop(); spotifyBridge?.close(); session?.close(); });
+app.on('before-quit', () => { quitting=true; presenceSocket?.close(); clearInterval(reconnectTimer); clearInterval(pcTimer); audioLevels.stop(); spotifyBridge?.close(); session?.close(); });
 app.on('window-all-closed', () => {});
 
 // ------------------------------------------------------------ helpers
@@ -120,6 +125,7 @@ function dieSession(reason) {
   if(old){old.onDead=null;old.close();}
   authenticated = false;
   spotifyBridge?.disconnect();
+  retryCount=0;nextRetry=0;
   send('link-dead', { reason: reason || 'connection lost' });
 }
 
@@ -138,9 +144,9 @@ async function rpc(cmd, args, timeoutMs) {
 
 // ------------------------------------------------------------ pairing
 
-async function tryHello(s, token) {
+async function tryHello(s, token,timeout=8000) {
   try {
-    const r = await s.call(null, 'hello', { token: token || '' }, 8000);
+    const r = await s.call(null, 'hello', identity({ token: token || '' }), timeout);
     return r;                      // {name, ver, ...} when paired:true
   } catch (e) {
     if (e.astLink && /need-code/.test(e.message)) return { needCode: true };
@@ -151,19 +157,19 @@ async function tryHello(s, token) {
 async function findTablet(ev, kind, portPath, code) {
   if (authenticated && session) return {ok:true, info:await session.call(null, 'info', {}, 5000)};
   if (pairBusy) return {ok: false, error: 'A scan is already running'};
-  pairBusy = true;
+  pairBusy = true;linkGeneration++;
   pendingPair = {via:kind,port:portPath || ''};
-  autoConnect=true;
+  autoConnect=true;retryCount=0;
   try {
     if (session) { const old = session; session = null; old.onDead = null; old.close(); }
     if (kind === 'wifi') {
       let host=portPath || paired.host;
       if(!host){const found=await T.discoverWifi();if(found.length!==1)throw Error(found.length?'Multiple tablets found — enter the tablet IP address':'No tablet found on this Wi-Fi. Enter its IP or check guest-network isolation.');host=found[0].host;}
       pendingPair.host=host;
-      const useCode=/^\d{6}$/.test(code||'');session=await T.connectWifi(host,useCode?code:paired.token,useCode);
+      const useCode=/^\d{6}$/.test(code||'');session=await T.connectWifi(host,useCode?code:paired.token,useCode,58517,clientId);
       const active=session;session.onDead=()=>{if(session===active)dieSession();};
       let info=await tryHello(session,useCode?'':paired.token);
-      if(info.needCode&&useCode)info=await session.call(null,'auth',{code},10000);
+      if(info.needCode&&useCode)info=await session.call(null,'auth',identity({code}),10000);
       else if(info.needCode)return {ok:true,needCode:true};
       authenticated=true;paired={...paired,...pendingPair,token:info.token||paired.token,name:info.name,ver:info.ver};persistPair();send('paired',{...info,via:'Wi-Fi'});return {ok:true,info};
     } else if (kind === 'usb') {
@@ -176,22 +182,24 @@ async function findTablet(ev, kind, portPath, code) {
       const r = await tryHello(session, paired.token);
       if (r.needCode) return { ok: true, needCode: true };
       authenticated = true;
-      paired = {...paired, token:r.token || paired.token, name:r.name, ver:r.ver, via:kind, port:portPath || ''};
+      paired = {...paired,...pendingPair, token:r.token || paired.token, name:r.name, ver:r.ver, via:kind, port:portPath || ''};
       persistPair();
       send('paired', { name: r.name, ver: r.ver, via: 'USB' });
       return { ok: true, info: r };
     } else {
-      if (portPath && !/^COM\d+$/i.test(portPath)) throw new Error('Enter an outgoing Bluetooth COM port such as COM7');
-      const s = portPath ? await T.probeCom(portPath) : await T.findBluetoothTablet(m => send('scan-progress', String(m)));
+      if(portPath&&!/^COM\d+$/i.test(portPath)&&!/^bt:[a-f0-9]{12}$/i.test(portPath))throw Error('Choose a discovered tablet or enter a COM port');
+      let s;
+      if(portPath?.startsWith('bt:')){const address=portPath.slice(3);await T.pairBluetooth(address);s=await T.connectBluetoothAddress(address);pendingPair.btAddress=address;}
+      else s=portPath?await T.probeCom(portPath):paired.btAddress?await T.connectBluetoothAddress(paired.btAddress):await T.findBluetoothTablet(m=>send('scan-progress',String(m)));
       if (!s) {
         return { ok: false, error: 'no AstOS tablet found.\n\n1. On the tablet: Settings -> Bluetooth ON (it turns itself\n   on during setup).\n2. In Windows Bluetooth settings: Add device -> the tablet\n   named "AstSetup_xxxx" (or its normal name after setup).\n   Pair it — Windows then creates its serial COM port.\n3. Press SCAN again.' };
       }
-      session = s;
+      session = s;if(/^bluetooth:[A-Fa-f0-9]{12}$/.test(s.label))pendingPair.btAddress=s.label.slice(10);
       { const active = session; session.onDead = () => { if (session === active) dieSession(); }; }
       const r = await tryHello(session, paired.token);
       if (r.needCode) return { ok: true, needCode: true };
       authenticated = true;
-      paired = {...paired, token:r.token || paired.token, name:r.name, ver:r.ver, via:kind, port:portPath || ''};
+      paired = {...paired,...pendingPair, token:r.token || paired.token, name:r.name, ver:r.ver, via:kind, port:portPath || ''};
       persistPair();
       send('paired', { name: r.name, ver: r.ver, via: 'Bluetooth' });
       return { ok: true, info: r };
@@ -201,34 +209,42 @@ async function findTablet(ev, kind, portPath, code) {
   } finally { pairBusy = false; }
 }
 ipcMain.handle('find-tablet', findTablet);
+ipcMain.handle('bluetooth-discover',async()=>{try{return {ok:true,devices:await T.discoverBluetooth()};}catch(e){return {ok:false,error:e.message};}});
 ipcMain.handle('bluetooth-settings',()=>shell.openExternal('ms-settings:bluetooth')); 
 ipcMain.handle('audio-visualizer',(_e,on)=>{if(typeof on==='boolean'){paired.audioVisualizer=on;persistPair();if(on)audioLevels.start();else audioLevels.stop();}return {enabled:!!paired.audioVisualizer,error:audioLevels.error};});
 async function rememberNetwork(){if(!session||!authenticated)return;try{const info=await session.call(null,'info',{},6000);if(info.wifi?.ip){paired.host=info.wifi.ip;persistPair();}}catch{}}
-async function reconnectWifi(){
- if(reconnectBusy||pairBusy||!autoConnect||!paired.token||quitting)return;
+// Forty scheduled attempts, four seconds between starts; thereafter only user action or presence wakes it.
+async function reconnectWifi(force=false){
+ if(reconnectBusy||pairBusy||!autoConnect||!paired.token||quitting||authenticated||retryCount>=40&&!force||Date.now()<nextRetry&&!force)return;
  if(session&&!authenticated&&!session.dead)return;
- if(authenticated&&session?.label.startsWith('wifi:'))return;
- reconnectBusy=true;const old=session;
- try {
-  if(old&&authenticated)await rememberNetwork();
-  const candidates=new Set([paired.host].filter(Boolean));
-  for(const item of await T.discoverWifi(1200))candidates.add(item.host);
-  for(const host of candidates){let next;try{
-   next=await T.connectWifi(host,paired.token);const info=await tryHello(next,paired.token);if(info.needCode){next.close();continue;}
-   // Identity is verified by the saved secret before replacing a live USB/BT session.
-   session=next;authenticated=true;session.onDead=()=>{if(session===next)dieSession();};if(old){old.onDead=null;old.close();}
-   paired={...paired,host,via:'wifi'};persistPair();send('paired',{...info,via:'Wi-Fi',reconnected:true});return;
-  }catch{next?.close();}}
- }finally{reconnectBusy=false;}
+ reconnectBusy=true;const generation=linkGeneration;retryCount++;nextRetry=Date.now()+4000;
+ let next;
+ try{
+  if(paired.btAddress&&retryCount%2===0){next=await T.connectBluetoothAddress(paired.btAddress,3000);}
+  else{let host=paired.host;if(!host||retryCount%3===0){const found=await T.discoverWifi(650);host=found.find(x=>x.host===paired.host)?.host||found[0]?.host||host;}if(!host)return;next=await T.connectWifi(host,paired.token,false,58517,clientId,2200);}
+  const info=await tryHello(next,paired.token,900);if(info.needCode)throw Error('Saved credentials rejected; use Pair new PC on tablet');
+  if(!autoConnect||quitting||generation!==linkGeneration){next.close();return;}
+  session=next;authenticated=true;retryCount=0;session.onDead=()=>{if(session===next)dieSession();};
+  if(next.label.startsWith('wifi:'))paired.host=next.label.slice(5);persistPair();send('paired',{...info,via:next.label,reconnected:true});
+ }catch{next?.close();}finally{reconnectBusy=false;}
 }
-ipcMain.handle('resume-pairing', async () => {
-  if (authenticated && session) return {ok:true,info:await session.call(null,'info',{},5000)};
-  if (!paired.token) return {ok:false,error:'No saved tablet'};
-  const first = await findTablet(null, 'wifi', paired.host || '');
-  if (first.ok) return first;
-  return findTablet(null, paired.via === 'usb' ? 'bluetooth' : 'usb');
+function startPresenceListener(){
+ presenceSocket=require('node:dgram').createSocket({type:'udp4',reuseAddr:true});
+ presenceSocket.on('error',e=>console.warn('Tablet presence listener:',e.message));
+ presenceSocket.on('message',(bytes,remote)=>{if(bytes.toString()!=='ASTOS_PRESENT_V1'||!autoConnect||!paired.token||authenticated)return;
+  // The beacon is only a hint. The encrypted saved-secret handshake authenticates the tablet.
+  if(!/^\d+\.\d+\.\d+\.\d+$/.test(remote.address)||Date.now()<nextRetry)return;
+  paired.host=remote.address;retryCount=0;reconnectWifi(true);
+ });presenceSocket.bind(58520);
+}
+ipcMain.handle('resume-pairing',async()=>{
+ if(authenticated&&session)return {ok:true,info:await session.call(null,'info',{},5000)};
+ if(!paired.token)return {ok:false,error:'No saved tablet'};
+ autoConnect=true;retryCount=0;nextRetry=0;await reconnectWifi(true);
+ return authenticated?{ok:true,info:await session.call(null,'info',{},5000)}:{ok:false,error:'Waiting for saved tablet; retrying up to 40 times at 4-second intervals'};
 });
 ipcMain.handle('disconnect-tablet', () => {
+  linkGeneration++;
   const old = session; if (old) { old.onDead = null; old.close(); }
   session = null; authenticated = false; autoConnect=false; spotifyBridge?.disconnect();
   return {ok:true};
@@ -237,12 +253,12 @@ ipcMain.handle('disconnect-tablet', () => {
 ipcMain.handle('auth', async (ev, code) => {
   if (!session) return { ok: false, error: 'not connected' };
   try {
-    const r = await session.call(null, 'auth', { code }, 10000);
+    const r = await session.call(null, 'auth', identity({ code }), 10000);
     authenticated = true;
     paired = {...paired, ...pendingPair, token:r.token, name:r.name, ver:r.ver};
     persistPair();
     await rememberNetwork();
-    send('paired', { name: r.name, ver: r.ver, via: session.label });
+    send('paired', { ...r, via: session.label });
     return { ok: true, info: r };
   } catch (e) {
     if (e.astLink && /bad-code/.test(e.message))
@@ -271,41 +287,49 @@ async function transferFile(filePath, target, label, onPct) {
   const name = path.basename(filePath);
   const crypto = require('crypto');
   const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
-  const begin = await session.call(null, 'file.begin', {
-    id: 'x1', name, size: buf.length, sha256, target
+  const transferId=crypto.randomUUID();
+  const active=session;
+  const begin = await active.call(null, 'file.begin', {
+    id: transferId, name, size: buf.length, sha256, target
   }, 20000);
   let offset = (begin && typeof begin.offset === 'number') ? begin.offset : 0;
   if (offset > buf.length) offset = 0;
   const { chunksFor } = require('./protocol');
   const step = 8192;
   const startSeq = Math.floor(offset / step);
-  const frames = chunksFor(buf.subarray(offset), step);
+  const frames = chunksFor(buf.subarray(offset), step);let verified=false;
   let ackEvery = target === 'rom' ? 4 : 64;   // ROMs want tighter flow control
   const t0 = Date.now();
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
-    await session.call(null, 'file.chunk', {
-      id: 'x1', seq: startSeq + f.seq, b64: f.b64
+    if(session!==active||active.dead)throw new T.LinkError('Tablet changed during transfer; select the file and retry');
+    const ack=await active.call(null, 'file.chunk', {
+      id: transferId, seq: startSeq + f.seq, b64: f.b64
     }, 30000);
+    if(ack?.complete&&ack.shaOk!=='ok'){await active.call(null,'file.abort',{id:transferId},5000);throw new T.LinkError('Upload checksum failed; file was not installed');}
+    if(ack?.complete&&ack.shaOk==='ok')verified=true;
     if (f.seq % ackEvery === 0 || i === frames.length - 1) {
       const written = offset + (f.seq + 1) * step;
       const pct = Math.min(100, Math.round(written * 100 / buf.length));
       const speed = Math.round((written - offset) / 1024 /
         Math.max(0.001, (Date.now() - t0) / 1000));
       onPct({ pct, speed, written: Math.min(written, buf.length), total: buf.length });
-      await session.call(null, 'file.status', { id: 'x1' }, 30000);
+      await active.call(null, 'file.status', { id: transferId }, 30000);
     }
   }
+  if(!verified)throw new T.LinkError('Tablet did not verify the complete upload');
   return { name, sha256, path: begin && begin.path ? begin.path : ('/sdcard/AstOs/' + name) };
 }
 
+let transferBusy=false;
 ipcMain.handle('transfer', async (ev, filePath, target) => {
+  if(transferBusy)return {ok:false,error:'Another file transfer is running'};transferBusy=true;
   try {
     const r = await transferFile(filePath, target, '', p => send('transfer-progress', p));
     return { ok: true, result: r };
   } catch (e) {
     return { ok: false, error: String(e.message || e) };
-  }
+  }finally{transferBusy=false;}
 });
 
 ipcMain.handle('pick-file', async (ev, filters) => {

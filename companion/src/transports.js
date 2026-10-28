@@ -266,19 +266,19 @@ async function discoverWifi(timeout=2000){
  for(const host of hosts)socket.send('ASTOS_DISCOVER_V1',58519,host,()=>{});timer=setTimeout(done,timeout);});
  });
 }
-function connectWifi(host,secret,pair=false,port=58517){
+function connectWifi(host,secret,pair=false,port=58517,clientId="",timeoutMs=8000){
  if(!secret)return Promise.reject(new LinkError('Enter the six-digit tablet pairing code for the first Wi-Fi connection'));
  if(!/^(?:[a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+$/.test(host||''))return Promise.reject(new LinkError('Enter a tablet IP address or hostname'));
  const {SecureLink}=require('./secure-link'),crypto=require('node:crypto');
  return new Promise((resolve,reject)=>{const sock=net.connect(port,host);sock.setNoDelay(true);sock.setKeepAlive(true,15000);let channel,session,buffer='',settled=false;
- const timer=setTimeout(()=>{sock.destroy();reject(new LinkError('Wi-Fi handshake timed out'));},8000);
+ const timer=setTimeout(()=>{sock.destroy();reject(new LinkError('Wi-Fi handshake timed out'));},timeoutMs);
  const fail=e=>{clearTimeout(timer);session?.ended();if(!settled){settled=true;reject(new LinkError(e.message));}sock.destroy();};
  sock.on('error',fail);sock.on('close',()=>{session?.ended();if(!settled)fail(Error('Wi-Fi connection closed; check tablet pairing code or saved pairing'));});
  sock.on('data',chunk=>{buffer+=chunk.toString('utf8');if(buffer.length>2*1024*1024)return fail(Error('Frame too large'));let idx;
  while((idx=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,idx);buffer=buffer.slice(idx+1);try{
   if(!channel){const hello=JSON.parse(line);if(hello.secure!==true||typeof hello.challenge!=='string')throw Error('Tablet requires a newer AstOS version');
    const dh=crypto.createECDH('prime256v1');dh.generateKeys();const shared=dh.computeSecret(Buffer.from(hello.publicKey,'base64').subarray(-65)).toString('hex');
-   channel=new SecureLink(secret,hello.challenge,shared);sock.write(JSON.stringify({pair,publicKey:dh.getPublicKey().toString('base64')})+'\n');
+   channel=new SecureLink(secret,hello.challenge,shared);sock.write(JSON.stringify({pair,clientId,publicKey:dh.getPublicKey().toString('base64')})+'\n');
    session=new LinkSession(s=>sock.write(channel.seal(s.trim())+'\n'),()=>sock.destroy(),'wifi:'+host);
    clearTimeout(timer);settled=true;resolve(session);
   }else session.ingest(channel.open(line)+'\n');
@@ -297,10 +297,15 @@ async function findNativeBluetooth(progress){
  for(const device of tablets){if(progress)progress('RFCOMM '+device.name);try{return await connectNativeBluetooth(exe,device.address);}catch(e){if(progress)progress(e.message);}}
  throw Error('Paired tablet did not accept RFCOMM. Keep tablet Bluetooth on and close other serial connections');
 }
-function connectNativeBluetooth(exe,address){return new Promise((resolve,reject)=>{
+function connectNativeBluetooth(exe,address,timeoutMs=18000){return new Promise((resolve,reject)=>{
  const child=spawn(exe,['--bluetooth',address],{windowsHide:true});let buffer='',error='',ready=false;const session=new LinkSession(s=>child.stdin.write(s),()=>child.kill(),'bluetooth:'+address);
- const timer=setTimeout(()=>{child.kill();reject(new LinkError('Native Bluetooth connection timed out'));},18000);
+ const timer=setTimeout(()=>{child.kill();reject(new LinkError('Native Bluetooth connection timed out'));},timeoutMs);
  child.stderr.on('data',b=>error=(error+b).slice(-1000));child.on('error',e=>{clearTimeout(timer);session.ended();reject(new LinkError(e.message));});child.on('close',()=>{clearTimeout(timer);session.ended();if(!ready)reject(new LinkError(error||'Bluetooth connection closed'));});
- child.stdout.on('data',chunk=>{if(ready){session.ingest(chunk);return;}buffer+=chunk.toString();const i=buffer.indexOf('\n');if(i<0)return;try{if(!JSON.parse(buffer.slice(0,i)).transportReady)throw Error('Bad Bluetooth handshake');ready=true;clearTimeout(timer);session.ingest(buffer.slice(i+1));session.call(null,'hello',{},4000).then(()=>resolve(session),e=>{/need-code/.test(e.message)?resolve(session):(child.kill(),reject(e));});}catch(e){child.kill();reject(e);}});
+ child.stdout.on('data',chunk=>{if(ready){session.ingest(chunk);return;}buffer+=chunk.toString();const i=buffer.indexOf('\n');if(i<0)return;try{if(!JSON.parse(buffer.slice(0,i)).transportReady)throw Error('Bad Bluetooth handshake');ready=true;clearTimeout(timer);session.ingest(buffer.slice(i+1));resolve(session);}catch(e){child.kill();reject(e);}});
  });}
 module.exports.connectNativeBluetooth=connectNativeBluetooth;
+
+function bluetoothCommand(args,timeout=30000){return new Promise((resolve,reject)=>{const child=spawn(nativeHelper(),args,{windowsHide:true});let out='',error='',done=false;const finish=(err,value)=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve(value);};const timer=setTimeout(()=>{child.kill();finish(Error('Bluetooth operation timed out; keep tablet pairing screen open'));},timeout);child.stdout.on('data',b=>out=(out+b).slice(-100000));child.stderr.on('data',b=>error=(error+b).slice(-2000));child.on('error',e=>finish(e));child.on('close',code=>{try{if(code)throw Error(error||'Bluetooth operation failed');finish(null,JSON.parse(out));}catch(e){finish(e);}});});}
+module.exports.discoverBluetooth=()=>bluetoothCommand(['--bluetooth-discover'],35000);
+module.exports.pairBluetooth=address=>bluetoothCommand(['--bluetooth-pair',address],90000);
+module.exports.connectBluetoothAddress=(address,timeout)=>connectNativeBluetooth(nativeHelper(),address,timeout);

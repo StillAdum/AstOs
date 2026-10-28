@@ -1,11 +1,20 @@
  'use strict';
 const http = require('http');
 const crypto = require('crypto');
+const {performance} = require('node:perf_hooks');
 const ORIGIN = 'https://xpui.app.spotify.com';
 class SpotifyBridge {
-  constructor(token, port = 58518) {
+  constructor(token, port = 58518, clock = () => performance.now()) {
+    this.clock = clock;
     this.token = token; this.port = port; this.lastSeen = 0;
-    this.waiters=new Set(); this.jobs = new Map(); this.server = null; this.tabletSeen = 0; this.state = {available:false};
+    this.waiters=new Set(); this.jobs = new Map(); this.server = null; this.tabletSeen = 0; this._state = {available:false}; this.sampleAt = 0;
+  }
+  get state() {
+    const age = Math.max(0,this.clock()-this.sampleAt);
+    const current = {...this._state, stale:age>10000 || this._state.estimated === true};
+    if (!this.connected) return {...current,available:false,playing:false};
+    if(current.playing && current.available) current.positionMs = Math.min(current.durationMs || 86400000, current.positionMs + Math.floor(age));
+    return current;
   }
   get connected() { return Date.now() - this.lastSeen < 75000; }
   start() {
@@ -26,7 +35,7 @@ class SpotifyBridge {
       res.setHeader('Content-Type', 'application/json');
       if(req.url==='/events'&&req.method==='GET'){
         this.lastSeen=Date.now();const send=()=>{clearTimeout(timer);this.waiters.delete(send);if(!res.writableEnded)res.end(JSON.stringify({tabletConnected:Date.now()-this.tabletSeen<45000,commands:[...this.jobs.values()].map(j=>j.command)}));};
-        const timer=setTimeout(send,25000);this.waiters.add(send);res.on('close',()=>{clearTimeout(timer);this.waiters.delete(send);});if(this.jobs.size)send();return;
+        const timer=setTimeout(send,1000);this.waiters.add(send);res.on('close',()=>{clearTimeout(timer);this.waiters.delete(send);});if(this.jobs.size)send();return;
       }
       if (req.url === '/poll' && req.method === 'GET') {
         this.lastSeen = Date.now();
@@ -41,13 +50,14 @@ class SpotifyBridge {
             if (req.url === '/state') {
               this.lastSeen = Date.now();
               const number = (value, max) => Math.max(0, Math.min(max, Number(value) || 0));
-              this.state = {available: result.available === true, title: String(result.title || '').slice(0,512), artist: String(result.artist || '').slice(0,256), artUrl:/^https:\/\//.test(result.artUrl||'')?String(result.artUrl).slice(0,1024):'', uri: String(result.uri || '').slice(0,512), playing: result.playing === true, positionMs:number(result.positionMs,86400000),durationMs:number(result.durationMs,86400000),volume:number(result.volume,100)};
+              this.sampleAt=this.clock();
+              this._state = {available: result.available === true, title: String(result.title || '').slice(0,512), artist: String(result.artist || '').slice(0,256), artUrl:/^https:\/\//.test(result.artUrl||'')?String(result.artUrl).slice(0,1024):'', uri: String(result.uri || '').slice(0,512), playing: result.playing === true, estimated:result.estimated===true, positionMs:number(result.positionMs,86400000),durationMs:number(result.durationMs,86400000),volume:number(result.volume,100)};
               return res.end('{}');
             }
             const job = this.jobs.get(result.id);
             if (job) {
               this.jobs.delete(result.id); clearTimeout(job.timer);
-              if (result.ok) job.resolve(); else job.reject(new Error(String(result.error || 'Spotify failed')));
+              if (result.ok) job.resolve(result.data || {}); else job.reject(new Error(String(result.error || 'Spotify failed')));
             }
             res.end('{}');
           } catch { res.writeHead(400); res.end('{}'); }
@@ -63,12 +73,12 @@ class SpotifyBridge {
   }
   execute(command) {
     if (!this.connected) return Promise.reject(new Error('Spotify extension is disconnected'));
-    if (!['play', 'pause', 'resume', 'next', 'previous', 'volup', 'voldown', 'volset'].includes(command.action))
+    if (!['play', 'pause', 'resume', 'next', 'previous', 'volup', 'voldown', 'volset', 'search', 'state'].includes(command.action))
       return Promise.reject(new Error('Unsupported playback action'));
     if (this.jobs.size >= 16) return Promise.reject(new Error('Spotify queue full'));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.jobs.delete(command.id); reject(new Error('Spotify did not respond')); }, 30000);
-      this.jobs.set(command.id, {command, resolve, reject, timer});
+      this.jobs.set(command.id, {command:{...command,expiresAt:Date.now()+30000}, resolve, reject, timer});
       for(const send of [...this.waiters])send();
     });
   }
