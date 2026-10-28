@@ -325,7 +325,11 @@ let transferBusy=false;
 ipcMain.handle('transfer', async (ev, filePath, target) => {
   if(transferBusy)return {ok:false,error:'Another file transfer is running'};transferBusy=true;
   try {
-    const r = await transferFile(filePath, target, '', p => send('transfer-progress', p));
+    let r;
+    try{r=await transferFile(filePath,target,'',p=>send('transfer-progress',p));}
+    catch(e){if(target!=='plugin'||!session||!authenticated||!/permission|denied|ENOENT|FileNotFound|Cannot create upload|write failed|mkdir|directory/i.test(e.message))throw e;
+      r=await require('./legacy-upload').legacyUpload(session,fs.readFileSync(filePath),p=>send('transfer-progress',p));
+    }
     return { ok: true, result: r };
   } catch (e) {
     return { ok: false, error: String(e.message || e) };

@@ -13,7 +13,7 @@
   "private": false,
   "scripts": {
     "start": "electron .",
-    "test": "node test/protocol.test.js && node test/spotify.test.js && node test/transports.test.js && node test/spicetify.test.js && bash test/interop.sh && bash test/router.sh && node test/secure.test.js && bash test/crypto-interop.sh && node test/main-lifecycle.test.js && node test/reconnect.test.js",
+    "test": "node test/protocol.test.js && node test/spotify.test.js && node test/transports.test.js && node test/spicetify.test.js && bash test/interop.sh && bash test/router.sh && node test/secure.test.js && bash test/crypto-interop.sh && node test/main-lifecycle.test.js && node test/reconnect.test.js && node test/legacy-upload.test.js",
     "dist": "electron-builder --win nsis portable --x64",
     "dist:all": "electron-builder --win nsis portable"
   },

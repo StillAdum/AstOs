@@ -13,6 +13,8 @@ public class RuntimeTest {
   rejected(zip(dir,"slip.zip","../escape","no","plugin.js","x"),new File(dir,"bad"),"plugin.js");check(!new File(dir,"escape").exists(),"Zip traversal");
   rejected(zip(dir,"abs.zip","/absolute","no"),new File(dir,"bad2"),"plugin.js");rejected(zip(dir,"missing.zip","manifest.json","{}"),new File(dir,"bad3"),"plugin.js");
   check(new String(Files.readAllBytes(old.toPath())).equals("old"),"Bad import damaged installed mod");
-  System.out.println("RUNTIME PASS: PCM silence/voice/max-duration endpointing; nested assets, zip traversal and missing-main rejection; staging preserves installed mod");
+  File recovery=new File(dir,"recover");File previous=new File(recovery,"saved.previous");previous.mkdirs();Files.write(new File(previous,"plugin.js").toPath(),"previous".getBytes());new File(recovery,"saved.incoming").mkdirs();PluginArchive.recover(recovery);check(new File(recovery,"saved/plugin.js").isFile(),"Interrupted update did not recover");check(!new File(recovery,"saved.incoming").exists(),"Partial staging survived recovery");
+  previous.mkdirs();Files.write(new File(previous,"plugin.js").toPath(),"obsolete".getBytes());PluginArchive.recover(recovery);check(!previous.exists(),"Obsolete backup not cleaned");check(new String(Files.readAllBytes(new File(recovery,"saved/plugin.js").toPath())).equals("previous"),"Committed install overwritten by backup");
+  System.out.println("RUNTIME PASS: PCM silence/voice/max-duration endpointing; nested assets, zip traversal and missing-main rejection; staging preserves installed mod; interrupted-update recovery");
  }
 }
