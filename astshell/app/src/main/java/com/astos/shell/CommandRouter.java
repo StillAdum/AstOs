@@ -57,6 +57,10 @@ public final class CommandRouter {
         if(s.matches(".*(set|switch|change).*(playback|audio|output).*(pc|computer|desktop).*"))return a.playbackTarget(true);
         if(s.matches(".*(set|switch|change).*(playback|audio|output).*(tablet|local|speaker).*"))return a.playbackTarget(false);
         if(s.matches(".*(on|through) (my |the )?tablet.*")){a.playbackTarget(false);s=s.replaceAll("(on|through) (my |the )?tablet", "").trim();}
+        if (s.contains("remind") || s.contains("alarm") || s.startsWith("search") || s.startsWith("find songs") || s.contains("timer")) {
+            a.askGroq(raw); return null;
+        }
+
         boolean explicitPc = s.matches(".*\\b(pc|computer|desktop)\\b.*");
         boolean stickyPc = s.contains("until") && s.contains("disconnect");
         if ((explicitPc || a.pcSelected()) && !s.contains("timer")) {
@@ -73,7 +77,7 @@ public final class CommandRouter {
                     .replaceAll("until.*disconnect.*", "").trim();
                 query=query.replaceFirst("^(the )?(song|track)\\s+", "");
                 if (query.matches("(some |my )?(music|songs|song)?")) query = "";
-                a.pcAction(action, query, stickyPc || a.pcSelected());
+                a.pcAction(action, query, stickyPc);
                 return null;
             }
         }
