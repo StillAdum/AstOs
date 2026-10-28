@@ -127,6 +127,7 @@ public final class PluginHost {
     android.content.Context context() { return mCtx; }
 
     public void setListener(Listener l) { mListener = l; }
+    public void clearListener(Listener expected){if(mListener==expected)mListener=null;}
 
     private File root() { return new File(mCtx.getFilesDir(), "plugins"); }
 
@@ -145,8 +146,9 @@ public final class PluginHost {
         if (!mf.has("name")) throw new IllegalArgumentException("manifest has no name");
         File dir = new File(root(), id);
         File staging=new File(root(),id+".incoming"),backup=new File(root(),id+".previous");
-        deleteRecursive(staging);deleteRecursive(backup);
+        PluginArchive.recover(root());deleteRecursive(staging);deleteRecursive(backup);
         try{PluginArchive.extract(zipFile,staging,mf.optString("main","plugin.js"));
+            if(!prefs().edit().putBoolean("on_"+id,false).putBoolean("trusted_"+id,false).commit())throw new java.io.IOException("Cannot save mod trust state");
             if(dir.exists()&&!dir.renameTo(backup))throw new java.io.IOException("Cannot preserve previous mod");
             if(!staging.renameTo(dir)){if(backup.exists())backup.renameTo(dir);throw new java.io.IOException("Cannot commit mod update");}
             Plugin previous=mPlugins.get(id);if(previous!=null)unloadQuietly(previous);
@@ -169,6 +171,7 @@ public final class PluginHost {
         try (ZipFile z = new ZipFile(zip)) {
             ZipEntry e = z.getEntry("manifest.json");
             if (e == null) throw new IllegalArgumentException("no manifest.json in .astpl");
+            if(e.getSize()<0||e.getSize()>65536)throw new IllegalArgumentException("Manifest exceeds 64 KB");
             BufferedReader r = new BufferedReader(new InputStreamReader(z.getInputStream(e), "UTF-8"));
             StringBuilder sb = new StringBuilder();
             String l;
@@ -204,11 +207,13 @@ public final class PluginHost {
 
     public synchronized void reloadAll() {
         Map<String, Plugin> old = new LinkedHashMap<String, Plugin>(mPlugins);
-        mPlugins.clear();
+        for(Plugin p:old.values())unloadQuietly(p);
+        mPlugins.clear();mVoiceHooked=false;
+        try{PluginArchive.recover(root());}catch(java.io.IOException e){toast("Mod recovery: "+e.getMessage());}
         File[] dirs = root().listFiles();
         if (dirs != null) {
             for (File d : dirs) {
-                if (!d.isDirectory()) continue;
+                if (!d.isDirectory()||!d.getName().matches("[a-z0-9_]{2,32}")) continue;
                 File mf = new File(d, "manifest.json");
                 if (!mf.isFile()) continue;
                 try (FileInputStream fi = new FileInputStream(mf)) {

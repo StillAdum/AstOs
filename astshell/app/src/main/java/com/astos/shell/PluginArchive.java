@@ -3,6 +3,12 @@ import java.io.*;import java.util.*;import java.util.zip.*;
 /** Validate a whole package in staging before replacing any installed plugin. */
 public final class PluginArchive {
  private PluginArchive(){}
+ public static void recover(File root)throws IOException{File[] files=root.listFiles();if(files==null)return;
+  for(File f:files){String name=f.getName();if(!name.endsWith(".previous"))continue;String id=name.substring(0,name.length()-9);if(!id.matches("[a-z0-9_]{2,32}"))continue;File current=new File(root,id);if(!current.exists()){if(!f.renameTo(current))throw new IOException("Cannot restore interrupted mod update "+id);}else remove(f);}
+  files=root.listFiles();if(files!=null)for(File f:files)if(f.getName().matches("[a-z0-9_]{2,32}\\.incoming"))remove(f);
+ }
+ private static void remove(File f)throws IOException{File[] children=f.listFiles();if(children!=null)for(File child:children)remove(child);if(f.exists()&&!f.delete())throw new IOException("Cannot clean mod staging: "+f.getName());}
+
  public static void extract(File zip,File dir,String main)throws IOException{
   if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("Cannot create mod staging folder");
   String base=dir.getCanonicalPath()+File.separator;Set<String> names=new HashSet<>();long total=0;boolean sawMain=false;int entries=0;

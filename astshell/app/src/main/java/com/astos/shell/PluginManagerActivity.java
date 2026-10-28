@@ -109,16 +109,13 @@ public class PluginManagerActivity extends Activity implements PluginHost.Listen
     @Override protected void onResume() {
         super.onResume();
         PluginHost ph = PluginHost.get();
-        if (ph != null) ph.reloadAll();
+        if (ph != null){ph.setListener(this);ph.reloadAll();}
         rebuild();
     }
 
     @Override protected void onDestroy() {
         PluginHost ph = PluginHost.get();
-        if (ph != null && ph instanceof PluginHost) {
-            // keep the host running; only detach our listener if we're it
-            try { ph.setListener(this); } catch (Throwable ignored) {}
-        }
+        if(ph!=null)ph.clearListener(this);
         super.onDestroy();
     }
 
