@@ -169,7 +169,7 @@ jobs:
   build:
     name: AstOs ROM (TB3-710F)
     needs: companion
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 340   # stay under the 6 h per-job cap
 
     env:
@@ -214,6 +214,19 @@ jobs:
 
       - name: Prepare host build deps
         run: bash scripts/05-prepare-host.sh
+
+      - name: Check ROM workspace disk capacity
+        shell: bash
+        run: |
+          sudo mkdir -p "$ROMDIR"
+          sudo chown "$(id -u):$(id -g)" "$ROMDIR"
+          df -h / "$ROMDIR"
+          AVAILABLE=$(df -PB1 "$ROMDIR" | awk 'NR==2 {print $4}')
+          REQUIRED=$((48 * 1024 * 1024 * 1024))
+          if [ "$AVAILABLE" -lt "$REQUIRED" ]; then
+            echo "::error::ROM workspace has less than 48 GiB free after cleanup, caches and host dependencies. Select a larger runner/workspace; refusing to exhaust the runner filesystem."
+            exit 1
+          fi
 
       - name: Sync LineageOS 14.1 source
         run: bash scripts/20-sync-source.sh
